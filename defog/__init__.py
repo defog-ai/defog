@@ -308,3 +308,6 @@ for name in dir(async_health_methods):
     if callable(attr):
         # Add the method to AsyncDefog
         setattr(AsyncDefog, name, attr)
+
+# Export LLMProvider for external use
+__all__ = ['Defog', 'AsyncDefog', 'LLMProvider']
