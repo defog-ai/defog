@@ -7,6 +7,7 @@ from contextlib import AsyncExitStack
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.client.sse import sse_client
+from mcp.client.streamable_http import streamablehttp_client
 from anthropic import AsyncAnthropic
 from openai import AsyncOpenAI
 from anthropic.types import ToolUseBlock, TextBlock
@@ -272,13 +273,38 @@ class MCPClient:
 
             input_schema = copy.deepcopy(tool["input_schema"])
 
-            # Change all "type" values to uppercase as required by Gemini
-            if "type" in input_schema:
-                input_schema["type"] = input_schema["type"].upper()
-            if "properties" in input_schema:
-                for prop in input_schema["properties"].values():
-                    if "type" in prop:
-                        prop["type"] = prop["type"].upper()
+            # Recursive function to clean schema for Gemini
+            def clean_schema_for_gemini(schema):
+                if isinstance(schema, dict):
+                    # Remove additionalProperties as Gemini doesn't support it
+                    if "additionalProperties" in schema:
+                        del schema["additionalProperties"]
+                    
+                    # Process type field
+                    if "type" in schema:
+                        schema["type"] = schema["type"].upper()
+                    
+                    # Recursively clean nested structures
+                    if "properties" in schema:
+                        for prop_name, prop_value in schema["properties"].items():
+                            clean_schema_for_gemini(prop_value)
+                    
+                    if "items" in schema:
+                        clean_schema_for_gemini(schema["items"])
+                    
+                    # Handle anyOf/oneOf/allOf
+                    for key in ["anyOf", "oneOf", "allOf"]:
+                        if key in schema:
+                            if isinstance(schema[key], list):
+                                for item in schema[key]:
+                                    clean_schema_for_gemini(item)
+                
+                elif isinstance(schema, list):
+                    for item in schema:
+                        clean_schema_for_gemini(item)
+            
+            # Clean the schema
+            clean_schema_for_gemini(input_schema)
 
             func_spec = {
                 "name": tool["name"],
@@ -836,6 +862,77 @@ class MCPClient:
                 print(f"Failed to connect to server '{server_name}':\n{str(e)}")
                 raise
 
+    async def _connect_to_mcp_http_server(self, server_name: str, server_url: str):
+        """Connect to a single MCP HTTP server and register its tools
+
+        Args:
+            server_name: Unique name to identify this server
+            server_url: URL of the HTTP server to connect to
+
+        Returns:
+            int: Number of tools registered from this server
+
+        Raises:
+            TimeoutError: If server connection times out
+            Exception: If connection to server fails
+        """
+        try:
+            streams = await self.exit_stack.enter_async_context(
+                streamablehttp_client(server_url)
+            )
+            session = await self.exit_stack.enter_async_context(
+                ClientSession(streams[0], streams[1])
+            )
+
+            # Initialize the connection with timeout
+            try:
+                await asyncio.wait_for(session.initialize(), timeout=10.0)
+            except asyncio.TimeoutError:
+                raise TimeoutError(
+                    f"Timeout while initializing connection to server '{server_name}'"
+                )
+
+            # Store connection details
+            self.connections[server_name] = {
+                "session": session,
+            }
+
+            # List and register available tools
+            try:
+                response = await asyncio.wait_for(session.list_tools(), timeout=5.0)
+                tools = response.tools
+                for tool in tools:
+                    self.all_tools.append(tool)
+                    self.tool_to_server[tool.name] = server_name
+            except Exception as e:
+                print(f"Failed to list tools from server '{server_name}': {str(e)}")
+                raise
+
+            # List and register available prompts
+            try:
+                response = await asyncio.wait_for(session.list_prompts(), timeout=5.0)
+                prompts = response.prompts
+            except Exception:
+                # If no prompts are available
+                prompts = []
+            for prompt in prompts:
+                self.prompt_to_server[prompt.name] = server_name
+
+            print(
+                f"Connected to HTTP server '{server_name}' at {server_url} with {len(tools)} tool(s) and {len(prompts)} prompt(s)"
+            )
+
+            return len(tools)
+
+        except Exception as e:
+            if isinstance(e, (TimeoutError, asyncio.TimeoutError)):
+                raise TimeoutError(
+                    f"Timeout connecting to HTTP server '{server_name}': {str(e)}"
+                )
+            else:
+                print(f"Failed to connect to HTTP server '{server_name}':\n{str(e)}")
+                raise
+
     async def _connect_to_mcp_stdio_server(
         self, server_name: str, command: str, args: list, env: Optional[dict] = None
     ):
@@ -953,7 +1050,18 @@ class MCPClient:
                 )
                 continue
 
-            if "command" not in server_info or not server_info["command"]:
+            # Check for transport parameter first (for HTTP)
+            transport = server_info.get("transport", None)
+            
+            if transport == "http":
+                # HTTP transport mode
+                args = server_info.get("args", [])
+                if not args or not args[0]:
+                    connection_errors.append(
+                        f"Server '{server_name}' with HTTP transport missing URL in args"
+                    )
+                    continue
+            elif "command" not in server_info or not server_info["command"]:
                 connection_errors.append(
                     f"Server '{server_name}' missing required 'command' field"
                 )
@@ -965,7 +1073,14 @@ class MCPClient:
 
             # Connect to this server
             try:
-                if command == "sse":
+                if transport == "http":
+                    print(
+                        f"Connecting to HTTP server '{server_name}' with URL: {args[0]}"
+                    )
+                    tools_added = await self._connect_to_mcp_http_server(
+                        server_name, args[0]
+                    )
+                elif command == "sse":
                     print(
                         f"Connecting to SSE server '{server_name}' with URL: {args[0]}"
                     )
