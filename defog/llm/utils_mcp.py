@@ -44,7 +44,7 @@ async def _initialize_notification(mcp_url: str, headers: dict) -> dict:
     async with httpx.AsyncClient(follow_redirects=True, timeout=600) as client:
         r = await client.post(mcp_url, headers=headers, json=payload)
         r.raise_for_status()
-        return r.headers
+        return
 
 
 async def _discover_tools(mcp_url: str, headers: dict) -> list[dict]:
