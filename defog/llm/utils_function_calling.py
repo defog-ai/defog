@@ -51,7 +51,6 @@ def create_pydantic_model_from_function(func: Callable) -> type[BaseModel]:
     except:
         # see if this is a partial function
         try:
-            print("partial function")
             type_hints = get_type_hints(func.func)
         except:
             print("could not get type hints for function. default to Any")
