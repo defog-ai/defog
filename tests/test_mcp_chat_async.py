@@ -77,7 +77,7 @@ class TestMCPChatAsync:
         # Verify the read_wiki_structure tool was used
         tool_used = False
         for tool_output in response.tool_outputs:
-            if tool_output.get("name") == "read_wiki_structure":
+            if tool_output.get("name").endswith("read_wiki_structure"):
                 tool_used = True
                 # Should have repository-related argument (repoName or repository)
                 args_str = str(tool_output.get("args", {}))
@@ -118,7 +118,7 @@ class TestMCPChatAsync:
         # Verify DeepWiki tools were used
         tools_used = set()
         for tool_output in response.tool_outputs:
-            tools_used.add(tool_output.get("name"))
+            tools_used.add(tool_output.get("name").split("__")[-1])
 
         # Should use at least one DeepWiki tool
         deepwiki_tools = {"read_wiki_structure", "read_wiki_contents", "ask_question"}
@@ -184,7 +184,7 @@ class TestMCPChatAsync:
         # Verify a DeepWiki tool was used
         tool_used = False
         for tool_output in response.tool_outputs:
-            if tool_output.get("name") == "read_wiki_structure":
+            if tool_output.get("name").endswith("read_wiki_structure"):
                 tool_used = True
                 # Should have repository-related argument
                 args_str = str(tool_output.get("args", {}))
@@ -228,7 +228,7 @@ class TestMCPChatAsync:
         # Verify DeepWiki tools were used
         tools_used = set()
         for tool_output in response.tool_outputs:
-            tools_used.add(tool_output.get("name"))
+            tools_used.add(tool_output.get("name").split("__")[-1])
 
         # Should use at least one DeepWiki tool
         deepwiki_tools = {"read_wiki_structure", "read_wiki_contents", "ask_question"}
@@ -302,7 +302,7 @@ class TestMCPChatAsync:
         if response.tool_outputs:
             for tool_output in response.tool_outputs:
                 # Should only use ask_question tool since that's the only allowed one
-                assert tool_output.get("name") in ["ask_question"]
+                assert tool_output.get("name").endswith("ask_question")
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(
@@ -338,7 +338,8 @@ class TestMCPChatAsync:
         assert response.tool_outputs is not None
         deepwiki_tools = {"read_wiki_structure", "read_wiki_contents", "ask_question"}
         tool_used = any(
-            tool.get("name") in deepwiki_tools for tool in response.tool_outputs
+            tool.get("name").split("__")[-1] in deepwiki_tools
+            for tool in response.tool_outputs
         )
         assert tool_used
 
@@ -381,6 +382,7 @@ class TestMCPChatAsync:
         assert response.tool_outputs is not None
         deepwiki_tools = {"read_wiki_structure", "read_wiki_contents", "ask_question"}
         tool_used = any(
-            tool.get("name") in deepwiki_tools for tool in response.tool_outputs
+            tool.get("name").split("__")[-1] in deepwiki_tools
+            for tool in response.tool_outputs
         )
         assert tool_used
