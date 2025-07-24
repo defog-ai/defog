@@ -248,7 +248,7 @@ class TestMCPChatAsync:
             },
             {
                 "role": "user",
-                "content": "Look up information about the defog/introspect repository structure",
+                "content": "Look up information about the defog-ai/introspect repository structure",
             },
         ]
 
@@ -318,7 +318,7 @@ class TestMCPChatAsync:
             },
             {
                 "role": "user",
-                "content": "Look up information about the defog/introspect repository structure",
+                "content": "Look up information about the defog-ai/introspect repository structure",
             },
         ]
 
@@ -358,7 +358,7 @@ class TestMCPChatAsync:
         messages = [
             {
                 "role": "user",
-                "content": "Look up information about the defog/introspect repository and return details in the specified format",
+                "content": "Look up information about the defog-ai/introspect repository and return details in the specified format",
             }
         ]
 
