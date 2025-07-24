@@ -2,6 +2,7 @@ import json
 import httpx
 import inspect
 from functools import partial
+import re
 
 
 async def _initialize_connection(mcp_url: str) -> dict:
@@ -31,7 +32,19 @@ async def _initialize_connection(mcp_url: str) -> dict:
         session_id = r.headers.get("mcp-session-id") or r.headers.get(
             "x-mcp-session-Id"
         )
-        return session_id
+        # The endpoint streams Server‑Sent Events (SSE).  Each logical reply is on
+        # a `data:` line; grab the first JSON payload:
+        async for line in r.aiter_lines():
+            if line.startswith("data:"):
+                try:
+                    obj = json.loads(line.removeprefix("data:").strip())
+                    server_name = obj["result"]["serverInfo"]["name"]
+                except:
+                    server_name = "unknown_server"
+
+        # strip any non alphanumeric and underscores
+        server_name = re.sub(r"[^a-zA-Z0-9_]", "", server_name)
+        return session_id, server_name
 
 
 async def _initialize_notification(mcp_url: str, headers: dict) -> dict:
@@ -91,7 +104,7 @@ async def get_mcp_tools(mcp_url: str):
         A list of tool functions
     """
     # 1. initialize the connection and get the headers
-    session_id = await _initialize_connection(mcp_url)
+    session_id, server_name = await _initialize_connection(mcp_url)
 
     headers = {
         "Content-Type": "application/json",
@@ -153,7 +166,7 @@ async def get_mcp_tools(mcp_url: str):
         sig = inspect.Signature(parameters=params, return_annotation=object)
         func.__signature__ = sig
         func.__doc__ = tool["description"]
-        func.__name__ = name
+        func.__name__ = f"mcp__{server_name}___{name}"
         tools_to_return.append(func)
 
     # return an object masquerading as a simple namespace
