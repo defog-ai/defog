@@ -18,6 +18,7 @@ from .config import LLMConfig
 from .llm_providers import LLMProvider
 from .citations import citations_tool
 from copy import deepcopy
+from .utils_mcp import get_mcp_tools
 
 # Keep the original LLMResponse for backwards compatibility
 # (it's now defined in providers.base but we re-export it here)
@@ -106,7 +107,7 @@ async def chat_async(
     max_retries: Optional[int] = None,
     post_tool_function: Optional[Callable] = None,
     config: Optional[LLMConfig] = None,
-    mcp_servers: Optional[List[Dict[str, Any]]] = None,
+    mcp_servers: Optional[List[str]] = None,
     image_result_keys: Optional[List[str]] = None,
     tool_budget: Optional[Dict[str, int]] = None,
     insert_tool_citations: bool = False,
@@ -134,7 +135,7 @@ async def chat_async(
         max_retries: Maximum number of retry attempts
         post_tool_function: Function to call after each tool execution
         config: LLM configuration object
-        mcp_servers: List of MCP server configurations (Anthropic only)
+        mcp_servers: List of MCP server urls for streamable http servers (e.g., ["http://localhost:8000/mcp", "http://localhost:8001/mcp"])
         image_result_keys: List of keys to check in tool results for image data (e.g., ['image_base64', 'screenshot_data'])
         tool_budget: Dictionary mapping tool names to maximum allowed calls. Tools not in the dictionary have unlimited calls.
         insert_tool_citations: If True, adds citations to the response using tool outputs as source documents (OpenAI and Anthropic only)
@@ -158,6 +159,15 @@ async def chat_async(
 
     base_delay = 1  # Initial delay in seconds
     error_trace = None
+
+    if mcp_servers:
+        mcp_tools = []
+        for mcp_server in mcp_servers:
+            mcp_tools.extend(await get_mcp_tools(mcp_server))
+        if tools:
+            tools = tools + mcp_tools
+        else:
+            tools = mcp_tools
 
     for attempt in range(max_retries):
         try:
