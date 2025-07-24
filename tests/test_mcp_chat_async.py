@@ -14,16 +14,6 @@ def event_loop():
     loop.close()
 
 
-@pytest.fixture(scope="function")
-def deepwiki_mcp_server():
-    """
-    DeepWiki MCP server configuration for testing.
-    Uses the public DeepWiki MCP server which supports HTTPS.
-    """
-    # Return the MCP server configuration for DeepWiki
-    yield [{"type": "url", "url": "https://mcp.deepwiki.com/sse", "name": "deepwiki"}]
-
-
 class TestMCPChatAsync:
     """Test the chat_async function with MCP servers"""
 
@@ -56,7 +46,7 @@ class TestMCPChatAsync:
         not os.environ.get("ANTHROPIC_API_KEY"),
         reason="ANTHROPIC_API_KEY environment variable not set",
     )
-    async def test_chat_async_with_mcp_servers(self, deepwiki_mcp_server):
+    async def test_chat_async_with_mcp_servers(self):
         """Test chat_async with MCP servers enabled using DeepWiki"""
         messages = [
             {
@@ -70,7 +60,7 @@ class TestMCPChatAsync:
             model="claude-3-7-sonnet-20250219",
             messages=messages,
             temperature=0.0,
-            mcp_servers=deepwiki_mcp_server,
+            mcp_servers=["https://mcp.deepwiki.com/mcp"],
         )
 
         assert response is not None
@@ -100,7 +90,7 @@ class TestMCPChatAsync:
         not os.environ.get("ANTHROPIC_API_KEY"),
         reason="ANTHROPIC_API_KEY environment variable not set",
     )
-    async def test_chat_async_with_multiple_tool_calls(self, deepwiki_mcp_server):
+    async def test_chat_async_with_multiple_tool_calls(self):
         """Test chat_async with multiple MCP tool calls using DeepWiki"""
         messages = [
             {
@@ -114,7 +104,7 @@ class TestMCPChatAsync:
             model="claude-3-7-sonnet-20250219",
             messages=messages,
             temperature=0.0,
-            mcp_servers=deepwiki_mcp_server,
+            mcp_servers=["https://mcp.deepwiki.com/mcp"],
         )
 
         assert response is not None
@@ -163,13 +153,8 @@ class TestMCPChatAsync:
         not os.environ.get("OPENAI_API_KEY"),
         reason="OPENAI_API_KEY environment variable not set",
     )
-    async def test_chat_async_openai_with_mcp_servers(self, deepwiki_mcp_server):
+    async def test_chat_async_openai_with_mcp_servers(self):
         """Test chat_async with OpenAI and MCP servers enabled using DeepWiki"""
-        # Use the same format as Anthropic (standardized across providers)
-        openai_mcp_server = [
-            {"name": "deepwiki", "url": "https://mcp.deepwiki.com/mcp", "type": "url"}
-        ]
-
         messages = [
             {
                 "role": "user",
@@ -182,7 +167,7 @@ class TestMCPChatAsync:
             model="gpt-4.1",
             messages=messages,
             temperature=0.0,
-            mcp_servers=openai_mcp_server,
+            mcp_servers=["https://mcp.deepwiki.com/mcp"],
         )
 
         assert response is not None
@@ -214,15 +199,9 @@ class TestMCPChatAsync:
         not os.environ.get("OPENAI_API_KEY"),
         reason="OPENAI_API_KEY environment variable not set",
     )
-    async def test_chat_async_openai_with_multiple_mcp_tool_calls(
-        self, deepwiki_mcp_server
-    ):
+    async def test_chat_async_openai_with_multiple_mcp_tool_calls(self):
         """Test chat_async with OpenAI and multiple MCP tool calls"""
         # Use the same format as Anthropic (standardized across providers)
-        openai_mcp_server = [
-            {"name": "deepwiki", "url": "https://mcp.deepwiki.com/mcp", "type": "url"}
-        ]
-
         messages = [
             {
                 "role": "user",
@@ -235,7 +214,7 @@ class TestMCPChatAsync:
             model="gpt-4.1",
             messages=messages,
             temperature=0.0,
-            mcp_servers=openai_mcp_server,
+            mcp_servers=["https://mcp.deepwiki.com/mcp"],
         )
 
         assert response is not None
@@ -260,13 +239,8 @@ class TestMCPChatAsync:
         not os.environ.get("OPENAI_API_KEY"),
         reason="OPENAI_API_KEY environment variable not set",
     )
-    async def test_chat_async_openai_mcp_with_system_message(self, deepwiki_mcp_server):
+    async def test_chat_async_openai_mcp_with_system_message(self):
         """Test chat_async with OpenAI, MCP servers, and a system message"""
-        # Use the same format as Anthropic (standardized across providers)
-        openai_mcp_server = [
-            {"name": "deepwiki", "url": "https://mcp.deepwiki.com/mcp", "type": "url"}
-        ]
-
         messages = [
             {
                 "role": "system",
@@ -283,7 +257,7 @@ class TestMCPChatAsync:
             model="gpt-4.1",
             messages=messages,
             temperature=0.0,
-            mcp_servers=openai_mcp_server,
+            mcp_servers=["https://mcp.deepwiki.com/mcp"],
         )
 
         assert response is not None
@@ -303,18 +277,8 @@ class TestMCPChatAsync:
         not os.environ.get("OPENAI_API_KEY"),
         reason="OPENAI_API_KEY environment variable not set",
     )
-    async def test_chat_async_openai_mcp_with_allowed_tools(self, deepwiki_mcp_server):
+    async def test_chat_async_openai_mcp_with_allowed_tools(self):
         """Test chat_async with OpenAI MCP servers and allowed_tools filtering"""
-        # Use the same format as Anthropic with additional OpenAI-specific options
-        openai_mcp_server = [
-            {
-                "name": "deepwiki",
-                "url": "https://mcp.deepwiki.com/mcp",
-                "type": "url",
-                "allowed_tools": ["ask_question"],
-            }
-        ]
-
         messages = [
             {
                 "role": "user",
@@ -327,7 +291,7 @@ class TestMCPChatAsync:
             model="gpt-4.1",
             messages=messages,
             temperature=0.0,
-            mcp_servers=openai_mcp_server,
+            mcp_servers=["https://mcp.deepwiki.com/mcp"],
         )
 
         assert response is not None
@@ -345,7 +309,7 @@ class TestMCPChatAsync:
         not os.environ.get("ANTHROPIC_API_KEY"),
         reason="ANTHROPIC_API_KEY environment variable not set",
     )
-    async def test_chat_async_mcp_with_system_message(self, deepwiki_mcp_server):
+    async def test_chat_async_mcp_with_system_message(self):
         """Test chat_async with MCP servers and a system message"""
         messages = [
             {
@@ -363,7 +327,7 @@ class TestMCPChatAsync:
             model="claude-3-7-sonnet-20250219",
             messages=messages,
             temperature=0.0,
-            mcp_servers=deepwiki_mcp_server,
+            mcp_servers=["https://mcp.deepwiki.com/mcp"],
         )
 
         assert response is not None
@@ -383,7 +347,7 @@ class TestMCPChatAsync:
         not os.environ.get("ANTHROPIC_API_KEY"),
         reason="ANTHROPIC_API_KEY environment variable not set",
     )
-    async def test_chat_async_mcp_with_response_format(self, deepwiki_mcp_server):
+    async def test_chat_async_mcp_with_response_format(self):
         """Test chat_async with MCP servers and response format"""
         from pydantic import BaseModel
 
@@ -403,7 +367,7 @@ class TestMCPChatAsync:
             model="claude-3-7-sonnet-20250219",
             messages=messages,
             temperature=0.0,
-            mcp_servers=deepwiki_mcp_server,
+            mcp_servers=["https://mcp.deepwiki.com/mcp"],
             response_format=RepositoryInfo,
         )
 
