@@ -160,6 +160,12 @@ async def chat_async(
     base_delay = 1  # Initial delay in seconds
     error_trace = None
 
+    # validate that mcp servers are simple strings and nothing else
+    if mcp_servers:
+        for mcp_server in mcp_servers:
+            if not isinstance(mcp_server, str):
+                raise ValueError("mcp_servers must be a list of strings")
+
     if mcp_servers:
         mcp_tools = []
         for mcp_server in mcp_servers:
