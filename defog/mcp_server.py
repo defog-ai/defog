@@ -28,7 +28,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Initialize FastMCP server
-mcp = FastMCP("Defog MCP Server", stateless_http=True)
+mcp = FastMCP("Defog MCP Server")
 
 
 def validate_database_credentials() -> Dict[str, Any]:
