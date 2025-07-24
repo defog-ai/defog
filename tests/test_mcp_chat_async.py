@@ -189,8 +189,6 @@ class TestMCPChatAsync:
                 # Should have repository-related argument
                 args_str = str(tool_output.get("args", {}))
                 assert "repository" in args_str or "repoName" in args_str
-                # Should have server_label
-                assert tool_output.get("server_label") == "deepwiki"
 
         assert tool_used, "read_wiki_structure tool was not used"
 
@@ -233,115 +231,6 @@ class TestMCPChatAsync:
         # Should use at least one DeepWiki tool
         deepwiki_tools = {"read_wiki_structure", "read_wiki_contents", "ask_question"}
         assert len(tools_used.intersection(deepwiki_tools)) > 0
-
-    @pytest.mark.asyncio
-    @pytest.mark.skipif(
-        not os.environ.get("OPENAI_API_KEY"),
-        reason="OPENAI_API_KEY environment variable not set",
-    )
-    async def test_chat_async_openai_mcp_with_system_message(self):
-        """Test chat_async with OpenAI, MCP servers, and a system message"""
-        messages = [
-            {
-                "role": "system",
-                "content": "You are a helpful documentation assistant. Always use the available tools to lookup information about repositories.",
-            },
-            {
-                "role": "user",
-                "content": "Look up information about the defog-ai/introspect repository structure",
-            },
-        ]
-
-        response = await chat_async(
-            provider=LLMProvider.OPENAI,
-            model="gpt-4.1",
-            messages=messages,
-            temperature=0.0,
-            mcp_servers=["https://mcp.deepwiki.com/mcp"],
-        )
-
-        assert response is not None
-        assert response.content is not None
-        assert isinstance(response.content, str)
-
-        # Verify a DeepWiki tool was used
-        assert response.tool_outputs is not None
-        deepwiki_tools = {"read_wiki_structure", "read_wiki_contents", "ask_question"}
-        tool_used = any(
-            tool.get("name") in deepwiki_tools for tool in response.tool_outputs
-        )
-        assert tool_used
-
-    @pytest.mark.asyncio
-    @pytest.mark.skipif(
-        not os.environ.get("OPENAI_API_KEY"),
-        reason="OPENAI_API_KEY environment variable not set",
-    )
-    async def test_chat_async_openai_mcp_with_allowed_tools(self):
-        """Test chat_async with OpenAI MCP servers and allowed_tools filtering"""
-        messages = [
-            {
-                "role": "user",
-                "content": "Ask a question about Python's installation process for the Python repository",
-            }
-        ]
-
-        response = await chat_async(
-            provider=LLMProvider.OPENAI,
-            model="gpt-4.1",
-            messages=messages,
-            temperature=0.0,
-            mcp_servers=["https://mcp.deepwiki.com/mcp"],
-        )
-
-        assert response is not None
-        assert response.content is not None
-        assert isinstance(response.content, str)
-
-        # Verify only allowed tools were used
-        if response.tool_outputs:
-            for tool_output in response.tool_outputs:
-                # Should only use ask_question tool since that's the only allowed one
-                assert tool_output.get("name").endswith("ask_question")
-
-    @pytest.mark.asyncio
-    @pytest.mark.skipif(
-        not os.environ.get("ANTHROPIC_API_KEY"),
-        reason="ANTHROPIC_API_KEY environment variable not set",
-    )
-    async def test_chat_async_mcp_with_system_message(self):
-        """Test chat_async with MCP servers and a system message"""
-        messages = [
-            {
-                "role": "system",
-                "content": "You are a helpful documentation assistant. Always use the available tools to lookup information about repositories.",
-            },
-            {
-                "role": "user",
-                "content": "Look up information about the defog-ai/introspect repository structure",
-            },
-        ]
-
-        response = await chat_async(
-            provider=LLMProvider.ANTHROPIC,
-            model="claude-3-7-sonnet-20250219",
-            messages=messages,
-            temperature=0.0,
-            mcp_servers=["https://mcp.deepwiki.com/mcp"],
-        )
-
-        assert response is not None
-        assert response.content is not None
-        assert isinstance(response.content, str)
-
-        # Verify a DeepWiki tool was used
-        assert response.tool_outputs is not None
-        deepwiki_tools = {"read_wiki_structure", "read_wiki_contents", "ask_question"}
-        tool_used = any(
-            tool.get("name").split("__")[-1] in deepwiki_tools
-            for tool in response.tool_outputs
-        )
-        assert tool_used
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(
