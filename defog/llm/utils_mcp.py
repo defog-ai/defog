@@ -4,7 +4,47 @@ import inspect
 from functools import partial
 
 
-async def _discover_tools(mcp_url: str) -> list[dict]:
+async def _initialize_connection(mcp_url: str) -> dict:
+    """
+    Initialize the MCP server, and return the headers.
+    """
+    payload = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-03-26",
+            "capabilities": {},
+            "clientInfo": {"name": "python", "version": "3.12"},
+        },
+    }
+    async with httpx.AsyncClient(follow_redirects=True, timeout=600) as client:
+        r = await client.post(
+            mcp_url,
+            json=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json, text/event-stream",
+            },
+        )
+        r.raise_for_status()
+        return r.headers
+
+
+async def _initialize_notification(mcp_url: str, headers: dict) -> dict:
+    """
+    Initialize the MCP server.
+    """
+    payload = {"jsonrpc": "2.0", "method": "notifications/initialized"}
+    headers["Content-Type"] = "application/json"
+    headers["Accept"] = "application/json, text/event-stream"
+    async with httpx.AsyncClient(follow_redirects=True, timeout=600) as client:
+        r = await client.post(mcp_url, headers=headers, json=payload)
+        r.raise_for_status()
+        return r.headers
+
+
+async def _discover_tools(mcp_url: str, headers: dict) -> list[dict]:
     """
     Hit `tools/list` and return the decoded tool records.
 
@@ -14,14 +54,17 @@ async def _discover_tools(mcp_url: str) -> list[dict]:
     Returns:
         A list of tool records
     """
-    payload = {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}
-    async with httpx.AsyncClient(follow_redirects=True) as client:
+    payload = {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/list",
+    }
+    headers["Content-Type"] = "application/json"
+    headers["Accept"] = "application/json, text/event-stream"
+    async with httpx.AsyncClient(follow_redirects=True, timeout=600) as client:
         r = await client.post(
             mcp_url,
-            headers={
-                "Content-Type": "application/json",
-                "Accept": "application/json, text/event-stream",
-            },
+            headers=headers,
             json=payload,
         )
         r.raise_for_status()
@@ -44,9 +87,18 @@ async def get_mcp_tools(mcp_url: str):
     Returns:
         A list of tool functions
     """
-    # 1. list all tools from the server
-    tools = await _discover_tools(mcp_url)
+    # 1. initialize the connection and get the headers
+    headers = await _initialize_connection(mcp_url)
+
+    # 2. initialize the notification
+    await _initialize_notification(mcp_url, headers)
+
+    # 3. list all tools from the server
+    tools = await _discover_tools(mcp_url, headers)
     tools_to_return = []
+
+    headers["Content-Type"] = "application/json"
+    headers["Accept"] = "application/json, text/event-stream"
 
     # helper shared by all generated methods
     async def _call_tool(tool_name, **kwargs):
@@ -54,15 +106,18 @@ async def get_mcp_tools(mcp_url: str):
             "jsonrpc": "2.0",
             "id": 2,
             "method": "tools/call",
-            "params": {"name": tool_name, "arguments": kwargs},
+            "params": {
+                "protocolVersion": "2025-03-26",
+                "capabilities": {},
+                "clientInfo": {"name": "python", "version": "3.12"},
+                "name": tool_name,
+                "arguments": kwargs,
+            },
         }
-        async with httpx.AsyncClient(follow_redirects=True) as client:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=600) as client:
             r = await client.post(
                 mcp_url,
-                headers={
-                    "Content-Type": "application/json",
-                    "Accept": "application/json, text/event-stream",
-                },
+                headers=headers,
                 json=payload,
             )
             r.raise_for_status()
@@ -91,6 +146,7 @@ async def get_mcp_tools(mcp_url: str):
         sig = inspect.Signature(parameters=params, return_annotation=object)
         func.__signature__ = sig
         func.__doc__ = tool["description"]
+        func.__name__ = name
         tools_to_return.append(func)
 
     # return an object masquerading as a simple namespace
