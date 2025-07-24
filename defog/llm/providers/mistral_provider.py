@@ -118,7 +118,6 @@ class MistralProvider(BaseLLMProvider):
         timeout: int = 600,
         prediction: Optional[Dict[str, str]] = None,
         reasoning_effort: Optional[str] = None,
-        mcp_servers: Optional[List[Dict[str, Any]]] = None,
         **kwargs,
     ) -> Tuple[Dict[str, Any], List[Dict[str, str]]]:
         """Create the parameter dict for Mistral's chat.complete()."""
@@ -383,7 +382,6 @@ class MistralProvider(BaseLLMProvider):
         prediction: Optional[Dict[str, str]] = None,
         reasoning_effort: Optional[str] = None,
         post_tool_function: Optional[Callable] = None,
-        mcp_servers: Optional[List[Dict[str, Any]]] = None,
         tool_budget: Optional[Dict[str, int]] = None,
         **kwargs,
     ) -> LLMResponse:

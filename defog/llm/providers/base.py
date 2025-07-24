@@ -57,7 +57,6 @@ class BaseLLMProvider(ABC):
         timeout: int = 600,
         prediction: Optional[Dict[str, str]] = None,
         reasoning_effort: Optional[str] = None,
-        mcp_servers: Optional[List[Dict[str, Any]]] = None,
         **kwargs,
     ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
         """Build parameters for the provider's API call."""
@@ -97,7 +96,6 @@ class BaseLLMProvider(ABC):
         prediction: Optional[Dict[str, str]] = None,
         reasoning_effort: Optional[str] = None,
         post_tool_function: Optional[Callable] = None,
-        mcp_servers: Optional[List[Dict[str, Any]]] = None,
         image_result_keys: Optional[List[str]] = None,
         tool_budget: Optional[Dict[str, int]] = None,
         **kwargs,

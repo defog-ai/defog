@@ -119,7 +119,6 @@ class DeepSeekProvider(BaseLLMProvider):
         timeout: int = 600,
         prediction: Optional[Dict[str, str]] = None,
         reasoning_effort: Optional[str] = None,
-        mcp_servers: Optional[List[Dict[str, Any]]] = None,
         **kwargs,
     ) -> Tuple[Dict[str, Any], List[Dict[str, str]]]:
         """
@@ -202,12 +201,6 @@ Respond with JSON only.
             else:
                 # For non-Pydantic response formats, use the standard approach
                 request_params["response_format"] = response_format
-
-        # DeepSeek doesn't support MCP servers
-        if mcp_servers:
-            raise ProviderError(
-                self.get_provider_name(), "DeepSeek does not support MCP servers"
-            )
 
         return request_params, messages
 
@@ -415,7 +408,6 @@ Respond with JSON only.
         prediction: Optional[Dict[str, str]] = None,
         reasoning_effort: Optional[str] = None,
         post_tool_function: Optional[Callable] = None,
-        mcp_servers: Optional[List[Dict[str, Any]]] = None,
         tool_budget: Optional[Dict[str, int]] = None,
         **kwargs,
     ) -> LLMResponse:
@@ -448,7 +440,6 @@ Respond with JSON only.
             store=store,
             metadata=metadata,
             timeout=timeout,
-            mcp_servers=mcp_servers,
         )
 
         # Build a tool dict if needed
