@@ -138,7 +138,6 @@ class GeminiProvider(BaseLLMProvider):
         timeout: int = 600,
         prediction: Optional[Dict[str, str]] = None,
         reasoning_effort: Optional[str] = None,
-        mcp_servers: Optional[List[Dict[str, Any]]] = None,
         **kwargs,
     ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
         """Construct parameters for Gemini's generate_content call."""
@@ -454,7 +453,6 @@ class GeminiProvider(BaseLLMProvider):
         prediction: Optional[Dict[str, str]] = None,
         reasoning_effort: Optional[str] = None,
         post_tool_function: Optional[Callable] = None,
-        mcp_servers: Optional[List[Dict[str, Any]]] = None,
         image_result_keys: Optional[List[str]] = None,
         tool_budget: Optional[Dict[str, int]] = None,
         **kwargs,

@@ -117,7 +117,6 @@ class AnthropicProvider(BaseLLMProvider):
         timeout: int = 600,
         prediction: Optional[Dict[str, str]] = None,
         reasoning_effort: Optional[str] = None,
-        mcp_servers: Optional[List[Dict[str, Any]]] = None,
         **kwargs,
     ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
         """Create the parameter dict for Anthropic's .messages.create()."""
@@ -239,10 +238,6 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
                 if not self.config.enable_parallel_tool_calls:
                     params["tool_choice"]["disable_parallel_tool_use"] = True
 
-        # Add MCP servers if provided
-        if mcp_servers:
-            params["mcp_servers"] = mcp_servers
-
         return params, messages
 
     async def process_response(
@@ -254,7 +249,6 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
         tool_dict: Dict[str, Callable],
         response_format=None,
         post_tool_function: Optional[Callable] = None,
-        mcp_servers: Optional[List[Dict[str, Any]]] = None,
         image_result_keys: Optional[List[str]] = None,
         tool_handler: Optional[ToolHandler] = None,
         **kwargs,
@@ -283,7 +277,7 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
         total_output_tokens = 0
 
         # Handle tool processing for both local tools and MCP server tools
-        if (tools and len(tools) > 0) or (mcp_servers and len(mcp_servers) > 0):
+        if tools and len(tools) > 0:
             consecutive_exceptions = 0
             while True:
                 total_input_tokens += response.usage.input_tokens
@@ -583,11 +577,7 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
                         tools, tool_handler, request_params, request_params.get("model")
                     )
 
-                    # Make next call - use the same API endpoint (beta or regular) as the initial call
-                    if mcp_servers and len(mcp_servers) > 0:
-                        response = await client.beta.messages.create(**request_params)
-                    else:
-                        response = await client.messages.create(**request_params)
+                    response = await client.messages.create(**request_params)
                 else:
                     # Break out of loop when tool calls are finished
                     content = "\n".join([block.text for block in text_blocks])
@@ -635,7 +625,6 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
         prediction: Optional[Dict[str, str]] = None,
         reasoning_effort: Optional[str] = None,
         post_tool_function: Optional[Callable] = None,
-        mcp_servers: Optional[List[Dict[str, Any]]] = None,
         image_result_keys: Optional[List[str]] = None,
         tool_budget: Optional[Dict[str, int]] = None,
         **kwargs,
@@ -653,10 +642,7 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
 
         # Set up headers based on whether MCP servers are provided
         headers = {}
-        if mcp_servers:
-            headers["anthropic-beta"] = "mcp-client-2025-04-04"
-        else:
-            headers["anthropic-beta"] = "interleaved-thinking-2025-05-14"
+        headers["anthropic-beta"] = "interleaved-thinking-2025-05-14"
 
         client = AsyncAnthropic(
             api_key=self.api_key,
@@ -676,7 +662,6 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
             response_format=response_format,
             reasoning_effort=reasoning_effort,
             timeout=timeout,
-            mcp_servers=mcp_servers,
         )
 
         # Construct a tool dict if needed
@@ -684,10 +669,7 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
         if tools and len(tools) > 0 and "tools" in params:
             tool_dict = tool_handler.build_tool_dict(tools)
 
-        if mcp_servers and len(mcp_servers) > 0:
-            func_to_call = client.beta.messages.create
-        else:
-            func_to_call = client.messages.create
+        func_to_call = client.messages.create
 
         try:
             response = await func_to_call(**params)
@@ -707,7 +689,6 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
                 tool_dict=tool_dict,
                 response_format=response_format,
                 post_tool_function=post_tool_function,
-                mcp_servers=mcp_servers,
                 image_result_keys=image_result_keys,
                 tool_handler=tool_handler,
             )
