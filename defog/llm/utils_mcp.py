@@ -4,18 +4,6 @@ import inspect
 from functools import partial
 
 
-def clean_headers(headers):
-    """
-    Remove response headers (which change per request) from a header object.
-    """
-    HOP_BY_HOP = {"connection", "transfer-encoding", "keep-alive",
-              "proxy-authenticate", "proxy-authorization", "te",
-              "trailer", "upgrade", "server", "date", "cache-control"}
-    cloned_headers = {k: v for k, v in headers.items() if k.lower() not in HOP_BY_HOP}
-
-    return cloned_headers
-
-
 async def _initialize_connection(mcp_url: str) -> dict:
     """
     Initialize the MCP server, and return the headers.
@@ -40,7 +28,10 @@ async def _initialize_connection(mcp_url: str) -> dict:
             },
         )
         r.raise_for_status()
-        return r.headers
+        session_id = r.headers.get("mcp-session-id") or r.headers.get(
+            "x-mcp-session-Id"
+        )
+        return session_id
 
 
 async def _initialize_notification(mcp_url: str, headers: dict) -> dict:
@@ -100,21 +91,20 @@ async def get_mcp_tools(mcp_url: str):
         A list of tool functions
     """
     # 1. initialize the connection and get the headers
-    headers = await _initialize_connection(mcp_url)
+    session_id = await _initialize_connection(mcp_url)
 
     headers = {
-        # clean out response headeers
-        **clean_headers(headers),
-        "content-type": "application/json",
-        "accept": "application/json, text/event-stream"
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+        "mcp-session-id": session_id,
     }
 
     # 2. initialize the notification
     await _initialize_notification(mcp_url, headers)
-    
+
     # 3. list all tools from the server
     tools = await _discover_tools(mcp_url, headers)
-    
+
     tools_to_return = []
 
     # helper shared by all generated methods
