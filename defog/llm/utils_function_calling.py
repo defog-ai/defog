@@ -45,7 +45,18 @@ def create_pydantic_model_from_function(func: Callable) -> type[BaseModel]:
     Create a Pydantic model from a regular function's signature.
     """
     sig = inspect.signature(func)
-    type_hints = get_type_hints(func)
+    try:
+        # will work for most regular functions
+        type_hints = get_type_hints(func)
+    except:
+        # see if this is a partial function
+        try:
+            print("partial function")
+            type_hints = get_type_hints(func.func)
+        except:
+            print("could not get type hints for function. default to Any")
+            # if it fails, we'll just use Any for all types
+            type_hints = {param_name: Any for param_name in sig.parameters.keys()}
 
     fields = {}
     for param_name, param in sig.parameters.items():
