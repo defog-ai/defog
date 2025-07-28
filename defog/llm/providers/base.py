@@ -6,6 +6,7 @@ import re
 from ..config.settings import LLMConfig
 from ..exceptions import ProviderError
 from ..tools import ToolHandler
+import inspect
 
 
 @dataclass
@@ -73,6 +74,7 @@ class BaseLLMProvider(ABC):
         tool_dict: Dict[str, Callable],
         response_format=None,
         post_tool_function: Optional[Callable] = None,
+        post_response_hook: Optional[Callable] = None,
         **kwargs,
     ) -> Tuple[
         Any, List[Dict[str, Any]], int, int, Optional[int], Optional[Dict[str, int]]
@@ -97,6 +99,7 @@ class BaseLLMProvider(ABC):
         prediction: Optional[Dict[str, str]] = None,
         reasoning_effort: Optional[str] = None,
         post_tool_function: Optional[Callable] = None,
+        post_response_hook: Optional[Callable] = None,
         image_result_keys: Optional[List[str]] = None,
         tool_budget: Optional[Dict[str, int]] = None,
         **kwargs,
@@ -324,3 +327,39 @@ class BaseLLMProvider(ABC):
             return available_tools, tool_dict
 
         return tools, tool_handler.build_tool_dict(tools)
+
+    def validate_post_response_hook(
+        self, post_response_hook: Optional[Callable]
+    ) -> None:
+        """
+        Verify that the post_response_hook function has the required parameters.
+        """
+        sig = inspect.signature(post_response_hook)
+        required_params = ["response", "messages"]
+        
+        for param in required_params:
+            if sig.parameters.get(param) is None:
+                raise ValueError("post_response_hook must have parameter named `response` and `messages`.")
+        
+        return post_response_hook
+
+
+    async def call_post_response_hook(
+        self, post_response_hook: Callable, response, messages
+    ):
+        """Common function to call the post response hook if available. Shared by all providers."""
+        try:
+            if post_response_hook is None:
+                return
+            if inspect.iscoroutinefunction(post_response_hook):
+                await post_response_hook(
+                    response=response,
+                    messages=messages,
+                )
+            else:
+                post_response_hook(
+                    response=response,
+                    messages=messages,
+                )
+        except Exception as e:
+            raise Exception(f"Error executing post_response_hook: {e}", e)

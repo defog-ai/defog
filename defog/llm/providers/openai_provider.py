@@ -225,6 +225,7 @@ class OpenAIProvider(BaseLLMProvider):
         response_format=None,
         model: str = "",
         post_tool_function: Optional[Callable] = None,
+        post_response_hook: Optional[Callable] = None,
         image_result_keys: Optional[List[str]] = None,
         tool_handler: Optional[ToolHandler] = None,
         parallel_tool_calls: bool = False,
@@ -261,6 +262,15 @@ class OpenAIProvider(BaseLLMProvider):
                 total_cached_input_tokens += cached_tokens
                 total_output_tokens += output_tokens
                 message = response.choices[0].message
+                
+                # call this at the start of the while loop
+                # to ensure we also log the first message (that comes in the function arg)
+                await self.call_post_response_hook(
+                    post_response_hook=post_response_hook,
+                    response=response,
+                    messages=request_params.get("messages", []),
+                )
+                
                 if message.tool_calls:
                     try:
                         # Prepare tool calls for batch execution
@@ -389,6 +399,7 @@ class OpenAIProvider(BaseLLMProvider):
 
                     # Make next call
                     response = await client.chat.completions.create(**request_params)
+
                 else:
                     # No more tool calls, prepare final response
                     if response_format and request_params.get("tools"):
@@ -426,6 +437,12 @@ class OpenAIProvider(BaseLLMProvider):
                         content = message.content
                     break
         else:
+            await self.call_post_response_hook(
+                post_response_hook=post_response_hook,
+                response=response,
+                messages=request_params.get("messages", []),
+            )
+
             # No tools provided
             if response_format:
                 try:
@@ -477,6 +494,7 @@ class OpenAIProvider(BaseLLMProvider):
         prediction: Optional[Dict[str, str]] = None,
         reasoning_effort: Optional[str] = None,
         post_tool_function: Optional[Callable] = None,
+        post_response_hook: Optional[Callable] = None,
         image_result_keys: Optional[List[str]] = None,
         tool_budget: Optional[Dict[str, int]] = None,
         parallel_tool_calls: bool = False,
@@ -546,6 +564,7 @@ class OpenAIProvider(BaseLLMProvider):
                 response_format=response_format,
                 model=model,
                 post_tool_function=post_tool_function,
+                post_response_hook=post_response_hook,
                 image_result_keys=image_result_keys,
                 tool_handler=tool_handler,
                 parallel_tool_calls=parallel_tool_calls,

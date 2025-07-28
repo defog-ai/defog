@@ -106,6 +106,7 @@ async def chat_async(
     tool_choice: Optional[str] = None,
     max_retries: Optional[int] = None,
     post_tool_function: Optional[Callable] = None,
+    post_response_hook: Optional[Callable] = None,
     config: Optional[LLMConfig] = None,
     mcp_servers: Optional[List[str]] = None,
     image_result_keys: Optional[List[str]] = None,
@@ -134,7 +135,8 @@ async def chat_async(
         tools: List of tools the model can call
         tool_choice: Tool calling behavior ("auto", "required", function name)
         max_retries: Maximum number of retry attempts
-        post_tool_function: Function to call after each tool execution
+        post_tool_function: Function to call after each tool execution. Must have parameters: function_name, input_args, tool_result
+        post_response_hook: Function to call after each response is received from the model. Must have parameters: response, messages
         config: LLM configuration object
         mcp_servers: List of MCP server urls for streamable http servers (e.g., ["http://localhost:8000/mcp", "http://localhost:8001/mcp"])
         image_result_keys: List of keys to check in tool results for image data (e.g., ['image_base64', 'screenshot_data'])
@@ -204,6 +206,10 @@ async def chat_async(
             # Get provider instance
             provider_instance = get_provider_instance(current_provider, config)
 
+            if post_response_hook:
+                provider_instance.validate_post_response_hook(post_response_hook)
+
+
             # Execute the chat completion
             response = await provider_instance.execute_chat(
                 messages=messages,
@@ -220,6 +226,7 @@ async def chat_async(
                 prediction=prediction,
                 reasoning_effort=reasoning_effort,
                 post_tool_function=post_tool_function,
+                post_response_hook=post_response_hook,
                 image_result_keys=image_result_keys,
                 tool_budget=tool_budget,
                 parallel_tool_calls=parallel_tool_calls,
