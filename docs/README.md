@@ -6,47 +6,42 @@ Welcome to the comprehensive documentation for the defog Python library. This hu
 
 ### Core Features
 
-#### [LLM Utilities and Tools](llm-utilities.md)
+#### [LLM Utilities and Tools](llm/)
 Comprehensive guide to LLM operations including:
-- **Chat Functions** - Unified interface for OpenAI, Anthropic, Gemini, and Together AI
-- **Multimodal Support** - Image inputs across all providers
-- **Function Calling** - Define tools for LLMs with automatic schema generation
-- **Structured Output** - Get validated responses using Pydantic models
-- **Memory Management** - Handle long conversations with automatic summarization
-- **Specialized Tools** - Code interpreter, web search, YouTube transcription, citations
+- **[Chat Functions](llm/core-chat-functions.md)** - Unified interface for OpenAI, Anthropic, Gemini, and Together AI
+- **[Multimodal Support](llm/multimodal-support.md)** - Image inputs across all providers
+- **[Function Calling](llm/function-calling.md)** - Define tools for LLMs with automatic schema generation
+- **[Structured Output](llm/structured-output.md)** - Get validated responses using Pydantic models
+- **[Memory Management](llm/memory-management.md)** - Handle long conversations with automatic summarization
+- **Specialized Tools** - [Code interpreter](llm/code-interpreter.md), [web search](llm/web-search.md), [YouTube transcription](llm/youtube-transcription.md), [citations](llm/citations-tool.md)
 
-#### [Database Operations](database-operations.md)
+#### [Database Operations](database/)
 Everything related to databases and SQL:
-- **SQL Agent** - Natural language to SQL conversion with automatic table filtering
+- **[SQL Agent](database/database-operations.md)** - Natural language to SQL conversion with automatic table filtering
 - **Query Execution** - Direct SQL execution across 11 database types
 - **Schema Documentation** - AI-powered automatic schema documentation
-- **Metadata Management** - Extraction and caching for performance
+- **[Metadata Management](database/metadata-management.md)** - Extraction and caching for performance
 - **Local SQL Generation** - Use LLMs directly without API calls
 - **Health Checks** - Validate configurations and data quality
 
-#### [Data Extraction Tools](data-extraction.md)
+#### [Data Extraction Tools](data-extraction/)
 Extract structured data from various sources:
-- **PDF Analysis** - Extract tables, charts, and data from PDFs with caching
+- **[PDF Analysis](data-extraction/data-extraction.md)** - Extract tables, charts, and data from PDFs with caching
 - **Image Analysis** - Extract data from charts, graphs, and infographics
 - **HTML Parsing** - Extract structured data from web content
+- **[Text Data Extraction](data-extraction/text_data_extractor.md)** - Extract structured data from text files
 - **Cost Optimization** - Strategies for efficient extraction
 
 ### Advanced Features
 
-#### [Agent Orchestration](agent-orchestration.md)
+#### [Agent Orchestration](advanced/agent-orchestration.md)
 Multi-agent coordination and task delegation:
 - **Hierarchical Orchestration** - Coordinate multiple AI agents
 - **Task Dependencies** - Define complex workflows with dependencies
 - **Shared Context** - Cross-agent memory and context sharing
 - **Thinking Agents** - Extended reasoning capabilities
 
-#### [Metadata Management](metadata-management.md)
-Advanced metadata handling:
-- **Caching Strategies** - Improve performance with intelligent caching
-- **Schema Evolution** - Track and manage schema changes
-- **Optimization Techniques** - Best practices for large databases
-
-#### [Advanced Configuration](advanced-configuration.md)
+#### [Advanced Configuration](advanced/advanced-configuration.md)
 Fine-tune the library for your needs:
 - **Environment Variables** - Configure API keys and endpoints
 - **Custom Providers** - Add support for new LLM providers
