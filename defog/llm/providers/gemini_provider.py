@@ -239,6 +239,7 @@ class GeminiProvider(BaseLLMProvider):
         response_format: Optional[Any] = None,
         model: str = "",
         post_tool_function: Optional[Callable] = None,
+        post_response_hook: Optional[Callable] = None,
         image_result_keys: Optional[List[str]] = None,
         tool_handler: Optional[ToolHandler] = None,
         **kwargs,
@@ -271,6 +272,15 @@ class GeminiProvider(BaseLLMProvider):
                 total_output_tokens += (
                     response.usage_metadata.candidates_token_count or 0
                 )
+
+                # call this at the start of the while loop
+                # to ensure we also log the first message (that comes in the function arg)
+                await self.call_post_response_hook(
+                    post_response_hook=post_response_hook,
+                    response=response,
+                    messages=request_params.get("messages", []),
+                )
+
                 if response.function_calls:
                     try:
                         # Prepare tool calls for batch execution
@@ -447,9 +457,24 @@ class GeminiProvider(BaseLLMProvider):
                             contents=messages,
                             config=GenerateContentConfig(**request_params),
                         )
+
+                        await self.call_post_response_hook(
+                            post_response_hook=post_response_hook,
+                            response=response,
+                            messages=request_params.get("messages", []),
+                        )
+
                         content = response.text.strip() if response.text else None
                     break
         else:
+            # call this at the start of the while loop
+            # to ensure we also log the first message (that comes in the function arg)
+            await self.call_post_response_hook(
+                post_response_hook=post_response_hook,
+                response=response,
+                messages=request_params.get("messages", []),
+            )
+            
             # No tools provided
             content = response.text.strip() if response.text else None
 
@@ -486,6 +511,7 @@ class GeminiProvider(BaseLLMProvider):
         prediction: Optional[Dict[str, str]] = None,
         reasoning_effort: Optional[str] = None,
         post_tool_function: Optional[Callable] = None,
+        post_response_hook: Optional[Callable] = None,
         image_result_keys: Optional[List[str]] = None,
         tool_budget: Optional[Dict[str, int]] = None,
         **kwargs,
@@ -553,6 +579,7 @@ class GeminiProvider(BaseLLMProvider):
                 response_format=response_format,
                 model=model,
                 post_tool_function=post_tool_function,
+                post_response_hook=post_response_hook,
                 image_result_keys=image_result_keys,
                 tool_handler=tool_handler,
             )

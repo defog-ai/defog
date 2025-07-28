@@ -251,6 +251,7 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
         tool_dict: Dict[str, Callable],
         response_format=None,
         post_tool_function: Optional[Callable] = None,
+        post_response_hook: Optional[Callable] = None,
         image_result_keys: Optional[List[str]] = None,
         tool_handler: Optional[ToolHandler] = None,
         **kwargs,
@@ -309,6 +310,15 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
                     for block in response.content
                     if hasattr(block, "type") and block.type == "text"
                 ]
+                
+                # call this at the start of the while loop
+                # to ensure we also log the first message (that comes in the function arg)
+                await self.call_post_response_hook(
+                    post_response_hook=post_response_hook,
+                    response=response,
+                    messages=request_params.get("messages", []),
+                )
+
                 if len(tool_call_blocks) > 0:
                     try:
                         # Separate MCP tools from regular tools
@@ -646,6 +656,12 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
                         # Make final call for structured output
                         response = await client.messages.create(**request_params)
 
+                        await self.call_post_response_hook(
+                            post_response_hook=post_response_hook,
+                            response=response,
+                            messages=request_params.get("messages", []),
+                        )
+
                         # Extract final content
                         content = ""
                         for block in response.content:
@@ -662,6 +678,11 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
 
                     break
         else:
+            await self.call_post_response_hook(
+                post_response_hook=post_response_hook,
+                response=response,
+                messages=request_params.get("messages", []),
+            )
             # No tools provided
             content = ""
             for block in response.content:
@@ -704,6 +725,7 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
         prediction: Optional[Dict[str, str]] = None,
         reasoning_effort: Optional[str] = None,
         post_tool_function: Optional[Callable] = None,
+        post_response_hook: Optional[Callable] = None,
         image_result_keys: Optional[List[str]] = None,
         tool_budget: Optional[Dict[str, int]] = None,
         **kwargs,
@@ -769,6 +791,7 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
                 tool_dict=tool_dict,
                 response_format=response_format,
                 post_tool_function=post_tool_function,
+                post_response_hook=post_response_hook,
                 image_result_keys=image_result_keys,
                 tool_handler=tool_handler,
                 **kwargs,

@@ -505,3 +505,4 @@ def verify_post_tool_function(function: Callable):
         raise ValueError("post_tool_function must have parameter named `tool_result`")
 
     return function
+
