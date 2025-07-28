@@ -91,6 +91,28 @@ print(result["code"])    # Generated Python code
 print(result["output"])  # Execution results
 ```
 
+### 5. Using MCP Servers with chat_async
+
+```python
+from defog.llm.utils import chat_async
+from defog.llm.llm_providers import LLMProvider
+
+# Use MCP servers for dynamic tool integration
+# Works with both local and remote MCP servers
+response = await chat_async(
+    provider=LLMProvider.OPENAI,
+    model="gpt-4.1",
+    mcp_servers=["http://localhost:8000/mcp"],  # Can be local or remote
+    messages=[
+        {"role": "user", "content": "How many users are in the first table?"}
+    ]
+)
+
+# MCP tools are automatically converted to Python functions
+# and made available to the LLM
+print(response.content)
+```
+
 ## Documentation
 
 📚 **[Full Documentation](docs/README.md)** - Comprehensive guides and API reference
