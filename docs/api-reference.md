@@ -220,20 +220,30 @@ Main function for LLM interactions.
 
 ```python
 async def chat_async(
-    provider: Union[str, LLMProvider],
+    provider: Union[LLMProvider, str],
     model: str,
-    messages: List[dict],
+    messages: List[Dict[str, Any]],
     max_completion_tokens: Optional[int] = None,
     temperature: float = 0.0,
-    top_p: Optional[float] = None,
-    frequency_penalty: Optional[float] = None,
-    presence_penalty: Optional[float] = None,
-    response_format: Optional[Type[BaseModel]] = None,
+    response_format=None,
+    seed: int = 0,
+    store: bool = True,
+    metadata: Optional[Dict[str, str]] = None,
+    timeout: int = 600,
+    backup_model: Optional[str] = None,
+    backup_provider: Optional[Union[LLMProvider, str]] = None,
+    prediction: Optional[Dict[str, str]] = None,
+    reasoning_effort: Optional[str] = None,
     tools: Optional[List[Callable]] = None,
     tool_choice: Optional[str] = None,
-    reasoning_effort: Optional[str] = None,  # For o1 models
-    verbose: bool = False,
-    return_usage: bool = False
+    max_retries: Optional[int] = None,
+    post_tool_function: Optional[Callable] = None,
+    config: Optional[LLMConfig] = None,
+    mcp_servers: Optional[List[str]] = None,
+    image_result_keys: Optional[List[str]] = None,
+    tool_budget: Optional[Dict[str, int]] = None,
+    insert_tool_citations: bool = False,
+    parallel_tool_calls: bool = False,
 ) -> LLMResponse
 ```
 
@@ -244,14 +254,16 @@ Response object from LLM calls.
 ```python
 @dataclass
 class LLMResponse:
-    content: str
-    raw_response: dict
-    cost_in_cents: float
-    provider: str
+    content: Any
     model: str
-    usage: Optional[dict] = None
-    parsed: Optional[BaseModel] = None  # For structured outputs
-    tool_calls: Optional[List[dict]] = None
+    time: float
+    input_tokens: int
+    output_tokens: int
+    cached_input_tokens: Optional[int] = None
+    output_tokens_details: Optional[Dict[str, int]] = None
+    cost_in_cents: Optional[float] = None
+    tool_outputs: Optional[List[Dict[str, Any]]] = None
+    citations: Optional[List[Dict[str, Any]]] = None
 ```
 
 ### Tool Functions
