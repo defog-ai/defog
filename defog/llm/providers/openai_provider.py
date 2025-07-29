@@ -211,7 +211,8 @@ class OpenAIProvider(BaseLLMProvider):
             request_params.pop("response_format", None)
 
         # Finally, set response_format if still relevant:
-        if response_format:
+        # When tools are provided, we'll set response_format later in the final call
+        if response_format and not (tools and len(tools) > 0):
             request_params["response_format"] = response_format
 
         return request_params, messages
@@ -360,6 +361,10 @@ class OpenAIProvider(BaseLLMProvider):
                         request_params["tool_choice"] = (
                             "auto" if request_params["tool_choice"] != "auto" else None
                         )
+
+                        # If no more tools are available and we have response_format, prepare for final call
+                        if not tools and response_format:
+                            request_params["response_format"] = response_format
                     except ProviderError:
                         # Re-raise provider errors from base class
                         raise
@@ -385,8 +390,40 @@ class OpenAIProvider(BaseLLMProvider):
                     # Make next call
                     response = await client.chat.completions.create(**request_params)
                 else:
-                    # Break out of loop when tool calls are finished
-                    content = message.content
+                    # No more tool calls, prepare final response
+                    if response_format and request_params.get("tools"):
+                        # Need to make one more call without tools but with response_format
+                        request_params["messages"].append(
+                            {"role": "assistant", "content": message.content}
+                        )
+
+                        # Remove tools-related parameters
+                        request_params.pop("tools", None)
+                        request_params.pop("tool_choice", None)
+                        request_params.pop("parallel_tool_calls", None)
+
+                        # Add response format and make final call
+                        request_params["response_format"] = response_format
+                        response = await client.beta.chat.completions.parse(
+                            **request_params
+                        )
+
+                        # Extract parsed content
+                        try:
+                            parsed_content = response.choices[0].message.parsed
+                            if parsed_content is not None:
+                                content = parsed_content
+                            else:
+                                content = self.parse_structured_response(
+                                    response.choices[0].message.content, response_format
+                                )
+                        except Exception:
+                            content = self.parse_structured_response(
+                                response.choices[0].message.content, response_format
+                            )
+                    else:
+                        # No response format needed, just use the content
+                        content = message.content
                     break
         else:
             # No tools provided
@@ -482,7 +519,9 @@ class OpenAIProvider(BaseLLMProvider):
 
         try:
             # Use regular Chat Completions API
-            if request_params.get("response_format"):
+            # For initial call with tools, we'll use create() even if response_format exists
+            # The parse() method will be used in the final call within process_response
+            if request_params.get("response_format") and not (tools and len(tools) > 0):
                 response = await client_openai.beta.chat.completions.parse(
                     **request_params
                 )
