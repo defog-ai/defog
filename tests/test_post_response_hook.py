@@ -134,12 +134,9 @@ async def test_post_response_hook_anthropic():
 @pytest.mark.asyncio
 @skip_if_no_api_key("gemini")
 async def test_normal():
-    """Test our validation function."""
+    """Test normal api without the post response hook."""
     global response_hook_calls
     response_hook_calls = []
-
-    def func():
-        pass
 
     response = await chat_async(
         provider="gemini",
@@ -150,5 +147,5 @@ async def test_normal():
         max_completion_tokens=50,
     )
 
-    # Verify hook was called
+    # Verify this worked
     assert "gemini hook test" in response.content.lower()
