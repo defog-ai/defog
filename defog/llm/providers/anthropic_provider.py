@@ -184,7 +184,8 @@ class AnthropicProvider(BaseLLMProvider):
         }
 
         # Handle structured output for Anthropic models
-        if response_format:
+        # When tools are provided, we'll set response_format later in the final call
+        if response_format and not (tools and len(tools) > 0):
             # Add instructions to the latest user message to enforce structured output
             if isinstance(response_format, type) and hasattr(
                 response_format, "model_json_schema"
@@ -581,6 +582,80 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
                 else:
                     # Break out of loop when tool calls are finished
                     content = "\n".join([block.text for block in text_blocks])
+
+                    # If we have response_format and tools were being used, make one more call
+                    if response_format and request_params.get("tools"):
+                        # Add the assistant's response to messages
+                        assistant_content = []
+                        if len(thinking_blocks) > 0:
+                            assistant_content += thinking_blocks
+                        for block in text_blocks:
+                            assistant_content.append(block)
+
+                        request_params["messages"].append(
+                            {
+                                "role": "assistant",
+                                "content": assistant_content,
+                            }
+                        )
+
+                        # Remove tools and add structured output instructions
+                        request_params.pop("tools", None)
+                        request_params.pop("tool_choice", None)
+
+                        # Re-add structured output instructions to the conversation
+                        if isinstance(response_format, type) and hasattr(
+                            response_format, "model_json_schema"
+                        ):
+                            schema = response_format.model_json_schema()
+                            schema_str = json.dumps(schema, indent=2)
+
+                            structured_instruction = f"""
+
+IMPORTANT: You must respond with ONLY a valid, properly formatted JSON object that conforms to the following JSON schema:
+{schema_str}
+
+RESPONSE FORMAT INSTRUCTIONS:
+1. Your entire response must be ONLY the JSON object, with no additional text before or after.
+2. Format the JSON properly with no line breaks within property values.
+3. Use double quotes for all property names and string values.
+4. Do not add comments or explanations outside the JSON structure.
+5. Ensure all required properties in the schema are included.
+6. Make sure the JSON is properly formatted and can be parsed by standard JSON parsers.
+
+THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS BEFORE OR AFTER.
+"""
+                            # Add a new user message with the structured output request
+                            request_params["messages"].append(
+                                {
+                                    "role": "user",
+                                    "content": [
+                                        {
+                                            "type": "text",
+                                            "text": "Based on the tool results above, please provide the final answer in the requested JSON format."
+                                            + structured_instruction,
+                                        }
+                                    ],
+                                }
+                            )
+
+                        # Make final call for structured output
+                        response = await client.messages.create(**request_params)
+
+                        # Extract final content
+                        content = ""
+                        for block in response.content:
+                            if hasattr(block, "type") and block.type == "text":
+                                content = block.text
+                                break
+
+                        # Update token counts
+                        total_input_tokens += (
+                            response.usage.input_tokens
+                            + response.usage.cache_creation_input_tokens
+                        )
+                        total_output_tokens += response.usage.output_tokens
+
                     break
         else:
             # No tools provided
@@ -591,7 +666,7 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
                     break
 
         # Parse structured output if response_format is provided
-        if response_format and not tools:
+        if response_format:
             # Use base class method for structured response parsing
             content = self.parse_structured_response(content, response_format)
 
