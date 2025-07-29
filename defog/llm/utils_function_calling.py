@@ -417,7 +417,7 @@ async def execute_tool_async(tool: Callable, inputs: Dict[str, Any]):
 async def execute_tools_parallel(
     tool_calls: List[Dict[str, Any]],
     tool_dict: Dict[str, Callable],
-    enable_parallel: bool = False,
+    parallel_tool_calls: bool = False,
 ) -> List[Any]:
     """
     Execute multiple tool calls either in parallel or sequentially.
@@ -430,7 +430,7 @@ async def execute_tools_parallel(
     Returns:
         List of tool execution results in the same order as input tool_calls
     """
-    if not enable_parallel:
+    if not parallel_tool_calls:
         # Sequential execution (current behavior)
         results = []
         for tool_call in tool_calls:
