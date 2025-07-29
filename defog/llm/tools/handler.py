@@ -148,7 +148,7 @@ class ToolHandler:
         self,
         tool_calls: List[Dict[str, Any]],
         tool_dict: Dict[str, Callable],
-        enable_parallel: bool = False,
+        parallel_tool_calls: bool = False,
         post_tool_function: Optional[Callable] = None,
     ) -> List[Any]:
         """Execute multiple tool calls either in parallel or sequentially."""
@@ -156,7 +156,7 @@ class ToolHandler:
 
         try:
             # Execute tools with budget tracking
-            if not enable_parallel:
+            if not parallel_tool_calls:
                 # Sequential execution with budget updates
                 results = []
                 for tool_call in tool_calls:
@@ -176,7 +176,7 @@ class ToolHandler:
             else:
                 # Parallel execution - execute tools then update budgets
                 results = await execute_tools_parallel(
-                    tool_calls, tool_dict, enable_parallel
+                    tool_calls, tool_dict, parallel_tool_calls
                 )
 
                 # Update budgets for successful executions

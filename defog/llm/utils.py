@@ -111,6 +111,7 @@ async def chat_async(
     image_result_keys: Optional[List[str]] = None,
     tool_budget: Optional[Dict[str, int]] = None,
     insert_tool_citations: bool = False,
+    parallel_tool_calls: bool = False,
 ) -> LLMResponse:
     """
     Execute a chat completion with explicit provider parameter.
@@ -139,6 +140,7 @@ async def chat_async(
         image_result_keys: List of keys to check in tool results for image data (e.g., ['image_base64', 'screenshot_data'])
         tool_budget: Dictionary mapping tool names to maximum allowed calls. Tools not in the dictionary have unlimited calls.
         insert_tool_citations: If True, adds citations to the response using tool outputs as source documents (OpenAI and Anthropic only)
+        parallel_tool_calls: Enable parallel tool calls when set to True (default: False)
 
     Returns:
         LLMResponse object containing the result
@@ -220,6 +222,7 @@ async def chat_async(
                 post_tool_function=post_tool_function,
                 image_result_keys=image_result_keys,
                 tool_budget=tool_budget,
+                parallel_tool_calls=parallel_tool_calls,
             )
 
             # Process citations if requested and provider supports it

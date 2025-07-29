@@ -57,6 +57,7 @@ class BaseLLMProvider(ABC):
         timeout: int = 600,
         prediction: Optional[Dict[str, str]] = None,
         reasoning_effort: Optional[str] = None,
+        parallel_tool_calls: bool = False,
         **kwargs,
     ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
         """Build parameters for the provider's API call."""
@@ -218,6 +219,7 @@ class BaseLLMProvider(ABC):
         post_tool_function: Optional[Callable] = None,
         consecutive_exceptions: int = 0,
         tool_handler: Optional[ToolHandler] = None,
+        parallel_tool_calls: Optional[bool] = None,
     ) -> Tuple[List[Any], int]:
         """Common tool handling logic shared by all providers."""
         # Use provided tool_handler or fall back to self.tool_handler
@@ -227,10 +229,11 @@ class BaseLLMProvider(ABC):
         tool_outputs = []
 
         try:
+            # Use provided parallel_tool_calls or fall back to config
             tool_outputs = await tool_handler.execute_tool_calls_batch(
                 tool_calls,
                 tool_dict,
-                enable_parallel=self.config.enable_parallel_tool_calls,
+                parallel_tool_calls=parallel_tool_calls,
                 post_tool_function=post_tool_function,
             )
             consecutive_exceptions = 0
