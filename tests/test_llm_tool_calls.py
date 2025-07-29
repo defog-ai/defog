@@ -619,12 +619,12 @@ class TestParallelToolCalls(unittest.IsolatedAsyncioTestCase):
 
         # Test sequential batch execution
         results_sequential = await self.handler.execute_tool_calls_batch(
-            tool_calls, self.tool_dict, enable_parallel=False
+            tool_calls, self.tool_dict, parallel_tool_calls=False
         )
 
         # Test parallel batch execution
         results_parallel = await self.handler.execute_tool_calls_batch(
-            tool_calls, self.tool_dict, enable_parallel=True
+            tool_calls, self.tool_dict, parallel_tool_calls=True
         )
 
         # Results should be identical

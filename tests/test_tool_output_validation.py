@@ -203,7 +203,7 @@ class TestToolHandler:
         ]
 
         results = await handler.execute_tool_calls_batch(
-            tool_calls=tool_calls, tool_dict=tool_dict, enable_parallel=True
+            tool_calls=tool_calls, tool_dict=tool_dict, parallel_tool_calls=True
         )
 
         assert len(results) == 3
