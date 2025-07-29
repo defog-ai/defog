@@ -191,7 +191,7 @@ class OpenAIProvider(BaseLLMProvider):
                 request_params["tool_choice"] = "auto"
 
             # Set parallel_tool_calls based on parameter
-            if model in ["o3-mini", "o4-mini", "o3"]:
+            if model not in ["o3-mini", "o4-mini", "o3"]:
                 request_params["parallel_tool_calls"] = parallel_tool_calls
 
         # Some models do not allow temperature or response_format:
