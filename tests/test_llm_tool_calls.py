@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 import httpx
 from io import StringIO
 import json
-from typing import Optional
+from typing import Optional, Dict
 
 # ==================================================================================================
 # Functions for function calling
@@ -1033,3 +1033,207 @@ async def test_regular_functions_with_chat_async():
     assert len(response.tool_outputs) > 0
     assert response.tool_outputs[0]["name"] == "calculate_area"
     assert response.tool_outputs[0]["result"] == 5.5 * 3.2
+
+
+# ==================================================================================================
+# Structured output with tool calls tests
+# ==================================================================================================
+
+
+class WeatherReport(BaseModel):
+    """Structured weather report model."""
+
+    location: str = Field(description="The location name")
+    temperature: float = Field(description="Current temperature in Celsius")
+    conditions: str = Field(description="Weather conditions description")
+
+
+class CalculationResult(BaseModel):
+    """Structured calculation result model."""
+
+    operation: str = Field(description="The mathematical operation performed")
+    result: float = Field(description="The calculation result")
+    explanation: str = Field(description="Explanation of the calculation")
+
+
+class TestStructuredOutputWithTools(unittest.IsolatedAsyncioTestCase):
+    """Test structured outputs combined with tool calls."""
+
+    def setUp(self):
+        self.tools = [get_weather, numsum, numprod]
+        self.weather_message = [
+            {
+                "role": "user",
+                "content": "Get the weather for Singapore (latitude 1.3521, longitude 103.8198) and return it as a structured weather report with location, temperature, and conditions.",
+            }
+        ]
+        self.calculation_message = [
+            {
+                "role": "user",
+                "content": "Calculate the sum of 150 and 250, then multiply the result by 3. Return the final result as a structured calculation report.",
+            }
+        ]
+
+    @pytest.mark.asyncio
+    @skip_if_no_api_key("openai")
+    async def test_openai_structured_output_with_tools(self):
+        """Test OpenAI with tools and structured output."""
+        # Test weather report with structured output
+        result = await chat_async(
+            provider="openai",
+            model="gpt-4o",
+            messages=self.weather_message,
+            tools=self.tools,
+            response_format=WeatherReport,
+            temperature=0,
+            max_retries=1,
+        )
+
+        # Verify tool was called
+        self.assertGreater(len(result.tool_outputs), 0)
+        self.assertEqual(result.tool_outputs[0]["name"], "get_weather")
+
+        # Verify structured output
+        self.assertIsInstance(result.content, WeatherReport)
+        self.assertEqual(result.content.location.lower(), "singapore")
+        self.assertIsInstance(result.content.temperature, float)
+        self.assertGreaterEqual(result.content.temperature, 20)
+        self.assertLessEqual(result.content.temperature, 40)
+        self.assertIsInstance(result.content.conditions, str)
+        self.assertGreater(len(result.content.conditions), 0)
+
+    @pytest.mark.asyncio
+    @skip_if_no_api_key("openai")
+    async def test_openai_calculation_structured_output(self):
+        """Test OpenAI with multiple tool calls and structured output."""
+        result = await chat_async(
+            provider="openai",
+            model="gpt-4o",
+            messages=self.calculation_message,
+            tools=self.tools,
+            response_format=CalculationResult,
+            temperature=0,
+            max_retries=1,
+        )
+
+        # Verify tools were called
+        self.assertGreaterEqual(len(result.tool_outputs), 2)
+        tool_names = [output["name"] for output in result.tool_outputs]
+        self.assertIn("numsum", tool_names)
+        self.assertIn("numprod", tool_names)
+
+        # Verify structured output
+        self.assertIsInstance(result.content, CalculationResult)
+        # Check that operation mentions multiplication or contains * symbol
+        self.assertTrue(
+            "multi" in result.content.operation.lower()
+            or "*" in result.content.operation,
+            f"Expected operation to contain 'multi' or '*', got: {result.content.operation}",
+        )
+        self.assertEqual(result.content.result, 1200)  # (150 + 250) * 3
+        self.assertIsInstance(result.content.explanation, str)
+        self.assertGreater(len(result.content.explanation), 0)
+
+    @pytest.mark.asyncio
+    @skip_if_no_api_key("anthropic")
+    async def test_anthropic_structured_output_with_tools(self):
+        """Test Anthropic with tools and structured output."""
+        # Test weather report with structured output
+        result = await chat_async(
+            provider="anthropic",
+            model="claude-3-7-sonnet-latest",
+            messages=self.weather_message,
+            tools=self.tools,
+            response_format=WeatherReport,
+            temperature=0,
+            max_retries=1,
+        )
+
+        # Verify tool was called
+        self.assertGreater(len(result.tool_outputs), 0)
+        self.assertEqual(result.tool_outputs[0]["name"], "get_weather")
+
+        # Verify structured output
+        self.assertIsInstance(result.content, WeatherReport)
+        self.assertEqual(result.content.location.lower(), "singapore")
+        self.assertIsInstance(result.content.temperature, float)
+        self.assertGreaterEqual(result.content.temperature, 20)
+        self.assertLessEqual(result.content.temperature, 40)
+        self.assertIsInstance(result.content.conditions, str)
+
+    @pytest.mark.asyncio
+    @skip_if_no_api_key("anthropic")
+    async def test_anthropic_calculation_structured_output(self):
+        """Test Anthropic with multiple tool calls and structured output."""
+        result = await chat_async(
+            provider="anthropic",
+            model="claude-3-7-sonnet-latest",
+            messages=self.calculation_message,
+            tools=self.tools,
+            response_format=CalculationResult,
+            temperature=0,
+            max_retries=1,
+        )
+
+        # Verify tools were called
+        self.assertGreaterEqual(len(result.tool_outputs), 2)
+        tool_names = [output["name"] for output in result.tool_outputs]
+        self.assertIn("numsum", tool_names)
+        self.assertIn("numprod", tool_names)
+
+        # Verify structured output
+        self.assertIsInstance(result.content, CalculationResult)
+        self.assertEqual(result.content.result, 1200)  # (150 + 250) * 3
+        self.assertIsInstance(result.content.explanation, str)
+
+    @pytest.mark.asyncio
+    @skip_if_no_api_key("gemini")
+    async def test_gemini_structured_output_with_tools(self):
+        """Test Gemini with tools and structured output."""
+        # Test weather report with structured output
+        result = await chat_async(
+            provider="gemini",
+            model="gemini-2.0-flash",
+            messages=self.weather_message,
+            tools=self.tools,
+            response_format=WeatherReport,
+            temperature=0,
+            max_retries=1,
+        )
+
+        # Verify tool was called
+        self.assertGreater(len(result.tool_outputs), 0)
+        self.assertEqual(result.tool_outputs[0]["name"], "get_weather")
+
+        # Verify structured output
+        self.assertIsInstance(result.content, WeatherReport)
+        self.assertEqual(result.content.location.lower(), "singapore")
+        self.assertIsInstance(result.content.temperature, float)
+        self.assertGreaterEqual(result.content.temperature, 20)
+        self.assertLessEqual(result.content.temperature, 40)
+        self.assertIsInstance(result.content.conditions, str)
+
+    @pytest.mark.asyncio
+    @skip_if_no_api_key("gemini")
+    async def test_gemini_calculation_structured_output(self):
+        """Test Gemini with multiple tool calls and structured output."""
+        result = await chat_async(
+            provider="gemini",
+            model="gemini-2.0-flash",
+            messages=self.calculation_message,
+            tools=self.tools,
+            response_format=CalculationResult,
+            temperature=0,
+            max_retries=1,
+        )
+
+        # Verify tools were called
+        self.assertGreaterEqual(len(result.tool_outputs), 2)
+        tool_names = [output["name"] for output in result.tool_outputs]
+        self.assertIn("numsum", tool_names)
+        self.assertIn("numprod", tool_names)
+
+        # Verify structured output
+        self.assertIsInstance(result.content, CalculationResult)
+        self.assertEqual(result.content.result, 1200)  # (150 + 250) * 3
+        self.assertIsInstance(result.content.explanation, str)
