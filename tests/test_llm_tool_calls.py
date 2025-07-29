@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 import httpx
 from io import StringIO
 import json
-from typing import Optional, Dict
+from typing import Optional
 import time
 
 # ==================================================================================================

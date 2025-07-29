@@ -247,7 +247,7 @@ async def identify_relevant_tables_tool(
             # Extract all database metadata
             tracker.update(30, "Extracting complete database schema")
             subtask_logger.log_subtask("Getting all table metadata", "processing")
-            all_table_metadata = extract_metadata_from_db(db_type, db_creds)
+            all_table_metadata = await extract_metadata_from_db_async(db_type, db_creds)
 
             # Build table summary for LLM analysis
             tracker.update(50, "Analyzing table relevance")
