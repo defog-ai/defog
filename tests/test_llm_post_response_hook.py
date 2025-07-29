@@ -108,6 +108,7 @@ async def test_post_response_hook_gemini():
     assert len(response_hook_calls) == 1
     assert "gemini hook test" in response.content.lower()
 
+
 @pytest.mark.asyncio
 @skip_if_no_api_key("anthropic")
 async def test_post_response_hook_anthropic():
@@ -128,7 +129,6 @@ async def test_post_response_hook_anthropic():
     # Verify hook was called
     assert len(response_hook_calls) == 1
     assert "anthropic hook test" in response.content.lower()
-
 
 
 @pytest.mark.asyncio
