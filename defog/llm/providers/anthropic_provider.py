@@ -117,6 +117,7 @@ class AnthropicProvider(BaseLLMProvider):
         timeout: int = 600,
         prediction: Optional[Dict[str, str]] = None,
         reasoning_effort: Optional[str] = None,
+        parallel_tool_calls: bool = False,
         **kwargs,
     ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
         """Create the parameter dict for Anthropic's .messages.create()."""
@@ -236,7 +237,7 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
 
             # Add parallel tool calls configuration
             if "tool_choice" in params and isinstance(params["tool_choice"], dict):
-                if not self.config.enable_parallel_tool_calls:
+                if not parallel_tool_calls:
                     params["tool_choice"]["disable_parallel_tool_use"] = True
 
         return params, messages
@@ -364,6 +365,9 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
                                 post_tool_function,
                                 consecutive_exceptions,
                                 tool_handler=tool_handler,
+                                parallel_tool_calls=kwargs.get(
+                                    "parallel_tool_calls", True
+                                ),
                             )
 
                         # For MCP tools, extract results from mcp_tool_result blocks
@@ -737,6 +741,7 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
             response_format=response_format,
             reasoning_effort=reasoning_effort,
             timeout=timeout,
+            parallel_tool_calls=kwargs.get("parallel_tool_calls", True),
         )
 
         # Construct a tool dict if needed
@@ -766,6 +771,7 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
                 post_tool_function=post_tool_function,
                 image_result_keys=image_result_keys,
                 tool_handler=tool_handler,
+                **kwargs,
             )
         except Exception as e:
             traceback.print_exc()
