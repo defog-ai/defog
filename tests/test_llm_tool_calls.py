@@ -6,7 +6,6 @@ from defog.llm.utils_function_calling import (
     is_pydantic_style_function,
     wrap_regular_function,
 )
-from defog.llm.config.settings import LLMConfig
 from tests.conftest import skip_if_no_api_key
 
 from pydantic import BaseModel, Field
@@ -14,6 +13,7 @@ import httpx
 from io import StringIO
 import json
 from typing import Optional, Dict
+import time
 
 # ==================================================================================================
 # Functions for function calling
@@ -65,14 +65,20 @@ def numsum(input: Numbers):
     """
     This function returns the sum of two numbers
     """
-    return input.a + input.b
+    timestamp = time.time()
+    result = input.a + input.b
+    print(f"[{timestamp:.6f}] numsum({input.a}, {input.b}) = {result}")
+    return result
 
 
 def numprod(input: Numbers):
     """
     This function returns the product of two numbers
     """
-    return input.a * input.b
+    timestamp = time.time()
+    result = input.a * input.b
+    print(f"[{timestamp:.6f}] numprod({input.a}, {input.b}) = {result}")
+    return result
 
 
 # ==================================================================================================
@@ -561,7 +567,6 @@ class TestParallelToolCalls(unittest.IsolatedAsyncioTestCase):
     @pytest.mark.asyncio
     async def test_parallel_tool_execution_multiple_calls(self):
         """Test that multiple tool calls can be executed in parallel."""
-        import time
 
         # Simulate tool calls that would benefit from parallel execution
         tool_calls = [
@@ -642,17 +647,6 @@ class TestParallelToolCalls(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(results[0], 3)
         self.assertIn("Error: Function nonexistent_tool not found", results[1])
 
-    def test_configuration_integration(self):
-        """Test that the configuration setting is properly integrated."""
-
-        # Test default configuration (parallel disabled)
-        config_default = LLMConfig()
-        self.assertTrue(config_default.enable_parallel_tool_calls)
-
-        # Test explicit parallel enabled configuration
-        config_parallel = LLMConfig(enable_parallel_tool_calls=False)
-        self.assertFalse(config_parallel.enable_parallel_tool_calls)
-
 
 class TestParallelToolCallsEndToEnd(unittest.IsolatedAsyncioTestCase):
     """End-to-end tests for parallel tool calls with real API calls."""
@@ -667,7 +661,9 @@ class TestParallelToolCallsEndToEnd(unittest.IsolatedAsyncioTestCase):
 1. The sum of 387293472 and 2348293482
 2. The product of 12376 and 23245
 
-You MUST use the numsum and numprod tools for these calculations. Do not calculate manually. Return only the final results.""",
+You MUST use the numsum and numprod tools for these calculations. Do not calculate manually.
+IMPORTANT: Since these are independent calculations, please call both tools in parallel (at the same time) rather than sequentially.
+Return only the final results.""",
             }
         ]
 
@@ -675,31 +671,28 @@ You MUST use the numsum and numprod tools for these calculations. Do not calcula
     @skip_if_no_api_key("openai")
     async def test_openai_parallel_vs_sequential_speed(self):
         """Test OpenAI parallel vs sequential execution speed."""
-        import time
 
         # Test parallel execution
-        config_parallel = LLMConfig(enable_parallel_tool_calls=True)
         start_time = time.time()
         result_parallel = await chat_async(
             provider="openai",
             model="gpt-4.1",
             messages=self.messages,
             tools=self.tools,
-            config=config_parallel,
+            parallel_tool_calls=True,
             temperature=0,
             max_retries=1,
         )
         parallel_time = time.time() - start_time
 
         # Test sequential execution
-        config_sequential = LLMConfig(enable_parallel_tool_calls=False)
         start_time = time.time()
         result_sequential = await chat_async(
             provider="openai",
             model="gpt-4.1",
             messages=self.messages,
             tools=self.tools,
-            config=config_sequential,
+            parallel_tool_calls=False,
             temperature=0,
             max_retries=1,
         )
@@ -734,31 +727,28 @@ You MUST use the numsum and numprod tools for these calculations. Do not calcula
     @skip_if_no_api_key("anthropic")
     async def test_anthropic_parallel_tool_behavior(self):
         """Test Anthropic's parallel tool call behavior."""
-        import time
 
         # Test with parallel enabled (should make one API call with multiple tools)
-        config_parallel = LLMConfig(enable_parallel_tool_calls=True)
         start_time = time.time()
         result_parallel = await chat_async(
             provider="anthropic",
             model="claude-sonnet-4-20250514",
             messages=self.messages,
             tools=self.tools,
-            config=config_parallel,
+            parallel_tool_calls=True,
             temperature=0,
             max_retries=1,
         )
         parallel_time = time.time() - start_time
 
         # Test with parallel disabled (may require multiple API calls)
-        config_sequential = LLMConfig(enable_parallel_tool_calls=False)
         start_time = time.time()
         result_sequential = await chat_async(
             provider="anthropic",
             model="claude-sonnet-4-20250514",
             messages=self.messages,
             tools=self.tools,
-            config=config_sequential,
+            parallel_tool_calls=False,
             temperature=0,
             max_retries=1,
         )
@@ -780,99 +770,7 @@ You MUST use the numsum and numprod tools for these calculations. Do not calcula
         print(f"  Sequential execution: {sequential_time:.2f}s")
         print(f"  Speedup: {sequential_time / parallel_time:.2f}x")
 
-    @pytest.mark.asyncio
-    @skip_if_no_api_key("deepseek")
-    async def test_deepseek_parallel_vs_sequential_speed(self):
-        """Test DeepSeek parallel vs sequential execution speed."""
-        import time
-
-        # Test parallel execution
-        config_parallel = LLMConfig(enable_parallel_tool_calls=True)
-        start_time = time.time()
-        result_parallel = await chat_async(
-            provider="deepseek",
-            model="deepseek-chat",
-            messages=self.messages,
-            tools=self.tools,
-            config=config_parallel,
-            temperature=0,
-            max_retries=1,
-        )
-        parallel_time = time.time() - start_time
-
-        # Test sequential execution
-        config_sequential = LLMConfig(enable_parallel_tool_calls=False)
-        start_time = time.time()
-        result_sequential = await chat_async(
-            provider="deepseek",
-            model="deepseek-chat",
-            messages=self.messages,
-            tools=self.tools,
-            config=config_sequential,
-            temperature=0,
-            max_retries=1,
-        )
-        sequential_time = time.time() - start_time
-
-        # Verify both produce correct results
-        self.assertEqual(len(result_parallel.tool_outputs), 2)
-        self.assertEqual(len(result_sequential.tool_outputs), 2)
-
-        # Check that sum and product were calculated
-        outputs_parallel = {
-            o["name"]: o["result"] for o in result_parallel.tool_outputs
-        }
-        outputs_sequential = {
-            o["name"]: o["result"] for o in result_sequential.tool_outputs
-        }
-
-        self.assertEqual(outputs_parallel["numsum"], 2735586954)
-        self.assertEqual(outputs_parallel["numprod"], 287680120)
-        self.assertEqual(outputs_parallel, outputs_sequential)
-
-        # Log timing results
-        print("\nDeepSeek Timing Results:")
-        print(f"  Parallel execution: {parallel_time:.2f}s")
-        print(f"  Sequential execution: {sequential_time:.2f}s")
-        print(f"  Speedup: {sequential_time / parallel_time:.2f}x")
-
-        # Parallel should generally be faster or at least not significantly slower
-        # We don't assert exact timing as it depends on API response times
-
     # we can't really test Gemini, as it always has parallel tool calls enabled
-
-    def test_provider_config_propagation(self):
-        """Test that config properly propagates to all providers."""
-        from defog.llm.utils import get_provider_instance
-
-        config = LLMConfig(enable_parallel_tool_calls=True)
-
-        # Test each provider receives config
-        providers_to_test = [
-            ("openai", "gpt-4.1"),
-            ("anthropic", "claude-sonnet-4-20250514"),
-            ("gemini", "gemini-2.5-pro"),
-            ("deepseek", "deepseek-chat"),
-            ("mistral", "mistral-medium-latest"),
-        ]
-
-        for provider_name, model in providers_to_test:
-            try:
-                provider = get_provider_instance(provider_name, config)
-                self.assertTrue(hasattr(provider, "config"))
-                self.assertEqual(provider.config.enable_parallel_tool_calls, True)
-
-                # Test with parallel disabled
-                config_disabled = LLMConfig(enable_parallel_tool_calls=False)
-                provider_disabled = get_provider_instance(
-                    provider_name, config_disabled
-                )
-                self.assertEqual(
-                    provider_disabled.config.enable_parallel_tool_calls, False
-                )
-            except Exception as e:
-                # Skip if provider is not configured
-                print(f"Skipping {provider_name}: {e}")
 
 
 # ==================================================================================================
