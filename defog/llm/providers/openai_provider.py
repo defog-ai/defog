@@ -158,6 +158,7 @@ class OpenAIProvider(BaseLLMProvider):
         timeout: int = 600,
         prediction: Optional[Dict[str, str]] = None,
         reasoning_effort: Optional[str] = None,
+        parallel_tool_calls: bool = False,
         **kwargs,
     ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
         """
@@ -189,12 +190,8 @@ class OpenAIProvider(BaseLLMProvider):
             else:
                 request_params["tool_choice"] = "auto"
 
-            # Set parallel_tool_calls based on configuration
-            # this parameter is not available on the o-series models, though
-            if not model.startswith("o"):
-                request_params["parallel_tool_calls"] = (
-                    self.config.enable_parallel_tool_calls
-                )
+            # Set parallel_tool_calls based on parameter
+            request_params["parallel_tool_calls"] = parallel_tool_calls
 
         # Some models do not allow temperature or response_format:
         if model.startswith("o") or model == "deepseek-reasoner":
@@ -229,6 +226,7 @@ class OpenAIProvider(BaseLLMProvider):
         post_tool_function: Optional[Callable] = None,
         image_result_keys: Optional[List[str]] = None,
         tool_handler: Optional[ToolHandler] = None,
+        parallel_tool_calls: bool = False,
         **kwargs,
     ) -> Tuple[
         Any, List[Dict[str, Any]], int, int, Optional[int], Optional[Dict[str, int]]
@@ -291,6 +289,7 @@ class OpenAIProvider(BaseLLMProvider):
                             post_tool_function,
                             consecutive_exceptions,
                             tool_handler,
+                            parallel_tool_calls=parallel_tool_calls,
                         )
 
                         # Append the tool calls as an assistant response
@@ -479,6 +478,7 @@ class OpenAIProvider(BaseLLMProvider):
         post_tool_function: Optional[Callable] = None,
         image_result_keys: Optional[List[str]] = None,
         tool_budget: Optional[Dict[str, int]] = None,
+        parallel_tool_calls: bool = False,
         **kwargs,
     ) -> LLMResponse:
         """Execute a chat completion with OpenAI."""
@@ -510,6 +510,7 @@ class OpenAIProvider(BaseLLMProvider):
             store=store,
             metadata=metadata,
             timeout=timeout,
+            parallel_tool_calls=parallel_tool_calls,
         )
 
         # Build a tool dict if needed
@@ -546,6 +547,7 @@ class OpenAIProvider(BaseLLMProvider):
                 post_tool_function=post_tool_function,
                 image_result_keys=image_result_keys,
                 tool_handler=tool_handler,
+                parallel_tool_calls=parallel_tool_calls,
             )
         except Exception as e:
             raise ProviderError(self.get_provider_name(), f"API call failed: {e}", e)
