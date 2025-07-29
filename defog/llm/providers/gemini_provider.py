@@ -218,7 +218,8 @@ class GeminiProvider(BaseLLMProvider):
             # The model decides when to call multiple functions in parallel
             # This is controlled internally and cannot be disabled
 
-        if response_format:
+        # When tools are provided, we'll set response_format later in the final call
+        if response_format and not (tools and len(tools) > 0):
             # If we want a JSON / Pydantic format
             # "response_schema" is only recognized if the google.genai library supports it
             request_params["response_mime_type"] = "application/json"
@@ -382,6 +383,11 @@ class GeminiProvider(BaseLLMProvider):
                         request_params["tool_config"] = ToolConfig(
                             function_calling_config=FunctionCallingConfig(mode="AUTO")
                         )
+
+                        # If no more tools are available and we have response_format, set it now
+                        if not tools and response_format:
+                            request_params["response_mime_type"] = "application/json"
+                            request_params["response_schema"] = response_format
                     except ProviderError:
                         # Re-raise provider errors from base class
                         raise
@@ -416,14 +422,40 @@ class GeminiProvider(BaseLLMProvider):
                 else:
                     # Break out of loop when tool calls are finished
                     content = response.text.strip() if response.text else None
+
+                    # If we have response_format and tools were being used, make one more call
+                    if response_format and request_params.get("tools"):
+                        # Add the assistant's response to messages
+                        messages.append(
+                            Content(
+                                role="model",
+                                parts=[Part.from_text(text=content)] if content else [],
+                            )
+                        )
+
+                        # Remove tools and set response format
+                        request_params.pop("tools", None)
+                        request_params.pop("tool_config", None)
+                        request_params.pop("automatic_function_calling", None)
+                        request_params["response_mime_type"] = "application/json"
+                        request_params["response_schema"] = response_format
+
+                        # Make final call for structured output
+                        response = await client.aio.models.generate_content(
+                            model=model,
+                            contents=messages,
+                            config=GenerateContentConfig(**request_params),
+                        )
+                        content = response.text.strip() if response.text else None
                     break
         else:
             # No tools provided
-            if response_format:
-                # Use base class method for structured response parsing
-                content = self.parse_structured_response(response.text, response_format)
-            else:
-                content = response.text.strip() if response.text else None
+            content = response.text.strip() if response.text else None
+
+        # Parse structured output if response_format is provided
+        if response_format and content:
+            # Use base class method for structured response parsing
+            content = self.parse_structured_response(content, response_format)
 
         usage = response.usage_metadata
         total_input_tokens += usage.prompt_token_count or 0
