@@ -39,7 +39,7 @@ async def _initialize_connection(mcp_url: str) -> dict:
                 try:
                     obj = json.loads(line.removeprefix("data:").strip())
                     server_name = obj["result"]["serverInfo"]["name"]
-                except:
+                except Exception:
                     server_name = "unknown_server"
 
         # strip any non alphanumeric and underscores

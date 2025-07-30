@@ -2,7 +2,6 @@
 """Test for post_response_hook hook functionality."""
 
 import pytest
-import asyncio
 from typing import Any, Dict, List
 
 from defog.llm.utils import chat_async
@@ -39,7 +38,7 @@ def calculate(expression: str) -> str:
     try:
         result = eval(expression, {"__builtins__": {}}, {})
         return f"The result is {result}"
-    except:
+    except Exception:
         return f"Error evaluating {expression}"
 
 

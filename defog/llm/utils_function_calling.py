@@ -48,11 +48,11 @@ def create_pydantic_model_from_function(func: Callable) -> type[BaseModel]:
     try:
         # will work for most regular functions
         type_hints = get_type_hints(func)
-    except:
+    except Exception:
         # see if this is a partial function
         try:
             type_hints = get_type_hints(func.func)
-        except:
+        except Exception:
             print("could not get type hints for function. default to Any")
             # if it fails, we'll just use Any for all types
             type_hints = {param_name: Any for param_name in sig.parameters.keys()}
