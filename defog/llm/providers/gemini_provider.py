@@ -240,7 +240,6 @@ class GeminiProvider(BaseLLMProvider):
         model: str = "",
         post_tool_function: Optional[Callable] = None,
         post_response_hook: Optional[Callable] = None,
-        image_result_keys: Optional[List[str]] = None,
         tool_handler: Optional[ToolHandler] = None,
         **kwargs,
     ) -> Tuple[
@@ -349,7 +348,9 @@ class GeminiProvider(BaseLLMProvider):
                         # print(results, image_result_keys)
 
                         tool_data_list = process_tool_results_with_images(
-                            response.function_calls, results, image_result_keys
+                            response.function_calls,
+                            results,
+                            tool_handler.image_result_keys,
                         )
 
                         # Create Gemini-specific messages
@@ -474,7 +475,7 @@ class GeminiProvider(BaseLLMProvider):
                 response=response,
                 messages=request_params.get("messages", []),
             )
-            
+
             # No tools provided
             content = response.text.strip() if response.text else None
 
@@ -512,13 +513,14 @@ class GeminiProvider(BaseLLMProvider):
         reasoning_effort: Optional[str] = None,
         post_tool_function: Optional[Callable] = None,
         post_response_hook: Optional[Callable] = None,
-        image_result_keys: Optional[List[str]] = None,
         tool_budget: Optional[Dict[str, int]] = None,
         **kwargs,
     ) -> LLMResponse:
         """Execute a chat completion with Gemini."""
-        # Create a ToolHandler instance with tool_budget if provided
-        tool_handler = self.create_tool_handler_with_budget(tool_budget)
+        # Create a ToolHandler instance with tool_budget and image_result_keys if provided
+        tool_handler = self.create_tool_handler_with_budget(
+            tool_budget, image_result_keys
+        )
 
         if post_tool_function:
             tool_handler.validate_post_tool_function(post_tool_function)
@@ -580,7 +582,6 @@ class GeminiProvider(BaseLLMProvider):
                 model=model,
                 post_tool_function=post_tool_function,
                 post_response_hook=post_response_hook,
-                image_result_keys=image_result_keys,
                 tool_handler=tool_handler,
             )
         except Exception as e:

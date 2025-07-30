@@ -226,7 +226,6 @@ class OpenAIProvider(BaseLLMProvider):
         model: str = "",
         post_tool_function: Optional[Callable] = None,
         post_response_hook: Optional[Callable] = None,
-        image_result_keys: Optional[List[str]] = None,
         tool_handler: Optional[ToolHandler] = None,
         parallel_tool_calls: bool = False,
         **kwargs,
@@ -262,7 +261,7 @@ class OpenAIProvider(BaseLLMProvider):
                 total_cached_input_tokens += cached_tokens
                 total_output_tokens += output_tokens
                 message = response.choices[0].message
-                
+
                 # call this at the start of the while loop
                 # to ensure we also log the first message (that comes in the function arg)
                 await self.call_post_response_hook(
@@ -270,7 +269,7 @@ class OpenAIProvider(BaseLLMProvider):
                     response=response,
                     messages=request_params.get("messages", []),
                 )
-                
+
                 if message.tool_calls:
                     try:
                         # Prepare tool calls for batch execution
@@ -340,7 +339,7 @@ class OpenAIProvider(BaseLLMProvider):
                         )
 
                         tool_data_list = process_tool_results_with_images(
-                            tool_call_blocks, results, image_result_keys
+                            tool_call_blocks, results, tool_handler.image_result_keys
                         )
 
                         # Create OpenAI-specific messages (separate tool and image messages)
@@ -495,7 +494,6 @@ class OpenAIProvider(BaseLLMProvider):
         reasoning_effort: Optional[str] = None,
         post_tool_function: Optional[Callable] = None,
         post_response_hook: Optional[Callable] = None,
-        image_result_keys: Optional[List[str]] = None,
         tool_budget: Optional[Dict[str, int]] = None,
         parallel_tool_calls: bool = False,
         **kwargs,
@@ -503,8 +501,10 @@ class OpenAIProvider(BaseLLMProvider):
         """Execute a chat completion with OpenAI."""
         from openai import AsyncOpenAI
 
-        # Create a ToolHandler instance with tool_budget if provided
-        tool_handler = self.create_tool_handler_with_budget(tool_budget)
+        # Create a ToolHandler instance with tool_budget and image_result_keys if provided
+        tool_handler = self.create_tool_handler_with_budget(
+            tool_budget, image_result_keys
+        )
 
         if post_tool_function:
             tool_handler.validate_post_tool_function(post_tool_function)
@@ -565,7 +565,6 @@ class OpenAIProvider(BaseLLMProvider):
                 model=model,
                 post_tool_function=post_tool_function,
                 post_response_hook=post_response_hook,
-                image_result_keys=image_result_keys,
                 tool_handler=tool_handler,
                 parallel_tool_calls=parallel_tool_calls,
             )

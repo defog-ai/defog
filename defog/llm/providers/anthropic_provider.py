@@ -252,7 +252,6 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
         response_format=None,
         post_tool_function: Optional[Callable] = None,
         post_response_hook: Optional[Callable] = None,
-        image_result_keys: Optional[List[str]] = None,
         tool_handler: Optional[ToolHandler] = None,
         **kwargs,
     ) -> Tuple[
@@ -310,7 +309,7 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
                     for block in response.content
                     if hasattr(block, "type") and block.type == "text"
                 ]
-                
+
                 # call this at the start of the while loop
                 # to ensure we also log the first message (that comes in the function arg)
                 await self.call_post_response_hook(
@@ -473,7 +472,9 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
 
                                 # Build user response with all tool results and handle images
                                 tool_results_data = process_tool_results_with_images(
-                                    tool_call_blocks, results, image_result_keys
+                                    tool_call_blocks,
+                                    results,
+                                    tool_handler.image_result_keys,
                                 )
 
                                 # Build tool results content
@@ -726,15 +727,16 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
         reasoning_effort: Optional[str] = None,
         post_tool_function: Optional[Callable] = None,
         post_response_hook: Optional[Callable] = None,
-        image_result_keys: Optional[List[str]] = None,
         tool_budget: Optional[Dict[str, int]] = None,
         **kwargs,
     ) -> LLMResponse:
         """Execute a chat completion with Anthropic."""
         from anthropic import AsyncAnthropic
 
-        # Create a ToolHandler instance with tool_budget if provided
-        tool_handler = self.create_tool_handler_with_budget(tool_budget)
+        # Create a ToolHandler instance with tool_budget and image_result_keys if provided
+        tool_handler = self.create_tool_handler_with_budget(
+            tool_budget, image_result_keys
+        )
 
         if post_tool_function:
             tool_handler.validate_post_tool_function(post_tool_function)
@@ -792,7 +794,6 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
                 response_format=response_format,
                 post_tool_function=post_tool_function,
                 post_response_hook=post_response_hook,
-                image_result_keys=image_result_keys,
                 tool_handler=tool_handler,
                 **kwargs,
             )
