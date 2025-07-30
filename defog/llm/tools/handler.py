@@ -19,10 +19,12 @@ class ToolHandler:
         self,
         max_consecutive_errors: int = 3,
         tool_budget: Optional[Dict[str, int]] = None,
+        image_result_keys: Optional[List[str]] = None,
     ):
         self.max_consecutive_errors = max_consecutive_errors
         self.tool_budget = tool_budget.copy() if tool_budget else None
         self.tool_usage = {}
+        self.image_result_keys = image_result_keys
         logger.debug(f"ToolHandler initialized with budget: {self.tool_budget}")
 
     def is_tool_available(self, tool_name: str) -> bool:

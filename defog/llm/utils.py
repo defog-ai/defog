@@ -209,7 +209,6 @@ async def chat_async(
             if post_response_hook:
                 provider_instance.validate_post_response_hook(post_response_hook)
 
-
             # Execute the chat completion
             response = await provider_instance.execute_chat(
                 messages=messages,
@@ -227,7 +226,6 @@ async def chat_async(
                 reasoning_effort=reasoning_effort,
                 post_tool_function=post_tool_function,
                 post_response_hook=post_response_hook,
-                image_result_keys=image_result_keys,
                 tool_budget=tool_budget,
                 parallel_tool_calls=parallel_tool_calls,
             )

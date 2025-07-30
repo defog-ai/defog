@@ -100,7 +100,6 @@ class BaseLLMProvider(ABC):
         reasoning_effort: Optional[str] = None,
         post_tool_function: Optional[Callable] = None,
         post_response_hook: Optional[Callable] = None,
-        image_result_keys: Optional[List[str]] = None,
         tool_budget: Optional[Dict[str, int]] = None,
         **kwargs,
     ) -> LLMResponse:
@@ -256,11 +255,15 @@ class BaseLLMProvider(ABC):
         return tool_outputs, consecutive_exceptions
 
     def create_tool_handler_with_budget(
-        self, tool_budget: Optional[Dict[str, int]] = None
+        self,
+        tool_budget: Optional[Dict[str, int]] = None,
+        image_result_keys: Optional[List[str]] = None,
     ) -> ToolHandler:
-        """Create a ToolHandler instance with optional tool budget."""
-        if tool_budget:
-            return ToolHandler(tool_budget=tool_budget)
+        """Create a ToolHandler instance with optional tool budget and image result keys."""
+        if tool_budget or image_result_keys:
+            return ToolHandler(
+                tool_budget=tool_budget, image_result_keys=image_result_keys
+            )
         return self.tool_handler
 
     def filter_tools_by_budget(
@@ -336,13 +339,14 @@ class BaseLLMProvider(ABC):
         """
         sig = inspect.signature(post_response_hook)
         required_params = ["response", "messages"]
-        
+
         for param in required_params:
             if sig.parameters.get(param) is None:
-                raise ValueError("post_response_hook must have parameter named `response` and `messages`.")
-        
-        return post_response_hook
+                raise ValueError(
+                    "post_response_hook must have parameter named `response` and `messages`."
+                )
 
+        return post_response_hook
 
     async def call_post_response_hook(
         self, post_response_hook: Callable, response, messages
