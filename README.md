@@ -119,10 +119,10 @@ print(response.content)
 
 ### Quick Links
 
-- **[LLM Utilities](docs/llm-utilities.md)** - Chat, function calling, structured output, memory management
-- **[Database Operations](docs/database-operations.md)** - SQL generation, query execution, schema documentation
-- **[Data Extraction](docs/data-extraction.md)** - PDF, image, and HTML data extraction tools
-- **[Agent Orchestration](docs/agent-orchestration.md)** - Multi-agent coordination and task delegation
+- **[LLM Utilities](docs/llm/README.md)** - Chat, function calling, structured output, memory management
+- **[Database Operations](docs/database/database-operations.md)** - SQL generation, query execution, schema documentation
+- **[Data Extraction](docs/data-extraction/data-extraction.md)** - PDF, image, and HTML data extraction tools
+- **[Agent Orchestration](docs/advanced/agent-orchestration.md)** - Multi-agent coordination and task delegation
 - **[API Reference](docs/api-reference.md)** - Complete API documentation
 
 ## Environment Variables
