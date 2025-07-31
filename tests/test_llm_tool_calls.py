@@ -954,6 +954,98 @@ class CalculationResult(BaseModel):
     explanation: str = Field(description="Explanation of the calculation")
 
 
+def get_text_long():
+    """Returns a very long text string (20k repetitions)."""
+    return "The quick brown fox jumps over the lazy dog.\n" * 5000
+
+
+class TestToolOutputMaxTokens(unittest.IsolatedAsyncioTestCase):
+    """Test the configurable tool_output_max_tokens feature."""
+
+    @pytest.mark.asyncio
+    @skip_if_no_api_key("openai")
+    async def test_tool_output_default_limit(self):
+        """Test that get_text_long exceeds the default 10000 token limit."""
+        messages = [
+            {
+                "role": "user",
+                "content": "Call the get_text_long function and tell me what it returns.",
+            }
+        ]
+
+        result = await chat_async(
+            provider="openai",
+            model="gpt-4o-mini",
+            messages=messages,
+            tools=[get_text_long],
+            temperature=0,
+            max_retries=1,
+        )
+
+        # Tool should be called but output should be truncated message
+        self.assertGreater(len(result.tool_outputs), 0)
+        self.assertEqual(result.tool_outputs[0]["name"], "get_text_long")
+        # Check if we got the truncation message
+        truncation_message = result.tool_outputs[0]["result"]
+        self.assertIn("too large", truncation_message)
+        self.assertIn("tokens", truncation_message)
+
+    @pytest.mark.asyncio
+    @skip_if_no_api_key("openai")
+    async def test_tool_output_limit_disabled(self):
+        """Test with tool_output_max_tokens set to -1 (disabled)."""
+        messages = [
+            {
+                "role": "user",
+                "content": "Call the get_text_long function. Just tell me if it succeeded without showing the full output.",
+            }
+        ]
+
+        result = await chat_async(
+            provider="openai",
+            model="gpt-4o-mini",
+            messages=messages,
+            tools=[get_text_long],
+            temperature=0,
+            max_retries=1,
+            tool_output_max_tokens=-1,  # Disable limit
+        )
+
+        # Tool should execute successfully without truncation
+        self.assertGreater(len(result.tool_outputs), 0)
+        self.assertEqual(result.tool_outputs[0]["name"], "get_text_long")
+        # Result should contain the full output (20k repetitions)
+        output_lines = result.tool_outputs[0]["result"].strip().split("\n")
+        self.assertEqual(len(output_lines), 5000)
+
+    @pytest.mark.asyncio
+    @skip_if_no_api_key("anthropic")
+    async def test_tool_output_limit_anthropic(self):
+        """Test tool output limits with Anthropic provider."""
+        messages = [
+            {
+                "role": "user",
+                "content": "Call the get_text_long function.",
+            }
+        ]
+
+        result = await chat_async(
+            provider="anthropic",
+            model="claude-3-7-sonnet-latest",
+            messages=messages,
+            tools=[get_text_long],
+            temperature=0,
+            max_retries=1,
+            tool_output_max_tokens=1000,  # Low limit
+        )
+
+        # Should get truncation message
+        self.assertGreater(len(result.tool_outputs), 0)
+        self.assertEqual(result.tool_outputs[0]["name"], "get_text_long")
+        truncation_message = result.tool_outputs[0]["result"]
+        self.assertIn("too large", truncation_message)
+
+
 class TestStructuredOutputWithTools(unittest.IsolatedAsyncioTestCase):
     """Test structured outputs combined with tool calls."""
 
