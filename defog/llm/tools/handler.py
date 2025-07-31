@@ -20,12 +20,18 @@ class ToolHandler:
         max_consecutive_errors: int = 3,
         tool_budget: Optional[Dict[str, int]] = None,
         image_result_keys: Optional[List[str]] = None,
+        tool_output_max_tokens: Optional[int] = None,
     ):
         self.max_consecutive_errors = max_consecutive_errors
         self.tool_budget = tool_budget.copy() if tool_budget else None
         self.tool_usage = {}
         self.image_result_keys = image_result_keys
-        logger.debug(f"ToolHandler initialized with budget: {self.tool_budget}")
+        self.tool_output_max_tokens = (
+            tool_output_max_tokens if tool_output_max_tokens is not None else 10000
+        )
+        logger.debug(
+            f"ToolHandler initialized with budget: {self.tool_budget}, max_tokens: {self.tool_output_max_tokens}"
+        )
 
     def is_tool_available(self, tool_name: str) -> bool:
         """Check if a tool is available based on its budget."""
@@ -140,9 +146,13 @@ class ToolHandler:
                     tool_name, f"Error executing post_tool_function: {e}", e
                 )
 
-        is_valid, token_count = ToolHandler.check_tool_output_size(result)
-        if not is_valid:
-            return f"Tool output for {tool_name} is too large at {token_count} tokens. Please rephrase the question asked so that the output is within the token limit."
+        # Only check if tool_output_max_tokens is not -1 (disabled)
+        if self.tool_output_max_tokens != -1:
+            is_valid, token_count = ToolHandler.check_tool_output_size(
+                result, self.tool_output_max_tokens
+            )
+            if not is_valid:
+                return f"Tool output for {tool_name} is too large at {token_count} tokens. Please rephrase the question asked so that the output is within the token limit."
 
         return result
 
@@ -219,12 +229,16 @@ class ToolHandler:
                             f"Warning: Error executing post_tool_function for {func_name}: {e}"
                         )
 
-            for idx, result in enumerate(results):
-                is_valid, token_count = ToolHandler.check_tool_output_size(result)
-                if not is_valid:
-                    results[idx] = (
-                        f"Tool output for {func_name} is too large at {token_count} tokens. Please rephrase the question asked so that the output is within the token limit."
+            # Only check if tool_output_max_tokens is not -1 (disabled)
+            if self.tool_output_max_tokens != -1:
+                for idx, result in enumerate(results):
+                    is_valid, token_count = ToolHandler.check_tool_output_size(
+                        result, self.tool_output_max_tokens
                     )
+                    if not is_valid:
+                        results[idx] = (
+                            f"Tool output for {func_name} is too large at {token_count} tokens. Please rephrase the question asked so that the output is within the token limit."
+                        )
 
             return results
         except Exception as e:
