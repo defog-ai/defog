@@ -258,11 +258,14 @@ class BaseLLMProvider(ABC):
         self,
         tool_budget: Optional[Dict[str, int]] = None,
         image_result_keys: Optional[List[str]] = None,
+        tool_output_max_tokens: Optional[int] = None,
     ) -> ToolHandler:
-        """Create a ToolHandler instance with optional tool budget and image result keys."""
-        if tool_budget or image_result_keys:
+        """Create a ToolHandler instance with optional tool budget, image result keys, and output token limit."""
+        if tool_budget or image_result_keys or tool_output_max_tokens is not None:
             return ToolHandler(
-                tool_budget=tool_budget, image_result_keys=image_result_keys
+                tool_budget=tool_budget,
+                image_result_keys=image_result_keys,
+                tool_output_max_tokens=tool_output_max_tokens,
             )
         return self.tool_handler
 

@@ -389,7 +389,9 @@ class MistralProvider(BaseLLMProvider):
         from mistralai import Mistral
 
         # Create a ToolHandler instance with tool_budget if provided
-        tool_handler = self.create_tool_handler_with_budget(tool_budget)
+        tool_handler = self.create_tool_handler_with_budget(
+            tool_budget, None, kwargs.get("tool_output_max_tokens")
+        )
 
         if post_tool_function:
             tool_handler.validate_post_tool_function(post_tool_function)
