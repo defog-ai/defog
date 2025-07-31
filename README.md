@@ -48,7 +48,8 @@ result = await sql_answer_tool(
         "host": "localhost",
         "database": "mydb",
         "user": "postgres",
-        "password": "password"
+        "password": "password",
+        "port": 5432
     },
     model="claude-sonnet-4-20250514",
     provider=LLMProvider.ANTHROPIC
