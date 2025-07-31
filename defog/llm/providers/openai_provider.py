@@ -504,7 +504,7 @@ class OpenAIProvider(BaseLLMProvider):
 
         # Create a ToolHandler instance with tool_budget and image_result_keys if provided
         tool_handler = self.create_tool_handler_with_budget(
-            tool_budget, image_result_keys
+            tool_budget, image_result_keys, kwargs.get("tool_output_max_tokens")
         )
 
         if post_tool_function:
