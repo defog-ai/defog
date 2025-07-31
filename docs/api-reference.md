@@ -244,6 +244,7 @@ async def chat_async(
     tool_budget: Optional[Dict[str, int]] = None,
     insert_tool_citations: bool = False,
     parallel_tool_calls: bool = False,
+    tool_output_max_tokens: int = 10000,
 ) -> LLMResponse
 ```
 
