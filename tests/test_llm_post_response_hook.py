@@ -9,10 +9,9 @@ from defog.llm.utils import chat_async
 from tests.conftest import skip_if_no_api_key
 
 from dotenv import load_dotenv
-
-load_dotenv()
 import logging
 
+load_dotenv()
 logging.basicConfig(level=logging.INFO)
 
 # Mock response hook for testing

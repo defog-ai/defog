@@ -12,7 +12,12 @@ from io import BytesIO
 from PIL import Image, ImageDraw
 from typing import Optional
 from pydantic import BaseModel, Field
+import base64
 
+from defog.llm.providers.gemini_provider import GeminiProvider
+from defog.llm.providers.anthropic_provider import AnthropicProvider
+from defog.llm.providers.openai_provider import OpenAIProvider
+from defog.llm.providers.deepseek_provider import DeepSeekProvider
 from defog.llm.utils_image_support import (
     detect_image_in_result,
     process_tool_results_with_images,
@@ -174,7 +179,6 @@ class TestProviderMessageCreation:
 
     def test_anthropic_image_message_creation(self):
         """Test that Anthropic provider creates correct image messages."""
-        from defog.llm.providers.anthropic_provider import AnthropicProvider
 
         provider = AnthropicProvider(api_key="test")
         image_data = create_test_image()
@@ -198,7 +202,6 @@ class TestProviderMessageCreation:
 
     def test_openai_image_message_creation(self):
         """Test that OpenAI provider creates correct image messages."""
-        from defog.llm.providers.openai_provider import OpenAIProvider
 
         provider = OpenAIProvider(api_key="test")
         image_data = create_test_image()
@@ -222,7 +225,6 @@ class TestProviderMessageCreation:
 
     def test_gemini_image_message_creation(self):
         """Test that Gemini provider creates correct image messages."""
-        from defog.llm.providers.gemini_provider import GeminiProvider
 
         provider = GeminiProvider(api_key="test")
         image_data = create_test_image()
@@ -235,9 +237,6 @@ class TestProviderMessageCreation:
         assert msg.parts[0].text == "Test image"
         assert hasattr(msg.parts[1], "inline_data")  # Image part
         assert msg.parts[1].inline_data.mime_type == "image/png"
-
-        # Verify the bytes data is correct
-        import base64
 
         expected_bytes = base64.b64decode(image_data)
         assert msg.parts[1].inline_data.data == expected_bytes
@@ -370,7 +369,6 @@ class TestProviderImageMessageValidation:
 
     def test_anthropic_provider_invalid_image(self):
         """Test Anthropic provider with invalid image data."""
-        from defog.llm.providers.anthropic_provider import AnthropicProvider
 
         provider = AnthropicProvider(api_key="test")
 
@@ -381,7 +379,6 @@ class TestProviderImageMessageValidation:
 
     def test_openai_provider_invalid_image(self):
         """Test OpenAI provider with invalid image data."""
-        from defog.llm.providers.openai_provider import OpenAIProvider
 
         provider = OpenAIProvider(api_key="test")
 
@@ -392,7 +389,6 @@ class TestProviderImageMessageValidation:
 
     def test_gemini_provider_invalid_image(self):
         """Test Gemini provider with invalid image data."""
-        from defog.llm.providers.gemini_provider import GeminiProvider
 
         provider = GeminiProvider(api_key="test")
 
@@ -403,7 +399,6 @@ class TestProviderImageMessageValidation:
 
     def test_deepseek_provider_handles_invalid_image(self):
         """Test DeepSeek provider gracefully handles invalid images."""
-        from defog.llm.providers.deepseek_provider import DeepSeekProvider
 
         provider = DeepSeekProvider(api_key="test")
 
@@ -414,7 +409,6 @@ class TestProviderImageMessageValidation:
 
     def test_provider_partial_validation_success(self):
         """Test provider behavior with mixed valid/invalid images."""
-        from defog.llm.providers.anthropic_provider import AnthropicProvider
 
         provider = AnthropicProvider(api_key="test")
         valid_image = create_test_image()
@@ -429,7 +423,6 @@ class TestProviderImageMessageValidation:
 
     def test_openai_provider_invalid_image_detail(self):
         """Test OpenAI provider with invalid image_detail parameter."""
-        from defog.llm.providers.openai_provider import OpenAIProvider
 
         provider = OpenAIProvider(api_key="test")
         valid_image = create_test_image()

@@ -4,7 +4,7 @@ import os
 from defog.llm.citations import citations_tool
 from defog.llm.llm_providers import LLMProvider
 from tests.conftest import skip_if_no_api_key
-
+import asyncio
 
 class TestCitations(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
@@ -144,7 +144,6 @@ class TestCitations(unittest.IsolatedAsyncioTestCase):
 
         with self.assertRaises(ValueError) as context:
             # Using asyncio.run since this should fail immediately
-            import asyncio
 
             asyncio.run(
                 citations_tool(

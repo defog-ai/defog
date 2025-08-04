@@ -1,12 +1,11 @@
 import warnings
-
-warnings.filterwarnings("ignore")
-
 import unittest
 import pytest
 from defog.llm.code_interp import code_interpreter_tool
 from defog.llm.llm_providers import LLMProvider
 from tests.conftest import skip_if_no_api_key
+
+warnings.filterwarnings("ignore")
 
 
 class TestCodeInterp(unittest.IsolatedAsyncioTestCase):

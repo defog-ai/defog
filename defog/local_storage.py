@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Any
 import datetime
 import portalocker
 import re
+import hashlib
 
 
 class LocalStorage:
@@ -32,8 +33,7 @@ class LocalStorage:
         """Generate a project ID based on db_type or api_key for backward compatibility"""
         if api_key:
             # Use hash of api_key for backward compatibility
-            import hashlib
-
+            
             return hashlib.sha256(api_key.encode()).hexdigest()[:16]
         elif db_type:
             # Validate db_type to prevent path traversal
