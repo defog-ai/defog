@@ -1,8 +1,14 @@
 import json
-from typing import Dict, List, Optional
 import pandas as pd
+import psycopg2
+import mysql.connector
+import pyodbc
+import snowflake.connector
 from defog.metadata_cache import get_global_cache
 from defog.local_storage import LocalStorage
+from google.cloud import bigquery
+from typing import Dict, List, Optional
+from databricks import sql
 
 
 def update_db_schema(self, path_to_csv, dev=False, temp=False):
@@ -304,7 +310,6 @@ def create_empty_tables(self, dev: bool = False):
 
     try:
         if self.db_type == "postgres" or self.db_type == "redshift":
-            import psycopg2
 
             conn = psycopg2.connect(**self.db_creds)
             cur = conn.cursor()
@@ -314,7 +319,6 @@ def create_empty_tables(self, dev: bool = False):
             return True
 
         elif self.db_type == "mysql":
-            import mysql.connector
 
             conn = mysql.connector.connect(**self.db_creds)
             cur = conn.cursor()
@@ -325,7 +329,6 @@ def create_empty_tables(self, dev: bool = False):
             return True
 
         elif self.db_type == "databricks":
-            from databricks import sql
 
             con = sql.connect(**self.db_creds)
             con.execute(ddl)
@@ -334,7 +337,6 @@ def create_empty_tables(self, dev: bool = False):
             return True
 
         elif self.db_type == "snowflake":
-            import snowflake.connector
 
             conn = snowflake.connector.connect(
                 user=self.db_creds["user"],
@@ -352,7 +354,6 @@ def create_empty_tables(self, dev: bool = False):
             return True
 
         elif self.db_type == "bigquery":
-            from google.cloud import bigquery
 
             client = bigquery.Client.from_service_account_json(
                 self.db_creds["json_key_path"]
@@ -362,7 +363,6 @@ def create_empty_tables(self, dev: bool = False):
             return True
 
         elif self.db_type == "sqlserver":
-            import pyodbc
 
             if self.db_creds["database"] != "":
                 connection_string = f"DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={self.db_creds['server']};DATABASE={self.db_creds['database']};UID={self.db_creds['user']};PWD={self.db_creds['password']};TrustServerCertificate=yes;Connection Timeout=120;"
