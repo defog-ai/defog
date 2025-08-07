@@ -94,7 +94,7 @@ async def chat_async(
     max_completion_tokens: Optional[int] = None,
     temperature: float = 0.0,
     response_format=None,
-    seed: int = 0,
+    verbosity: Optional[str] = None,
     store: bool = True,
     metadata: Optional[Dict[str, str]] = None,
     timeout: int = 600,
@@ -125,7 +125,6 @@ async def chat_async(
         max_completion_tokens: Maximum tokens to generate
         temperature: Sampling temperature (0.0 to 1.0)
         response_format: Structured output format (Pydantic model)
-        seed: Random seed for reproducibility
         store: Whether to store the conversation
         metadata: Additional metadata
         timeout: Request timeout in seconds
@@ -218,7 +217,7 @@ async def chat_async(
                 max_completion_tokens=max_completion_tokens,
                 temperature=temperature,
                 response_format=response_format,
-                seed=seed,
+                verbosity=verbosity,
                 tools=tools,
                 tool_choice=tool_choice,
                 store=store,
