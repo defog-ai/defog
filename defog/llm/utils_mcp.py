@@ -166,7 +166,7 @@ async def get_mcp_tools(mcp_url: str):
         sig = inspect.Signature(parameters=params, return_annotation=object)
         func.__signature__ = sig
         func.__doc__ = tool["description"]
-        func.__name__ = f"mcp__{server_name}___{name}"
+        func.__name__ = f"mcp__{server_name}__{name}"
         tools_to_return.append(func)
 
     # return an object masquerading as a simple namespace
