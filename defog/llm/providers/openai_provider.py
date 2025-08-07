@@ -357,7 +357,8 @@ class OpenAIProvider(BaseLLMProvider):
         if (
             model.startswith("o") or model.startswith("gpt-5")
         ) and reasoning_effort is not None:
-            request_params["reasoning_effort"] = reasoning_effort
+            # Responses API expects reasoning.effort, not reasoning_effort
+            request_params["reasoning"] = {"effort": reasoning_effort}
 
         # Verbosity (Responses-only)
         verbosity = kwargs.get("verbosity")
@@ -618,12 +619,14 @@ class OpenAIProvider(BaseLLMProvider):
                         request_params.pop("tool_choice", None)
                         request_params.pop("parallel_tool_calls", None)
 
-                        # Add response format and make final call (exclude reasoning_effort for parse)
+                        # Add response format and make final call (exclude SDK-unsupported fields if any)
                         _parse_params = {
                             **request_params,
                             "text_format": response_format,
                         }
                         _parse_params.pop("reasoning_effort", None)
+                        # Some SDKs may not accept nested reasoning in parse; remove if present
+                        _parse_params.pop("reasoning", None)
                         response = await client.responses.parse(**_parse_params)
 
                         # Extract parsed content
@@ -757,6 +760,7 @@ class OpenAIProvider(BaseLLMProvider):
             if response_format and not (tools and len(tools) > 0):
                 _parse_params = {**request_params, "text_format": response_format}
                 _parse_params.pop("reasoning_effort", None)
+                _parse_params.pop("reasoning", None)
                 response = await client_openai.responses.parse(**_parse_params)
             else:
                 response = await client_openai.responses.create(**request_params)
