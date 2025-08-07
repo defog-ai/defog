@@ -34,6 +34,26 @@ response = await chat_async(
 print(response.content)
 ```
 
+#### OpenAI GPT‑5: Responses API controls
+
+```python
+from defog.llm.utils import chat_async
+from defog.llm.llm_providers import LLMProvider
+
+response = await chat_async(
+    provider=LLMProvider.OPENAI,
+    model="gpt-5",
+    messages=[
+        {"role": "system", "content": "You are concise and helpful."},
+        {"role": "user", "content": "Summarize the benefits of unit tests."},
+    ],
+    # Optional Responses API controls for GPT‑5
+    reasoning_effort="minimal",   # minimal | low | medium | high
+    verbosity="low",              # low | medium | high
+)
+print(response.content)
+```
+
 ### 2. Natural Language to SQL
 
 ```python

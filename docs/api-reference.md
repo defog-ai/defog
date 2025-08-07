@@ -226,7 +226,6 @@ async def chat_async(
     max_completion_tokens: Optional[int] = None,
     temperature: float = 0.0,
     response_format=None,
-    seed: int = 0,
     store: bool = True,
     metadata: Optional[Dict[str, str]] = None,
     timeout: int = 600,
