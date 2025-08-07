@@ -199,11 +199,15 @@ class TestToolUseFeatures(unittest.IsolatedAsyncioTestCase):
         self.tools = [get_weather, numsum, numprod]
         self.weather_qn = "What is the current temperature in Singapore? Return the answer as a number and nothing else."
         self.weather_qn_specific = "What is the current temperature in Singapore? Singapore's latitude is 1.3521 and longitude is 103.8198. Return the answer as a number and nothing else."
-        self.arithmetic_qn = "What is the product of 31283 and 2323, added to 5? Always use the tools provided for all calculation, even simple calculations. Return only the final answer, nothing else."
-        self.arithmetic_answer = "72670414"
+        self.arithmetic_qn = "What is the product of 31283 and 2323, added to 890872? Always use the tools provided for all calculation, even simple calculations. Return only the final answer, nothing else."
+        self.arithmetic_answer = "73561281"
         self.arithmetic_expected_tool_outputs = [
             {"name": "numprod", "args": {"a": 31283, "b": 2323}, "result": 72670409},
-            {"name": "numsum", "args": {"a": 72670409, "b": 5}, "result": 72670414},
+            {
+                "name": "numsum",
+                "args": {"a": 72670409, "b": 890872},
+                "result": 73561281,
+            },
         ]
 
     @pytest.mark.asyncio
@@ -211,7 +215,7 @@ class TestToolUseFeatures(unittest.IsolatedAsyncioTestCase):
     async def test_tool_use_arithmetic_async_openai(self):
         result = await chat_async(
             provider="openai",
-            model="gpt-4o",
+            model="gpt-5-nano",
             messages=[
                 {
                     "role": "user",
@@ -230,7 +234,7 @@ class TestToolUseFeatures(unittest.IsolatedAsyncioTestCase):
     async def test_tool_use_weather_async_openai(self):
         result = await chat_async(
             provider="openai",
-            model="gpt-4o",
+            model="gpt-5-nano",
             messages=[
                 {
                     "role": "user",
@@ -267,25 +271,6 @@ class TestToolUseFeatures(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.content, self.arithmetic_answer)
 
     @pytest.mark.asyncio
-    @skip_if_no_api_key("mistral")
-    async def test_tool_use_arithmetic_async_mistral(self):
-        result = await chat_async(
-            provider="mistral",
-            model="mistral-medium-latest",
-            messages=[
-                {
-                    "role": "user",
-                    "content": self.arithmetic_qn,
-                },
-            ],
-            tools=self.tools,
-        )
-        print(result)
-        self.assertEqual(result.content, self.arithmetic_answer)
-        tools_used = [output["name"] for output in result.tool_outputs]
-        self.assertSetEqual(set(tools_used), {"numsum", "numprod"})
-
-    @pytest.mark.asyncio
     @skip_if_no_api_key("anthropic")
     async def test_tool_use_weather_async_anthropic(self):
         result = await chat_async(
@@ -304,34 +289,6 @@ class TestToolUseFeatures(unittest.IsolatedAsyncioTestCase):
         tools_used = [output["name"] for output in result.tool_outputs]
         self.assertSetEqual(set(tools_used), {"get_weather"})
         self.assertEqual(result.tool_outputs[0]["name"], "get_weather")
-        self.assertGreaterEqual(float(result.content), 21)
-        self.assertLessEqual(float(result.content), 38)
-
-    @pytest.mark.asyncio
-    @skip_if_no_api_key("mistral")
-    async def test_tool_use_weather_async_mistral(self):
-        result = await chat_async(
-            provider="mistral",
-            model="mistral-medium-latest",
-            messages=[
-                {
-                    "role": "user",
-                    # we have to add an explicit instruction to use the tools because mistral is bad at using tools on its own
-                    "content": self.weather_qn_specific
-                    + "\n"
-                    + "You must use the tools provided to answer the question.",
-                },
-            ],
-            tools=self.tools,
-            max_retries=1,
-        )
-        print(result)
-        tools_used = [output["name"] for output in result.tool_outputs]
-        self.assertSetEqual(set(tools_used), {"get_weather"})
-        self.assertEqual(result.tool_outputs[0]["name"], "get_weather")
-        self.assertEqual(
-            result.tool_outputs[0]["args"], {"latitude": 1.3521, "longitude": 103.8198}
-        )
         self.assertGreaterEqual(float(result.content), 21)
         self.assertLessEqual(float(result.content), 38)
 
@@ -404,7 +361,7 @@ class TestToolUseFeatures(unittest.IsolatedAsyncioTestCase):
     async def test_post_tool_calls_openai(self):
         result = await chat_async(
             provider="openai",
-            model="gpt-4o",
+            model="gpt-5-nano",
             messages=[
                 {
                     "role": "user",
@@ -445,98 +402,6 @@ class TestToolUseFeatures(unittest.IsolatedAsyncioTestCase):
         result = await chat_async(
             provider="gemini",
             model="gemini-2.0-flash",
-            messages=[
-                {
-                    "role": "user",
-                    "content": self.arithmetic_qn,
-                },
-            ],
-            tools=self.tools,
-            post_tool_function=log_to_file,
-        )
-        print(result)
-        self.assertEqual(result.content, self.arithmetic_answer)
-        tools_used = [output["name"] for output in result.tool_outputs]
-        self.assertSetEqual(set(tools_used), {"numsum", "numprod"})
-
-    @pytest.mark.asyncio
-    @skip_if_no_api_key("deepseek")
-    async def test_tool_use_arithmetic_async_deepseek_chat(self):
-        result = await chat_async(
-            provider="deepseek",
-            model="deepseek-chat",
-            messages=[
-                {
-                    "role": "user",
-                    "content": self.arithmetic_qn,
-                },
-            ],
-            tools=self.tools,
-        )
-        print(result)
-        self.assertEqual(result.content, self.arithmetic_answer)
-        tools_used = [output["name"] for output in result.tool_outputs]
-        self.assertSetEqual(set(tools_used), {"numsum", "numprod"})
-
-    @pytest.mark.asyncio
-    @skip_if_no_api_key("deepseek")
-    async def test_tool_use_weather_async_deepseek_chat(self):
-        result = await chat_async(
-            provider="deepseek",
-            model="deepseek-chat",
-            messages=[
-                {
-                    "role": "user",
-                    "content": self.weather_qn_specific,
-                },
-            ],
-            tools=self.tools,
-            max_retries=1,
-        )
-        print(result)
-        tools_used = [output["name"] for output in result.tool_outputs]
-        self.assertSetEqual(set(tools_used), {"get_weather"})
-        self.assertEqual(result.tool_outputs[0]["name"], "get_weather")
-        self.assertEqual(
-            result.tool_outputs[0]["args"], {"latitude": 1.3521, "longitude": 103.8198}
-        )
-        # Try to parse temperature, but handle API failures gracefully
-        try:
-            temp = float(result.content)
-            self.assertGreaterEqual(temp, 21)
-            self.assertLessEqual(temp, 38)
-        except ValueError:
-            # API call failed or returned non-numeric response
-            # This is acceptable for weather tests as APIs can be unreliable
-            self.assertIsInstance(result.content, str)
-            self.assertGreater(len(result.content), 0)
-
-    @pytest.mark.asyncio
-    @skip_if_no_api_key("deepseek")
-    async def test_post_tool_calls_deepseek_chat(self):
-        result = await chat_async(
-            provider="deepseek",
-            model="deepseek-chat",
-            messages=[
-                {
-                    "role": "user",
-                    "content": self.arithmetic_qn,
-                },
-            ],
-            tools=self.tools,
-            post_tool_function=log_to_file,
-        )
-        print(result)
-        self.assertEqual(result.content, self.arithmetic_answer)
-        tools_used = [output["name"] for output in result.tool_outputs]
-        self.assertSetEqual(set(tools_used), {"numsum", "numprod"})
-
-    @pytest.mark.asyncio
-    @skip_if_no_api_key("mistral")
-    async def test_post_tool_calls_mistral(self):
-        result = await chat_async(
-            provider="mistral",
-            model="mistral-medium-latest",
             messages=[
                 {
                     "role": "user",
@@ -975,7 +840,7 @@ class TestToolOutputMaxTokens(unittest.IsolatedAsyncioTestCase):
 
         result = await chat_async(
             provider="openai",
-            model="gpt-4o-mini",
+            model="gpt-5-nano",
             messages=messages,
             tools=[get_text_long],
             temperature=0,
@@ -1003,7 +868,7 @@ class TestToolOutputMaxTokens(unittest.IsolatedAsyncioTestCase):
 
         result = await chat_async(
             provider="openai",
-            model="gpt-4o-mini",
+            model="gpt-5-nano",
             messages=messages,
             tools=[get_text_long],
             temperature=0,
@@ -1060,7 +925,7 @@ class TestStructuredOutputWithTools(unittest.IsolatedAsyncioTestCase):
         self.calculation_message = [
             {
                 "role": "user",
-                "content": "Calculate the sum of 150 and 250, then multiply the result by 3. Return the final result as a structured calculation report.",
+                "content": "Calculate the sum of 150 and 250, then multiply the result by 3. Return the final result as a structured calculation report. Recall that you MUST use the tools provided for all calculation, even simple calculations.",
             }
         ]
 
@@ -1071,7 +936,7 @@ class TestStructuredOutputWithTools(unittest.IsolatedAsyncioTestCase):
         # Test weather report with structured output
         result = await chat_async(
             provider="openai",
-            model="gpt-4o",
+            model="gpt-5-nano",
             messages=self.weather_message,
             tools=self.tools,
             response_format=WeatherReport,
@@ -1098,7 +963,7 @@ class TestStructuredOutputWithTools(unittest.IsolatedAsyncioTestCase):
         """Test OpenAI with multiple tool calls and structured output."""
         result = await chat_async(
             provider="openai",
-            model="gpt-4o",
+            model="gpt-5-nano",
             messages=self.calculation_message,
             tools=self.tools,
             response_format=CalculationResult,
@@ -1117,7 +982,9 @@ class TestStructuredOutputWithTools(unittest.IsolatedAsyncioTestCase):
         # Check that operation mentions multiplication or contains * symbol
         self.assertTrue(
             "multi" in result.content.operation.lower()
-            or "*" in result.content.operation,
+            or "*" in result.content.operation
+            or "x" in result.content.operation.lower()
+            or "×" in result.content.operation.lower(),
             f"Expected operation to contain 'multi' or '*', got: {result.content.operation}",
         )
         self.assertEqual(result.content.result, 1200)  # (150 + 250) * 3

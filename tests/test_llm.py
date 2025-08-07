@@ -235,7 +235,6 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
                 model=model,
                 messages=messages,
                 temperature=0.0,
-                seed=0,
                 max_retries=1,
             )
             self.assertIsInstance(response.content, str)
@@ -271,7 +270,6 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
                 model=model,
                 messages=messages_sql,
                 temperature=0.0,
-                seed=0,
                 max_retries=1,
             )
             self.check_sql(response.content)
@@ -309,7 +307,6 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
                 model=model,
                 messages=messages_sql_structured,
                 temperature=0.0,
-                seed=0,
                 response_format=ResponseFormat,
                 reasoning_effort=effort,
                 max_retries=1,
@@ -353,7 +350,6 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
                 model=model,
                 messages=messages_sql_structured,
                 temperature=0.0,
-                seed=0,
                 response_format=ResponseFormat,
                 max_retries=1,
             )
