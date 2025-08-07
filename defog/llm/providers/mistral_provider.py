@@ -110,7 +110,6 @@ class MistralProvider(BaseLLMProvider):
         max_completion_tokens: Optional[int] = None,
         temperature: float = 0.0,
         response_format=None,
-        seed: int = 0,
         tools: Optional[List[Callable]] = None,
         tool_choice: Optional[str] = None,
         store: bool = True,
@@ -132,10 +131,6 @@ class MistralProvider(BaseLLMProvider):
         # Add max_tokens if specified
         if max_completion_tokens is not None:
             params["max_tokens"] = max_completion_tokens
-
-        # Handle random seed
-        if seed != 0:
-            params["random_seed"] = seed
 
         # Handle structured output
         if response_format:
@@ -373,7 +368,6 @@ class MistralProvider(BaseLLMProvider):
         max_completion_tokens: Optional[int] = None,
         temperature: float = 0.0,
         response_format=None,
-        seed: int = 0,
         tools: Optional[List[Callable]] = None,
         tool_choice: Optional[str] = None,
         store: bool = True,
@@ -411,7 +405,6 @@ class MistralProvider(BaseLLMProvider):
             tools=tools,
             tool_choice=tool_choice,
             response_format=response_format,
-            seed=seed,
             timeout=timeout,
         )
 

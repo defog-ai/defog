@@ -82,7 +82,6 @@ class TogetherProvider(BaseLLMProvider):
         max_completion_tokens: Optional[int] = None,
         temperature: float = 0.0,
         response_format=None,
-        seed: int = 0,
         tools: Optional[List[Callable]] = None,
         tool_choice: Optional[str] = None,
         store: bool = True,
@@ -98,7 +97,6 @@ class TogetherProvider(BaseLLMProvider):
             "model": model,
             "max_tokens": max_completion_tokens,
             "temperature": temperature,
-            "seed": seed,
         }, messages
 
     async def process_response(
@@ -133,7 +131,6 @@ class TogetherProvider(BaseLLMProvider):
         max_completion_tokens: Optional[int] = None,
         temperature: float = 0.0,
         response_format=None,
-        seed: int = 0,
         tools: Optional[List[Callable]] = None,
         tool_choice: Optional[str] = None,
         store: bool = True,
@@ -155,7 +152,6 @@ class TogetherProvider(BaseLLMProvider):
             model=model,
             max_completion_tokens=max_completion_tokens,
             temperature=temperature,
-            seed=seed,
         )
 
         try:

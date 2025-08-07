@@ -130,7 +130,6 @@ class GeminiProvider(BaseLLMProvider):
         max_completion_tokens: Optional[int] = None,
         temperature: float = 0.0,
         response_format: Optional[Any] = None,
-        seed: int = 0,
         tools: Optional[List[Callable]] = None,
         tool_choice: Optional[str] = None,
         store: bool = True,
@@ -503,7 +502,6 @@ class GeminiProvider(BaseLLMProvider):
         max_completion_tokens: Optional[int] = None,
         temperature: float = 0.0,
         response_format: Optional[Any] = None,
-        seed: int = 0,
         tools: Optional[List[Callable]] = None,
         tool_choice: Optional[str] = None,
         store: bool = True,
@@ -538,7 +536,6 @@ class GeminiProvider(BaseLLMProvider):
             max_completion_tokens=max_completion_tokens,
             temperature=temperature,
             response_format=response_format,
-            seed=seed,
             tools=tools,
             tool_choice=tool_choice,
         )
