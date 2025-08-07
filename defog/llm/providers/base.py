@@ -50,7 +50,6 @@ class BaseLLMProvider(ABC):
         max_completion_tokens: Optional[int] = None,
         temperature: float = 0.0,
         response_format=None,
-        seed: int = 0,
         tools: Optional[List[Callable]] = None,
         tool_choice: Optional[str] = None,
         store: bool = True,
@@ -90,7 +89,6 @@ class BaseLLMProvider(ABC):
         max_completion_tokens: Optional[int] = None,
         temperature: float = 0.0,
         response_format=None,
-        seed: int = 0,
         tools: Optional[List[Callable]] = None,
         tool_choice: Optional[str] = None,
         store: bool = True,
@@ -313,22 +311,47 @@ class BaseLLMProvider(ABC):
                 request_params.pop("parallel_tool_calls", None)
                 tool_dict = {}
 
-            # Add a note about removed tools to the last user message
-            if removed_tools and request_params.get("messages"):
-                # Find the last user message
-                for i in range(len(request_params["messages"]) - 1, -1, -1):
-                    if request_params["messages"][i].get("role") == "user":
-                        budget_msg = f"\n\nIMPORTANT: The following tools have exceeded their usage budget and are no longer available: {', '.join(removed_tools)}. Do not attempt to call these tools."
+            # Add a note about removed tools to the last user message/input
+            if removed_tools:
+                budget_msg = (
+                    "\n\nIMPORTANT: The following tools have exceeded their usage budget and are no longer available: "
+                    + ", ".join(removed_tools)
+                    + ". Do not attempt to call these tools."
+                )
 
-                        # Handle both string content and structured content
-                        if isinstance(request_params["messages"][i]["content"], str):
-                            request_params["messages"][i]["content"] += budget_msg
-                        elif isinstance(request_params["messages"][i]["content"], list):
-                            # Append as a new text block
-                            request_params["messages"][i]["content"].append(
-                                {"type": "text", "text": budget_msg}
-                            )
-                        break
+                if request_params.get("messages"):
+                    # Chat Completions style: messages list
+                    for i in range(len(request_params["messages"]) - 1, -1, -1):
+                        if request_params["messages"][i].get("role") == "user":
+                            if isinstance(
+                                request_params["messages"][i]["content"], str
+                            ):
+                                request_params["messages"][i]["content"] += budget_msg
+                            elif isinstance(
+                                request_params["messages"][i]["content"], list
+                            ):
+                                request_params["messages"][i]["content"].append(
+                                    {"type": "text", "text": budget_msg}
+                                )
+                            break
+                elif request_params.get("input"):
+                    # Responses style: input list with content parts
+                    for i in range(len(request_params["input"]) - 1, -1, -1):
+                        if request_params["input"][i].get("role") == "user":
+                            content = request_params["input"][i].get("content")
+                            if isinstance(content, list):
+                                content.append(
+                                    {"type": "input_text", "text": budget_msg}
+                                )
+                            elif isinstance(content, str):
+                                request_params["input"][i]["content"] = [
+                                    {"type": "input_text", "text": content + budget_msg}
+                                ]
+                            else:
+                                request_params["input"][i]["content"] = [
+                                    {"type": "input_text", "text": budget_msg}
+                                ]
+                            break
 
             return available_tools, tool_dict
 
