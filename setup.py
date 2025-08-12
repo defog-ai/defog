@@ -1,4 +1,11 @@
+import os
 from setuptools import find_packages, setup
+
+# Read version from __version__.py
+version_file = os.path.join(os.path.dirname(__file__), "defog", "__version__.py")
+version_dict = {}
+with open(version_file) as f:
+    exec(f.read(), version_dict)
 
 extras = {
     "postgres": ["psycopg2-binary"],
@@ -18,7 +25,7 @@ extras = {
 setup(
     name="defog",
     packages=find_packages(),
-    version="1.2.8",
+    version=version_dict["__version__"],
     description="Defog is a Python library that helps you generate data queries from natural language questions.",
     author="Full Stack Data Pte. Ltd.",
     license="MIT",

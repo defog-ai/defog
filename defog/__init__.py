@@ -1,4 +1,3 @@
-from importlib.metadata import version
 from defog import (
     generate_schema,
     async_generate_schema,
@@ -13,10 +12,7 @@ from typing import Optional, Union
 from defog.llm.llm_providers import LLMProvider
 import warnings
 
-try:
-    __version__ = version("defog")
-except Exception:
-    pass
+from defog.__version__ import __version__
 
 SUPPORTED_DB_TYPES = [
     "postgres",
@@ -310,4 +306,4 @@ for name in dir(async_health_methods):
         setattr(AsyncDefog, name, attr)
 
 # Export LLMProvider for external use
-__all__ = ["Defog", "AsyncDefog", "LLMProvider"]
+__all__ = ["Defog", "AsyncDefog", "LLMProvider", "__version__"]
