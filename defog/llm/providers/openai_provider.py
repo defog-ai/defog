@@ -409,7 +409,6 @@ class OpenAIProvider(BaseLLMProvider):
             consecutive_exceptions = 0
             iteration_count = 0
             while True:
-                print("TEST")
                 # Token usage for Responses API
                 usage = getattr(response, "usage", None)
                 if usage:
@@ -564,12 +563,6 @@ class OpenAIProvider(BaseLLMProvider):
                         tools, tool_dict = self.update_tools_with_budget(
                             tools, tool_handler, request_params, model
                         )
-
-                        # Heuristic: after several tool iterations, force finalization by disabling tools
-                        if tools:
-                            request_params.pop("tools", None)
-                            request_params.pop("tool_choice", None)
-                            request_params.pop("parallel_tool_calls", None)
                     except ProviderError:
                         # Re-raise provider errors from base class
                         raise
