@@ -1,6 +1,7 @@
 import os
 import pytest
 import logging
+import sys
 
 
 # Set up colored logging for test skips
@@ -32,7 +33,6 @@ skip_logger.addHandler(handler)
 
 def _should_log_skips() -> bool:
     """Check if we should log test skips based on pytest verbosity."""
-    import sys
 
     # Check for pytest verbosity flags
     verbose_flags = ["-v", "--verbose", "-s", "--capture=no"]

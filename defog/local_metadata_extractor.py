@@ -4,7 +4,8 @@ for use with local SQL generation.
 """
 
 from typing import Dict, List, Optional, Any
-
+from defog import Defog
+from defog import AsyncDefog
 
 def extract_metadata_from_db(
     db_type: str,
@@ -26,7 +27,6 @@ def extract_metadata_from_db(
     Returns:
         Dictionary mapping table names to column metadata
     """
-    from defog import Defog
 
     # Create instance with the provided credentials
     temp_defog = Defog(api_key=api_key, db_type=db_type, db_creds=db_creds)
@@ -72,7 +72,6 @@ async def extract_metadata_from_db_async(
     Returns:
         Dictionary mapping table names to column metadata
     """
-    from defog import AsyncDefog
 
     # Create async instance with the provided credentials
     temp_defog = AsyncDefog(api_key=api_key, db_type=db_type, db_creds=db_creds)
