@@ -25,16 +25,20 @@ MODEL_COSTS = {
         "cached_input_cost_per1k": 0.000025,
         "output_cost_per1k": 0.0004,
     },
-    "o1": {
-        "input_cost_per1k": 0.015,
-        "cached_input_cost_per1k": 0.0075,
-        "output_cost_per1k": 0.06,
+    "gpt-5": {
+        "input_cost_per1k": 0.00125,
+        "cached_input_cost_per1k": 0.000125,
+        "output_cost_per1k": 0.01,
     },
-    "o1-preview": {"input_cost_per1k": 0.015, "output_cost_per1k": 0.06},
-    "o1-mini": {
-        "input_cost_per1k": 0.003,
-        "cached_input_cost_per1k": 0.00055,
-        "output_cost_per1k": 0.012,
+    "gpt-5-mini": {
+        "input_cost_per1k": 0.00025,
+        "cached_input_cost_per1k": 0.000025,
+        "output_cost_per1k": 0.002,
+    },
+    "gpt-5-nano": {
+        "input_cost_per1k": 0.00005,
+        "cached_input_cost_per1k": 0.000005,
+        "output_cost_per1k": 0.0004,
     },
     "o3-mini": {
         "input_cost_per1k": 0.0011,
@@ -51,8 +55,6 @@ MODEL_COSTS = {
         "cached_input_cost_per1k": 0.000275,
         "output_cost_per1k": 0.0044,
     },
-    "gpt-4-turbo": {"input_cost_per1k": 0.01, "output_cost_per1k": 0.03},
-    "gpt-3.5-turbo": {"input_cost_per1k": 0.0005, "output_cost_per1k": 0.0015},
     "claude-3-5-sonnet": {"input_cost_per1k": 0.003, "output_cost_per1k": 0.015},
     "claude-sonnet-4": {
         "input_cost_per1k": 0.003,
@@ -68,12 +70,6 @@ MODEL_COSTS = {
     "claude-3-opus": {"input_cost_per1k": 0.015, "output_cost_per1k": 0.075},
     "claude-3-sonnet": {"input_cost_per1k": 0.003, "output_cost_per1k": 0.015},
     "claude-3-haiku": {"input_cost_per1k": 0.00025, "output_cost_per1k": 0.00125},
-    "gemini-1.5-pro": {"input_cost_per1k": 0.00125, "output_cost_per1k": 0.005},
-    "gemini-1.5-flash": {"input_cost_per1k": 0.000075, "output_cost_per1k": 0.0003},
-    "gemini-1.5-flash-8b": {
-        "input_cost_per1k": 0.0000375,
-        "output_cost_per1k": 0.00015,
-    },
     "gemini-2.0-flash": {
         "input_cost_per1k": 0.00010,
         "output_cost_per1k": 0.0004,
