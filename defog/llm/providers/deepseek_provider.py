@@ -39,14 +39,6 @@ class DeepSeekProvider(BaseLLMProvider):
     def get_provider_name(self) -> str:
         return "deepseek"
 
-    def supports_tools(self, model: str) -> bool:
-        # Only deepseek-chat supports tools, deepseek-reasoner does not
-        return model == "deepseek-chat"
-
-    def supports_response_format(self, model: str) -> bool:
-        # Both models support JSON response format
-        return True
-
     def _get_media_type(self, img_data: str) -> str:
         """Detect media type from base64 image data."""
         try:
@@ -141,12 +133,6 @@ class DeepSeekProvider(BaseLLMProvider):
 
         # Tools are supported for deepseek-chat
         if tools and len(tools) > 0:
-            if not self.supports_tools(model):
-                raise ProviderError(
-                    self.get_provider_name(),
-                    f"Model {model} does not support tools/function calling",
-                )
-
             function_specs = get_function_specs(tools, model)
             request_params["tools"] = function_specs
             if tool_choice:
@@ -162,7 +148,7 @@ class DeepSeekProvider(BaseLLMProvider):
             )
 
         # Handle structured output for DeepSeek models
-        if response_format and self.supports_response_format(model):
+        if response_format:
             # Check if response_format is a Pydantic model
             if isinstance(response_format, type) and hasattr(
                 response_format, "model_json_schema"

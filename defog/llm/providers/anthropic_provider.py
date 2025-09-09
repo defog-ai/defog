@@ -33,12 +33,6 @@ class AnthropicProvider(BaseLLMProvider):
     def get_provider_name(self) -> str:
         return "anthropic"
 
-    def supports_tools(self, model: str) -> bool:
-        return True  # All current Claude models support tools
-
-    def supports_response_format(self, model: str) -> bool:
-        return True  # All current Claude models support structured output via system prompts
-
     def convert_content_to_anthropic(self, content: Any) -> Any:
         """Convert message content to Anthropic format."""
         return convert_to_anthropic_format(content)

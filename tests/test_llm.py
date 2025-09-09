@@ -118,15 +118,6 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(provider, DeepSeekProvider)
         self.assertEqual(provider.get_provider_name(), "deepseek")
 
-        # Test model capabilities
-        # deepseek-chat supports tools, deepseek-reasoner does not
-        self.assertTrue(provider.supports_tools("deepseek-chat"))
-        self.assertFalse(provider.supports_tools("deepseek-reasoner"))
-
-        # Both models support response_format
-        self.assertTrue(provider.supports_response_format("deepseek-chat"))
-        self.assertTrue(provider.supports_response_format("deepseek-reasoner"))
-
     def test_mistral_provider_capabilities(self):
         """Test Mistral provider instantiation and capabilities"""
         from defog.llm.utils import get_provider_instance
@@ -138,16 +129,6 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
         provider = get_provider_instance("mistral", config)
         self.assertIsInstance(provider, MistralProvider)
         self.assertEqual(provider.get_provider_name(), "mistral")
-
-        # Test model capabilities - all Mistral models support tools and structured output
-        mistral_models = [
-            "mistral-small-latest",
-            "mistral-medium-latest",
-            "mistral-large-latest",
-        ]
-        for model in mistral_models:
-            self.assertTrue(provider.supports_tools(model))
-            self.assertTrue(provider.supports_response_format(model))
 
     def test_deepseek_structured_output_build_params(self):
         """Test DeepSeek provider's structured output parameter building for both models"""

@@ -25,14 +25,6 @@ class TogetherProvider(BaseLLMProvider):
     def get_provider_name(self) -> str:
         return "together"
 
-    def supports_tools(self, model: str) -> bool:
-        return (
-            False  # Currently Together models don't support tools in our implementation
-        )
-
-    def supports_response_format(self, model: str) -> bool:
-        return False  # Currently Together models don't support structured output in our implementation
-
     def create_image_message(
         self,
         image_base64: Union[str, List[str]],

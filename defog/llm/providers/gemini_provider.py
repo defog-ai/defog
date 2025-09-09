@@ -113,12 +113,6 @@ class GeminiProvider(BaseLLMProvider):
 
         return Content(role="user", parts=parts)
 
-    def supports_tools(self, model: str) -> bool:
-        return True  # All current Gemini models support tools
-
-    def supports_response_format(self, model: str) -> bool:
-        return True  # All current Gemini models support structured output
-
     def convert_content_to_gemini_parts(self, content: Any, genai_types) -> List[Any]:
         """Convert message content to Gemini Part objects."""
         return convert_to_gemini_parts(content, genai_types)
