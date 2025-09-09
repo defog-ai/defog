@@ -276,6 +276,7 @@ class OpenAIProvider(BaseLLMProvider):
         prediction: Optional[Dict[str, str]] = None,
         reasoning_effort: Optional[str] = None,
         parallel_tool_calls: bool = False,
+        previous_response_id: Optional[str] = None,
         **kwargs,
     ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
         """
@@ -298,6 +299,10 @@ class OpenAIProvider(BaseLLMProvider):
         }
         if instructions:
             request_params["instructions"] = instructions
+
+        # If a previous response id is provided, add it for continuation
+        if previous_response_id:
+            request_params["previous_response_id"] = previous_response_id
 
         # Tools are only supported for certain models
         if tools and len(tools) > 0:
@@ -578,6 +583,8 @@ class OpenAIProvider(BaseLLMProvider):
                         _parse_params.pop("reasoning_effort", None)
                         # Some SDKs may not accept nested reasoning in parse; remove if present
                         _parse_params.pop("reasoning", None)
+                        # previous_response_id is only for create, remove for parse calls
+                        _parse_params.pop("previous_response_id", None)
                         response = await client.responses.parse(**_parse_params)
 
                         # Extract parsed content
@@ -666,6 +673,7 @@ class OpenAIProvider(BaseLLMProvider):
         image_result_keys: Optional[List[str]] = None,
         tool_budget: Optional[Dict[str, int]] = None,
         parallel_tool_calls: bool = False,
+        previous_response_id: Optional[str] = None,
         **kwargs,
     ) -> LLMResponse:
         """Execute a chat completion with OpenAI."""
@@ -699,6 +707,7 @@ class OpenAIProvider(BaseLLMProvider):
             metadata=metadata,
             timeout=timeout,
             parallel_tool_calls=parallel_tool_calls,
+            previous_response_id=previous_response_id,
         )
 
         # Build a tool dict if needed
@@ -712,6 +721,8 @@ class OpenAIProvider(BaseLLMProvider):
                 _parse_params = {**request_params, "text_format": response_format}
                 _parse_params.pop("reasoning_effort", None)
                 _parse_params.pop("reasoning", None)
+                # previous_response_id is only for create, remove for parse calls
+                _parse_params.pop("previous_response_id", None)
                 response = await client_openai.responses.parse(**_parse_params)
             else:
                 response = await client_openai.responses.create(**request_params)
@@ -754,4 +765,5 @@ class OpenAIProvider(BaseLLMProvider):
             output_tokens_details=completion_token_details,
             cost_in_cents=cost,
             tool_outputs=tool_outputs,
+            response_id=getattr(response, "id", None),
         )
