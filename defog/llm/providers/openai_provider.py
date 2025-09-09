@@ -370,6 +370,11 @@ class OpenAIProvider(BaseLLMProvider):
         if verbosity is not None:
             request_params["verbosity"] = verbosity
 
+        # Optional limit for automatic tool calling loops
+        max_tool_calls = kwargs.get("max_tool_calls")
+        if max_tool_calls is not None:
+            request_params["max_tool_calls"] = max_tool_calls
+
         # Special case: prediction only applies to certain models; omit for Responses by default
 
         return request_params, messages
@@ -387,264 +392,134 @@ class OpenAIProvider(BaseLLMProvider):
         post_response_hook: Optional[Callable] = None,
         tool_handler: Optional[ToolHandler] = None,
         parallel_tool_calls: bool = False,
+        max_tool_calls: Optional[int] = None,
         **kwargs,
     ) -> Tuple[
         Any, List[Dict[str, Any]], int, int, Optional[int], Optional[Dict[str, int]]
     ]:
-        """
-        Extract content (including any tool calls) and usage info from OpenAI response.
-        Handles chaining of tool calls.
-        """
-        # Use provided tool_handler or fall back to self.tool_handler
+        """Process a response and handle any tool calls using the Responses API."""
+
         if tool_handler is None:
             tool_handler = self.tool_handler
 
-        # Responses API: basic validation
-        if not hasattr(response, "output") and not getattr(
-            response, "output_text", None
-        ):
-            raise ProviderError(self.get_provider_name(), "No response from OpenAI")
-
-        # first, we append the initial response output to the input
-        request_params["input"] += response.output
-
-        # If we have tools, handle dynamic chaining:
-        tool_outputs = []
+        tool_outputs: List[Dict[str, Any]] = []
         total_input_tokens = 0
         total_cached_input_tokens = 0
         total_output_tokens = 0
-        if tools and len(tools) > 0:
-            consecutive_exceptions = 0
-            iteration_count = 0
-            while True:
-                # Token usage for Responses API
-                usage = getattr(response, "usage", None)
-                if usage:
-                    total_input_tokens += getattr(usage, "input_tokens", 0) or 0
-                    total_output_tokens += getattr(usage, "output_tokens", 0) or 0
 
-                # Post-response hook
-                await self.call_post_response_hook(
-                    post_response_hook=post_response_hook,
-                    response=response,
-                    messages=request_params.get("input", []),
-                )
+        current_response = response
+        current_params = request_params
 
-                # Detect tool/function calls within Responses output
-                function_calls = []
-                for item in getattr(response, "output", []) or []:
-                    # SDK types may expose .type and .name/.arguments
-                    itype = getattr(item, "type", None)
-                    if itype and "function" in itype:
-                        # function_call item
-                        fname = getattr(item, "name", None) or getattr(
-                            getattr(item, "function", None), "name", None
-                        )
-                        fargs = getattr(item, "arguments", None) or getattr(
-                            getattr(item, "function", None), "arguments", None
-                        )
-                        call_id = getattr(item, "call_id", None)
-                        function_calls.append(
-                            {
-                                "call_id": call_id,
-                                "function": {"name": fname, "arguments": fargs},
-                            }
-                        )
+        while True:
+            usage = getattr(current_response, "usage", None)
+            if usage:
+                total_input_tokens += getattr(usage, "input_tokens", 0) or 0
+                total_output_tokens += getattr(usage, "output_tokens", 0) or 0
+                total_cached_input_tokens += getattr(
+                    getattr(usage, "prompt_tokens_details", None), "cached_tokens", 0
+                ) or 0
 
-                if function_calls:
-                    try:
-                        iteration_count += 1
-                        # Prepare tool calls for batch execution
-                        tool_calls_batch = []
-                        for tool_call in function_calls:
-                            func_name = tool_call["function"]["name"]
-                            try:
-                                args = (
-                                    json.loads(tool_call["function"]["arguments"])
-                                    if isinstance(
-                                        tool_call["function"].get("arguments"), str
-                                    )
-                                    else tool_call["function"].get("arguments", {})
-                                )
-                            except json.JSONDecodeError:
-                                args = {}
-
-                            tool_calls_batch.append(
-                                {
-                                    "id": tool_call.get("id"),
-                                    "function": {"name": func_name, "arguments": args},
-                                }
-                            )
-
-                        # Use base class method for tool execution with retry
-                        (
-                            results,
-                            consecutive_exceptions,
-                        ) = await self.execute_tool_calls_with_retry(
-                            tool_calls_batch,
-                            tool_dict,
-                            request_params["input"],
-                            post_tool_function,
-                            consecutive_exceptions,
-                            tool_handler,
-                            parallel_tool_calls=parallel_tool_calls,
-                        )
-
-                        # Do not append an assistant tool_calls placeholder in Responses input
-
-                        # Store tool outputs for tracking
-                        for tool_call, result in zip(function_calls, results):
-                            func_name = tool_call["function"]["name"]
-                            args = tool_call["function"].get("arguments", {})
-                            if isinstance(args, str):
-                                try:
-                                    args = json.loads(args)
-                                except json.JSONDecodeError:
-                                    args = {}
-
-                            tool_outputs.append(
-                                {
-                                    "tool_call_id": tool_call.get("call_id"),
-                                    "name": func_name,
-                                    "args": args,
-                                    "result": result,
-                                    "text": None,
-                                }
-                            )
-
-                            # Add tool result as a user message for Responses API
-                            request_params["input"].append(
-                                {
-                                    "type": "function_call_output",
-                                    "call_id": tool_call.get("call_id"),
-                                    "output": json.dumps(result),
-                                }
-                            )
-
-                        # Update available tools based on budget
-                        tools, tool_dict = self.update_tools_with_budget(
-                            tools, tool_handler, request_params, model
-                        )
-                    except ProviderError:
-                        # Re-raise provider errors from base class
-                        raise
-                    except Exception as e:
-                        # For other exceptions, use the same retry logic
-                        consecutive_exceptions += 1
-                        if (
-                            consecutive_exceptions
-                            >= tool_handler.max_consecutive_errors
-                        ):
-                            raise ProviderError(
-                                self.get_provider_name(),
-                                f"Consecutive errors during tool chaining: {e}",
-                                e,
-                            )
-                        print(
-                            f"{e}. Retries left: {tool_handler.max_consecutive_errors - consecutive_exceptions}"
-                        )
-                        request_params["input"].append(
-                            {
-                                "role": "assistant",
-                                "content": [{"type": "output_text", "text": str(e)}],
-                            }
-                        )
-
-                    # Make next call
-                    response = await client.responses.create(**request_params)
-                    request_params["input"] += response.output
-
-                else:
-                    # No more tool calls, prepare final response
-                    if response_format:
-                        # Need to make one more call without tools but with response_format
-                        # Add last assistant message content if any (from output_text)
-                        last_text = self._coalesce_output_text(response)
-                        if last_text:
-                            request_params["input"].append(
-                                {
-                                    "role": "assistant",
-                                    "content": [
-                                        {"type": "output_text", "text": last_text}
-                                    ],
-                                }
-                            )
-
-                        # Remove tools-related parameters
-                        request_params.pop("tools", None)
-                        request_params.pop("tool_choice", None)
-                        request_params.pop("parallel_tool_calls", None)
-
-                        # Add response format and make final call (exclude SDK-unsupported fields if any)
-                        _parse_params = {
-                            **request_params,
-                            "text_format": response_format,
-                        }
-                        _parse_params.pop("reasoning_effort", None)
-                        # Some SDKs may not accept nested reasoning in parse; remove if present
-                        _parse_params.pop("reasoning", None)
-                        # previous_response_id is only for create, remove for parse calls
-                        _parse_params.pop("previous_response_id", None)
-                        response = await client.responses.parse(**_parse_params)
-
-                        # Extract parsed content
-                        try:
-                            parsed_content = getattr(response, "output_parsed", None)
-                            if parsed_content is not None:
-                                content = parsed_content
-                            else:
-                                content = self.parse_structured_response(
-                                    getattr(response, "output_text", "") or "",
-                                    response_format,
-                                )
-                        except Exception:
-                            content = self.parse_structured_response(
-                                getattr(response, "output_text", "") or "",
-                                response_format,
-                            )
-                    else:
-                        # No response format needed, just use the content
-                        content = self._coalesce_output_text(response)
-                    break
-        else:
             await self.call_post_response_hook(
                 post_response_hook=post_response_hook,
-                response=response,
-                messages=request_params.get("input", []),
+                response=current_response,
+                messages=current_params.get("input", []),
             )
 
-            # No tools provided
-            if response_format:
-                try:
-                    parsed_content = getattr(response, "output_parsed", None)
-                    if parsed_content is not None:
-                        content = parsed_content
-                    else:
-                        content = self.parse_structured_response(
-                            getattr(response, "output_text", "") or "",
-                            response_format,
-                        )
-                except Exception:
+            function_calls = []
+            for item in getattr(current_response, "output", []) or []:
+                itype = getattr(item, "type", None)
+                if itype and "function" in itype:
+                    fname = getattr(item, "name", None) or getattr(
+                        getattr(item, "function", None), "name", None
+                    )
+                    fargs = getattr(item, "arguments", None) or getattr(
+                        getattr(item, "function", None), "arguments", None
+                    )
+                    function_calls.append(
+                        {
+                            "call_id": getattr(item, "call_id", None),
+                            "function": {"name": fname, "arguments": fargs},
+                        }
+                    )
+
+            if not function_calls or not tools:
+                break
+
+            tool_calls_batch = []
+            for fc in function_calls:
+                func_name = fc["function"]["name"]
+                args = fc["function"].get("arguments", {})
+                if isinstance(args, str):
+                    try:
+                        args = json.loads(args)
+                    except json.JSONDecodeError:
+                        args = {}
+                tool_calls_batch.append(
+                    {"function": {"name": func_name, "arguments": args}}
+                )
+
+            results = await tool_handler.execute_tool_calls_batch(
+                tool_calls_batch,
+                tool_dict,
+                parallel_tool_calls=parallel_tool_calls,
+                post_tool_function=post_tool_function,
+            )
+
+            for fc, result in zip(function_calls, results):
+                args = fc["function"].get("arguments", {})
+                if isinstance(args, str):
+                    try:
+                        args = json.loads(args)
+                    except json.JSONDecodeError:
+                        args = {}
+                tool_outputs.append(
+                    {
+                        "tool_call_id": fc.get("call_id"),
+                        "name": fc["function"]["name"],
+                        "args": args,
+                        "result": result,
+                        "text": None,
+                    }
+                )
+
+            next_input = [
+                {
+                    "type": "function_call_output",
+                    "call_id": fc.get("call_id"),
+                    "output": json.dumps(res),
+                }
+                for fc, res in zip(function_calls, results)
+            ]
+
+            current_params = {
+                "model": model,
+                "input": next_input,
+                "previous_response_id": getattr(current_response, "id", None),
+            }
+            if max_tool_calls is not None:
+                current_params["max_tool_calls"] = max_tool_calls
+
+            current_response = await client.responses.create(**current_params)
+
+        if response_format:
+            try:
+                parsed_content = getattr(current_response, "output_parsed", None)
+                if parsed_content is not None:
+                    content = parsed_content
+                else:
                     content = self.parse_structured_response(
-                        getattr(response, "output_text", "") or "",
+                        getattr(current_response, "output_text", "") or "",
                         response_format,
                     )
-            else:
-                content = self._coalesce_output_text(response)
+            except Exception:
+                content = self.parse_structured_response(
+                    getattr(current_response, "output_text", "") or "",
+                    response_format,
+                )
+        else:
+            content = self._coalesce_output_text(current_response)
 
-        # Final token calculation for Responses API
-        usage = getattr(response, "usage", None)
-        input_tokens = getattr(usage, "input_tokens", 0) if usage else 0
-        output_tokens = getattr(usage, "output_tokens", 0) if usage else 0
-        cached_tokens = (
-            getattr(getattr(usage, "prompt_tokens_details", None), "cached_tokens", 0)
-            if usage
-            else 0
-        )
         output_tokens_details = None
-        total_input_tokens += input_tokens
-        total_cached_input_tokens += cached_tokens
-        total_output_tokens += output_tokens
         return (
             content,
             tool_outputs,
@@ -693,6 +568,7 @@ class OpenAIProvider(BaseLLMProvider):
         # Filter tools based on budget before building params
         tools = self.filter_tools_by_budget(tools, tool_handler)
 
+        max_tool_calls = kwargs.get("max_tool_calls")
         request_params, messages = self.build_params(
             messages=messages,
             model=model,
@@ -708,6 +584,7 @@ class OpenAIProvider(BaseLLMProvider):
             timeout=timeout,
             parallel_tool_calls=parallel_tool_calls,
             previous_response_id=previous_response_id,
+            max_tool_calls=max_tool_calls,
         )
 
         # Build a tool dict if needed
@@ -746,6 +623,7 @@ class OpenAIProvider(BaseLLMProvider):
                 post_response_hook=post_response_hook,
                 tool_handler=tool_handler,
                 parallel_tool_calls=parallel_tool_calls,
+                max_tool_calls=max_tool_calls,
             )
         except Exception as e:
             raise ProviderError(self.get_provider_name(), f"API call failed: {e}", e)
