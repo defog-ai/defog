@@ -106,16 +106,6 @@ class BaseLLMProvider(ABC):
         pass
 
     @abstractmethod
-    def supports_tools(self, model: str) -> bool:
-        """Check if the model supports tool calling."""
-        pass
-
-    @abstractmethod
-    def supports_response_format(self, model: str) -> bool:
-        """Check if the model supports structured response formats."""
-        pass
-
-    @abstractmethod
     def create_image_message(
         self,
         image_base64: Union[str, List[str]],

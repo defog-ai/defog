@@ -29,14 +29,6 @@ class MistralProvider(BaseLLMProvider):
     def get_provider_name(self) -> str:
         return "mistral"
 
-    def supports_tools(self, model: str) -> bool:
-        # Most Mistral models support function calling
-        return True
-
-    def supports_response_format(self, model: str) -> bool:
-        # Mistral supports structured outputs via response_format
-        return True
-
     def _get_media_type(self, img_data: str) -> str:
         """Detect media type from base64 image data."""
         try:
