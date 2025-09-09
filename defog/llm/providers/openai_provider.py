@@ -41,9 +41,13 @@ class OpenAIProvider(BaseLLMProvider):
     def get_provider_name(self) -> str:
         return "openai"
 
-    def convert_content_to_openai(self, content: Any) -> Any:
-        """Convert message content to OpenAI format."""
-        return convert_to_openai_format(content)
+    def create_image_message(
+        self,
+        image_base64: Union[str, List[str]],
+        description: str = "Tool generated image",
+        image_detail: str = "low",
+    ) -> Dict[str, Any]:
+        return convert_to_openai_format(image_base64)
 
     def preprocess_messages(
         self, messages: List[Dict[str, Any]], model: str
@@ -51,11 +55,9 @@ class OpenAIProvider(BaseLLMProvider):
         """Preprocess messages for OpenAI-specific requirements."""
         messages = deepcopy(messages)
 
-        # Convert multimodal content
+        # Ensure that images are in OpenAI format
         for msg in messages:
-            msg["content"] = self.convert_content_to_openai(msg["content"])
-
-            # Keep roles as-is; we'll map system/developer into `instructions` for Responses API
+            msg["content"] = convert_to_openai_format(msg["content"])
 
         return messages
 
@@ -159,108 +161,6 @@ class OpenAIProvider(BaseLLMProvider):
         )
         return instructions if instructions else None, input_items
 
-    def _coalesce_output_text(self, response: Any) -> str:
-        """Best-effort extraction of assistant text from a Responses API response."""
-        # Prefer SDK-provided aggregate text if present
-        text = getattr(response, "output_text", None)
-        if isinstance(text, str) and text.strip():
-            return text
-
-        # Fall back to walking output items and collecting text parts
-        parts: List[str] = []
-        for item in getattr(response, "output", []) or []:
-            content = getattr(item, "content", None)
-            if not content:
-                continue
-            for block in content:
-                # SDK objects may have a .text attribute; dicts will have ['text']
-                if hasattr(block, "text") and isinstance(getattr(block, "text"), str):
-                    parts.append(getattr(block, "text"))
-                elif isinstance(block, dict) and isinstance(block.get("text"), str):
-                    parts.append(block.get("text"))
-        return "".join(parts)
-
-    def _get_media_type(self, img_data: str) -> str:
-        """Detect media type from base64 image data."""
-        try:
-            decoded = base64.b64decode(img_data[:100])
-            if decoded.startswith(b"\xff\xd8\xff"):
-                return "image/jpeg"
-            elif decoded.startswith(b"GIF8"):
-                return "image/gif"
-            elif decoded.startswith(b"RIFF"):
-                return "image/webp"
-            else:
-                return "image/png"  # Default
-        except Exception:
-            return "image/png"
-
-    def create_image_message(
-        self,
-        image_base64: Union[str, List[str]],
-        description: str = "Tool generated image",
-        image_detail: str = "low",
-    ) -> Dict[str, Any]:
-        """
-        Create a message with image content in OpenAI's format with validation.
-
-        Args:
-            image_base64: Base64-encoded image data - can be single string or list of strings
-            description: Description of the image(s)
-            image_detail: Level of detail for image analysis - "low" or "high" (default: "low")
-
-        Returns:
-            Message dict in OpenAI's format
-
-        Raises:
-            ValueError: If no valid images are provided or validation fails
-        """
-        from ..utils_image_support import (
-            validate_and_process_image_data,
-            safe_extract_media_type_and_data,
-        )
-
-        # Validate image_detail parameter
-        if image_detail not in ["low", "high"]:
-            raise ValueError(
-                f"Invalid image_detail value: {image_detail}. Must be 'low' or 'high'"
-            )
-
-        # Validate and process image data
-        valid_images, errors = validate_and_process_image_data(image_base64)
-
-        if not valid_images:
-            error_summary = "; ".join(errors) if errors else "No valid images provided"
-            raise ValueError(f"Cannot create image message: {error_summary}")
-
-        if errors:
-            # Log warnings for any invalid images but continue with valid ones
-            for error in errors:
-                logger.warning(f"Skipping invalid image: {error}")
-
-        content = [{"type": "text", "text": description}]
-
-        # Handle validated images
-        for img_data in valid_images:
-            media_type, clean_data = safe_extract_media_type_and_data(img_data)
-            content.append(
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:{media_type};base64,{clean_data}",
-                        "detail": image_detail,
-                    },
-                }
-            )
-
-        return {"role": "user", "content": content}
-
-    def supports_tools(self, model: str) -> bool:
-        return True
-
-    def supports_response_format(self, model: str) -> bool:
-        return True
-
     def build_params(
         self,
         messages: List[Dict[str, Any]],
@@ -293,6 +193,7 @@ class OpenAIProvider(BaseLLMProvider):
             "model": model,
             "input": input_items if input_items else (""),
             "max_output_tokens": max_completion_tokens,
+            "max_tool_calls": kwargs.get("max_tool_calls"),
             "store": store,
             "metadata": metadata,
             "timeout": timeout,
@@ -304,8 +205,7 @@ class OpenAIProvider(BaseLLMProvider):
         if previous_response_id:
             request_params["previous_response_id"] = previous_response_id
 
-        # Tools are only supported for certain models
-        if tools and len(tools) > 0:
+        if tools:
             function_specs = get_function_specs(tools, model)
             # Responses API expects function tools with a top-level name field
             flat_specs = []
@@ -327,6 +227,7 @@ class OpenAIProvider(BaseLLMProvider):
                 else:
                     flat_specs.append(spec)
             request_params["tools"] = flat_specs
+
             if tool_choice:
                 tool_names_list = [func.__name__ for func in tools]
                 tool_choice = convert_tool_choice(tool_choice, tool_names_list, model)
@@ -365,12 +266,10 @@ class OpenAIProvider(BaseLLMProvider):
             # Responses API expects reasoning.effort, not reasoning_effort
             request_params["reasoning"] = {"effort": reasoning_effort}
 
-        # Verbosity (Responses-only)
+        # Verbosity
         verbosity = kwargs.get("verbosity")
         if verbosity is not None:
             request_params["verbosity"] = verbosity
-
-        # Special case: prediction only applies to certain models; omit for Responses by default
 
         return request_params, messages
 
@@ -389,7 +288,13 @@ class OpenAIProvider(BaseLLMProvider):
         parallel_tool_calls: bool = False,
         **kwargs,
     ) -> Tuple[
-        Any, List[Dict[str, Any]], int, int, Optional[int], Optional[Dict[str, int]]
+        Any,
+        List[Dict[str, Any]],
+        int,
+        int,
+        Optional[int],
+        Optional[Dict[str, int]],
+        str,
     ]:
         """
         Extract content (including any tool calls) and usage info from OpenAI response.
@@ -405,23 +310,24 @@ class OpenAIProvider(BaseLLMProvider):
         ):
             raise ProviderError(self.get_provider_name(), "No response from OpenAI")
 
-        # first, we append the initial response output to the input
-        request_params["input"] += response.output
-
         # If we have tools, handle dynamic chaining:
         tool_outputs = []
         total_input_tokens = 0
         total_cached_input_tokens = 0
         total_output_tokens = 0
-        if tools and len(tools) > 0:
+        if tools:
+            # this is important, as tools might go to 0 if we run out of tool budget
             consecutive_exceptions = 0
             iteration_count = 0
             while True:
                 # Token usage for Responses API
-                usage = getattr(response, "usage", None)
+                usage = response.usage
                 if usage:
-                    total_input_tokens += getattr(usage, "input_tokens", 0) or 0
-                    total_output_tokens += getattr(usage, "output_tokens", 0) or 0
+                    total_input_tokens += usage.input_tokens or 0
+                    total_cached_input_tokens += (
+                        usage.input_tokens_details.cached_tokens or 0
+                    )
+                    total_output_tokens += usage.output_tokens or 0
 
                 # Post-response hook
                 await self.call_post_response_hook(
@@ -432,18 +338,16 @@ class OpenAIProvider(BaseLLMProvider):
 
                 # Detect tool/function calls within Responses output
                 function_calls = []
-                for item in getattr(response, "output", []) or []:
+                for item in response.output or []:
                     # SDK types may expose .type and .name/.arguments
                     itype = getattr(item, "type", None)
                     if itype and "function" in itype:
                         # function_call item
-                        fname = getattr(item, "name", None) or getattr(
-                            getattr(item, "function", None), "name", None
+                        fname = item.name or getattr(item.function, "name", None)
+                        fargs = item.arguments or getattr(
+                            item.function, "arguments", None
                         )
-                        fargs = getattr(item, "arguments", None) or getattr(
-                            getattr(item, "function", None), "arguments", None
-                        )
-                        call_id = getattr(item, "call_id", None)
+                        call_id = item.call_id
                         function_calls.append(
                             {
                                 "call_id": call_id,
@@ -452,6 +356,7 @@ class OpenAIProvider(BaseLLMProvider):
                         )
 
                 if function_calls:
+                    # if there is any function call left to make, we will let the model decide what do do next
                     try:
                         iteration_count += 1
                         # Prepare tool calls for batch execution
@@ -471,7 +376,7 @@ class OpenAIProvider(BaseLLMProvider):
 
                             tool_calls_batch.append(
                                 {
-                                    "id": tool_call.get("id"),
+                                    "id": tool_call["call_id"],
                                     "function": {"name": func_name, "arguments": args},
                                 }
                             )
@@ -504,7 +409,7 @@ class OpenAIProvider(BaseLLMProvider):
 
                             tool_outputs.append(
                                 {
-                                    "tool_call_id": tool_call.get("call_id"),
+                                    "tool_call_id": tool_call["call_id"],
                                     "name": func_name,
                                     "args": args,
                                     "result": result,
@@ -516,7 +421,7 @@ class OpenAIProvider(BaseLLMProvider):
                             request_params["input"].append(
                                 {
                                     "type": "function_call_output",
-                                    "call_id": tool_call.get("call_id"),
+                                    "call_id": tool_call["call_id"],
                                     "output": json.dumps(result),
                                 }
                             )
@@ -552,60 +457,18 @@ class OpenAIProvider(BaseLLMProvider):
 
                     # Make next call
                     response = await client.responses.create(**request_params)
-                    request_params["input"] += response.output
-
+                    request_params["input"] = []
+                    request_params["previous_response_id"] = response.id
                 else:
-                    # No more tool calls, prepare final response
-                    if response_format:
-                        # Need to make one more call without tools but with response_format
-                        # Add last assistant message content if any (from output_text)
-                        last_text = self._coalesce_output_text(response)
-                        if last_text:
-                            request_params["input"].append(
-                                {
-                                    "role": "assistant",
-                                    "content": [
-                                        {"type": "output_text", "text": last_text}
-                                    ],
-                                }
-                            )
-
-                        # Remove tools-related parameters
-                        request_params.pop("tools", None)
-                        request_params.pop("tool_choice", None)
-                        request_params.pop("parallel_tool_calls", None)
-
-                        # Add response format and make final call (exclude SDK-unsupported fields if any)
-                        _parse_params = {
-                            **request_params,
-                            "text_format": response_format,
-                        }
-                        _parse_params.pop("reasoning_effort", None)
-                        # Some SDKs may not accept nested reasoning in parse; remove if present
-                        _parse_params.pop("reasoning", None)
-                        # previous_response_id is only for create, remove for parse calls
-                        _parse_params.pop("previous_response_id", None)
-                        response = await client.responses.parse(**_parse_params)
-
-                        # Extract parsed content
-                        try:
-                            parsed_content = getattr(response, "output_parsed", None)
-                            if parsed_content is not None:
-                                content = parsed_content
-                            else:
-                                content = self.parse_structured_response(
-                                    getattr(response, "output_text", "") or "",
-                                    response_format,
-                                )
-                        except Exception:
-                            content = self.parse_structured_response(
-                                getattr(response, "output_text", "") or "",
-                                response_format,
-                            )
-                    else:
-                        # No response format needed, just use the content
-                        content = self._coalesce_output_text(response)
                     break
+            # After processing tool calls (or if none were made), extract final content
+            if response_format:
+                content = self.parse_structured_response(
+                    getattr(response, "output_text", "") or "",
+                    response_format,
+                )
+            else:
+                content = getattr(response, "output_text", "") or ""
         else:
             await self.call_post_response_hook(
                 post_response_hook=post_response_hook,
@@ -613,33 +476,21 @@ class OpenAIProvider(BaseLLMProvider):
                 messages=request_params.get("input", []),
             )
 
-            # No tools provided
+            # No tools provided or we have run out of tool budget
             if response_format:
-                try:
-                    parsed_content = getattr(response, "output_parsed", None)
-                    if parsed_content is not None:
-                        content = parsed_content
-                    else:
-                        content = self.parse_structured_response(
-                            getattr(response, "output_text", "") or "",
-                            response_format,
-                        )
-                except Exception:
-                    content = self.parse_structured_response(
-                        getattr(response, "output_text", "") or "",
-                        response_format,
-                    )
+                content = self.parse_structured_response(
+                    response.output_text or "",
+                    response_format,
+                )
             else:
-                content = self._coalesce_output_text(response)
+                content = response.output_text or ""
 
         # Final token calculation for Responses API
-        usage = getattr(response, "usage", None)
-        input_tokens = getattr(usage, "input_tokens", 0) if usage else 0
-        output_tokens = getattr(usage, "output_tokens", 0) if usage else 0
+        usage = response.usage
+        input_tokens = usage.input_tokens if usage else 0
+        output_tokens = usage.output_tokens if usage else 0
         cached_tokens = (
-            getattr(getattr(usage, "prompt_tokens_details", None), "cached_tokens", 0)
-            if usage
-            else 0
+            usage.input_tokens_details.cached_tokens if usage else 0 if usage else 0
         )
         output_tokens_details = None
         total_input_tokens += input_tokens
@@ -652,6 +503,7 @@ class OpenAIProvider(BaseLLMProvider):
             total_cached_input_tokens,
             total_output_tokens,
             output_tokens_details,
+            response.id,
         )
 
     async def execute_chat(
@@ -717,15 +569,23 @@ class OpenAIProvider(BaseLLMProvider):
 
         try:
             # Use Responses API
-            if response_format and not (tools and len(tools) > 0):
-                _parse_params = {**request_params, "text_format": response_format}
-                _parse_params.pop("reasoning_effort", None)
-                _parse_params.pop("reasoning", None)
-                # previous_response_id is only for create, remove for parse calls
-                _parse_params.pop("previous_response_id", None)
-                response = await client_openai.responses.parse(**_parse_params)
+            if response_format and not tools:
+                response = await client_openai.responses.create(
+                    **request_params,
+                    text={
+                        "format": {
+                            "type": "json_schema",
+                            "name": response_format.schema()["title"],
+                            "json_schema": response_format.model_json_schema()
+                            | {"additionalProperties": False},
+                        }
+                    },
+                )
             else:
                 response = await client_openai.responses.create(**request_params)
+
+            request_params["previous_response_id"] = response.id
+            request_params["input"] = []
 
             (
                 content,
@@ -734,6 +594,7 @@ class OpenAIProvider(BaseLLMProvider):
                 cached_input_tokens,
                 output_tokens,
                 completion_token_details,
+                response_id,
             ) = await self.process_response(
                 client=client_openai,
                 response=response,
@@ -765,5 +626,5 @@ class OpenAIProvider(BaseLLMProvider):
             output_tokens_details=completion_token_details,
             cost_in_cents=cost,
             tool_outputs=tool_outputs,
-            response_id=getattr(response, "id", None),
+            response_id=response_id,
         )
