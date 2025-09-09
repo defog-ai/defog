@@ -585,6 +585,8 @@ class OpenAIProvider(BaseLLMProvider):
                         _parse_params.pop("reasoning", None)
                         # previous_response_id is only for create, remove for parse calls
                         _parse_params.pop("previous_response_id", None)
+                        # Ensure tool_outputs is not sent to parse
+                        _parse_params.pop("tool_outputs", None)
                         response = await client.responses.parse(**_parse_params)
 
                         # Extract parsed content
@@ -710,6 +712,20 @@ class OpenAIProvider(BaseLLMProvider):
             previous_response_id=previous_response_id,
         )
 
+        # If provided, attach tool_outputs for Responses.create calls only (not for parse)
+        provided_tool_outputs = kwargs.get("tool_outputs")
+        if provided_tool_outputs is not None:
+            # Validate: must be a list of dicts with keys 'call_id' and 'output'
+            if not isinstance(provided_tool_outputs, list) or not all(
+                isinstance(item, dict) and "call_id" in item and "output" in item
+                for item in provided_tool_outputs
+            ):
+                raise ValueError(
+                    "tool_outputs must be a list of dicts with keys 'call_id' and 'output'"
+                )
+            # Add to request params; removed for parse calls below
+            request_params["tool_outputs"] = provided_tool_outputs
+
         # Build a tool dict if needed
         tool_dict = {}
         if tools and len(tools) > 0 and "tools" in request_params:
@@ -723,6 +739,8 @@ class OpenAIProvider(BaseLLMProvider):
                 _parse_params.pop("reasoning", None)
                 # previous_response_id is only for create, remove for parse calls
                 _parse_params.pop("previous_response_id", None)
+                # Ensure tool_outputs is not sent to parse
+                _parse_params.pop("tool_outputs", None)
                 response = await client_openai.responses.parse(**_parse_params)
             else:
                 response = await client_openai.responses.create(**request_params)

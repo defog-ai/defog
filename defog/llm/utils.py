@@ -115,6 +115,7 @@ async def chat_async(
     parallel_tool_calls: bool = False,
     tool_output_max_tokens: int = 10000,
     previous_response_id: Optional[str] = None,
+    tool_outputs: Optional[List[Dict[str, Any]]] = None,
 ) -> LLMResponse:
     """
     Execute a chat completion with explicit provider parameter.
@@ -146,6 +147,7 @@ async def chat_async(
         parallel_tool_calls: Enable parallel tool calls when set to True (default: False)
         tool_output_max_tokens: Maximum tokens allowed in tool outputs (default: 10000). Set to -1 to disable the check.
         previous_response_id: Optional id of a previous OpenAI Responses API response to continue from (OpenAI only)
+        tool_outputs: Optional list of dicts (OpenAI only). Each dict must contain keys 'call_id' and 'output'. If provided, will be sent with every Responses API create call.
 
     Returns:
         LLMResponse object containing the result
@@ -234,6 +236,7 @@ async def chat_async(
                 parallel_tool_calls=parallel_tool_calls,
                 tool_output_max_tokens=tool_output_max_tokens,
                 previous_response_id=previous_response_id,
+                tool_outputs=tool_outputs,
             )
 
             # Process citations if requested and provider supports it
