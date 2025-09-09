@@ -463,6 +463,17 @@ class OpenAIProvider(BaseLLMProvider):
                     break
             # After processing tool calls (or if none were made), extract final content
             if response_format:
+                response = await client.responses.create(
+                    **request_params,
+                    text={
+                        "format": {
+                            "type": "json_schema",
+                            "name": response_format.schema()["title"],
+                            "schema": response_format.model_json_schema()
+                            | {"additionalProperties": False},
+                        }
+                    },
+                )
                 content = self.parse_structured_response(
                     getattr(response, "output_text", "") or "",
                     response_format,
@@ -576,7 +587,7 @@ class OpenAIProvider(BaseLLMProvider):
                         "format": {
                             "type": "json_schema",
                             "name": response_format.schema()["title"],
-                            "json_schema": response_format.model_json_schema()
+                            "schema": response_format.model_json_schema()
                             | {"additionalProperties": False},
                         }
                     },
