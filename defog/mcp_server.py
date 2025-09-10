@@ -10,6 +10,8 @@ import json
 import os
 import httpx
 import aiofiles
+import asyncio
+import argparse
 
 # we use fastmcp 2.0 provider instead of the fastmcp provided by mcp
 # this is because this version makes it easier to change multiple variables, like the port
@@ -734,8 +736,6 @@ def run_server(transport=None, port=None):
 
     # List all registered tools and resources
     try:
-        import asyncio
-
         # List tools
         tools = asyncio.run(mcp._list_tools())
         tool_names = [tool.name for tool in tools]
@@ -769,8 +769,6 @@ def run_server(transport=None, port=None):
 
 
 if __name__ == "__main__":
-    import argparse
-
     parser = argparse.ArgumentParser(
         description="Defog MCP Server - Provides tools for SQL queries, code interpretation, and more"
     )

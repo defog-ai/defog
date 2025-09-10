@@ -1,9 +1,15 @@
 import json
-from typing import Dict, List, Optional
+import pyodbc
 import pandas as pd
 import asyncio
+import psycopg2
+import mysql.connector
+import snowflake.connector
 from defog.metadata_cache import get_global_cache
 from defog.local_storage import LocalStorage
+from typing import Dict, List, Optional
+from databricks import sql
+from google.cloud import bigquery
 
 
 async def update_db_schema(self, path_to_csv, dev=False, temp=False):
@@ -325,7 +331,6 @@ async def create_empty_tables(self, dev: bool = False):
     # The database operations would need to be made async, but for now we'll use asyncio.to_thread
     try:
         if self.db_type == "postgres" or self.db_type == "redshift":
-            import psycopg2
 
             def execute_postgres():
                 conn = psycopg2.connect(**self.db_creds)
@@ -338,7 +343,6 @@ async def create_empty_tables(self, dev: bool = False):
             return await asyncio.to_thread(execute_postgres)
 
         elif self.db_type == "mysql":
-            import mysql.connector
 
             def execute_mysql():
                 conn = mysql.connector.connect(**self.db_creds)
@@ -352,7 +356,6 @@ async def create_empty_tables(self, dev: bool = False):
             return await asyncio.to_thread(execute_mysql)
 
         elif self.db_type == "databricks":
-            from databricks import sql
 
             def execute_databricks():
                 con = sql.connect(**self.db_creds)
@@ -364,7 +367,6 @@ async def create_empty_tables(self, dev: bool = False):
             return await asyncio.to_thread(execute_databricks)
 
         elif self.db_type == "snowflake":
-            import snowflake.connector
 
             def execute_snowflake():
                 conn = snowflake.connector.connect(
@@ -385,7 +387,6 @@ async def create_empty_tables(self, dev: bool = False):
             return await asyncio.to_thread(execute_snowflake)
 
         elif self.db_type == "bigquery":
-            from google.cloud import bigquery
 
             def execute_bigquery():
                 client = bigquery.Client.from_service_account_json(
@@ -398,7 +399,6 @@ async def create_empty_tables(self, dev: bool = False):
             return await asyncio.to_thread(execute_bigquery)
 
         elif self.db_type == "sqlserver":
-            import pyodbc
 
             def execute_sqlserver():
                 if self.db_creds["database"] != "":
