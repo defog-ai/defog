@@ -1,7 +1,7 @@
 from defog import config as defog_config
 import time
 import json
-import base64
+import inspect
 import logging
 from copy import deepcopy
 from typing import Dict, List, Any, Optional, Callable, Tuple, Union
@@ -260,11 +260,17 @@ class OpenAIProvider(BaseLLMProvider):
             request_params["temperature"] = temperature
 
         # Reasoning effort
-        if (
-            model.startswith("o") or model.startswith("gpt-5")
-        ) and reasoning_effort is not None:
-            # Responses API expects reasoning.effort, not reasoning_effort
-            request_params["reasoning"] = {"effort": reasoning_effort}
+        if model.startswith("o") or model.startswith("gpt-5"):
+            if reasoning_effort is not None:
+                request_params["reasoning"] = {
+                    "effort": reasoning_effort,
+                    "summary": "auto",
+                }
+            else:
+                request_params["reasoning"] = {
+                    "effort": "medium",
+                    "summary": "auto",
+                }
 
         # Verbosity
         verbosity = kwargs.get("verbosity")
@@ -272,6 +278,41 @@ class OpenAIProvider(BaseLLMProvider):
             request_params["verbosity"] = verbosity
 
         return request_params, messages
+
+    async def extract_reasoning_text(
+        self, response: Dict[str, Any], post_tool_function: Optional[Callable] = None
+    ) -> List[str]:
+        reasoning_summaries = []
+        for item in response.output:
+            if item.type == "reasoning":
+                for reasoning_summary_block in item.summary:
+                    if reasoning_summary_block.type == "summary_text":
+                        reasoning_summary = reasoning_summary_block.text
+                        reasoning_summaries.append(reasoning_summary)
+                        if post_tool_function:
+                            if inspect.iscoroutinefunction(post_tool_function):
+                                await post_tool_function(
+                                    function_name="reasoning",
+                                    input_args={},
+                                    tool_result=reasoning_summary,
+                                )
+                            else:
+                                post_tool_function(
+                                    function_name="reasoning",
+                                    input_args={},
+                                    tool_result=reasoning_summary,
+                                )
+
+        return [
+            {
+                "tool_call_id": None,
+                "name": "reasoning",
+                "args": {},
+                "result": summary,
+                "text": None,
+            }
+            for summary in reasoning_summaries
+        ]
 
     async def process_response(
         self,
@@ -319,6 +360,7 @@ class OpenAIProvider(BaseLLMProvider):
             # this is important, as tools might go to 0 if we run out of tool budget
             consecutive_exceptions = 0
             iteration_count = 0
+
             while True:
                 # Token usage for Responses API
                 usage = response.usage
@@ -336,11 +378,18 @@ class OpenAIProvider(BaseLLMProvider):
                     messages=request_params.get("input", []),
                 )
 
-                # Detect tool/function calls within Responses output
+                # Extract reasoning text
+                reasoning_blocks = await self.extract_reasoning_text(
+                    response, post_tool_function
+                )
+                tool_outputs.extend(reasoning_blocks)
+
+                # Detect function calls and reasoning blocks within Responses output
                 function_calls = []
-                for item in response.output or []:
-                    # SDK types may expose .type and .name/.arguments
-                    itype = getattr(item, "type", None)
+                for item in response.output:
+                    itype = item.type
+
+                    # FUNCTION CALLS
                     if itype and "function" in itype:
                         # function_call item
                         fname = item.name or getattr(item.function, "name", None)
