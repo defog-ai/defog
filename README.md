@@ -4,7 +4,7 @@ A comprehensive Python toolkit for AI-powered data operations - from natural lan
 
 ## Features
 
-- 🤖 **Cross-provider LLM operations** - Unified interface for OpenAI, Anthropic, Gemini, and Together AI
+- 🤖 **Cross-provider LLM operations** - Unified interface for OpenAI, Anthropic, Gemini, Grok (xAI), and Together AI
 - 📊 **SQL Agent** - Convert natural language to SQL with automatic table filtering for large databases
 - 🔍 **Data extraction** - Extract structured data from PDFs, images, HTML, text documents, and even images embedded in HTML
 - 🛠️ **Advanced AI tools** - Code interpreter, web search, YouTube transcription, document citations
@@ -154,6 +154,7 @@ export OPENAI_API_KEY="your-openai-key"
 export ANTHROPIC_API_KEY="your-anthropic-key"
 export GEMINI_API_KEY="your-gemini-key"
 export TOGETHER_API_KEY="your-together-key"
+export XAI_API_KEY="your-grok-xai-key"   # or GROK_API_KEY
 ```
 
 ## Advanced Use Cases
