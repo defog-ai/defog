@@ -46,6 +46,7 @@ class LLMConfig:
             "together": "TOGETHER_API_KEY",
             "mistral": "MISTRAL_API_KEY",
             "alibaba": "ALIBABA_API_KEY",
+            "grok": "XAI_API_KEY",
         }
 
         for provider, env_var in key_mappings.items():
@@ -53,12 +54,19 @@ class LLMConfig:
                 # Try environment variable first, then fall back to config file
                 self.api_keys[provider] = os.getenv(env_var) or config.get(env_var)
 
+        # Support legacy GROK_API_KEY environment variable name
+        if not self.api_keys.get("grok"):
+            self.api_keys["grok"] = os.getenv("GROK_API_KEY") or config.get(
+                "GROK_API_KEY"
+            )
+
     def _setup_base_urls(self):
         """Setup base URLs with defaults."""
         default_urls = {
             "openai": OPENAI_BASE_URL,
             "deepseek": DEEPSEEK_BASE_URL,
             "alibaba": ALIBABA_BASE_URL,
+            "grok": "https://api.x.ai",
         }
 
         for provider, url in default_urls.items():

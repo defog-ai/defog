@@ -102,6 +102,9 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             map_model_to_provider("mistral-medium-latest"), LLMProvider.MISTRAL
         )
+        self.assertEqual(
+            map_model_to_provider("grok-4-fast-non-reasoning-latest"), LLMProvider.GROK
+        )
 
         with self.assertRaises(Exception):
             map_model_to_provider("unknown-model")
@@ -129,6 +132,19 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
         provider = get_provider_instance("mistral", config)
         self.assertIsInstance(provider, MistralProvider)
         self.assertEqual(provider.get_provider_name(), "mistral")
+
+    def test_grok_provider_capabilities(self):
+        """Test Grok provider instantiation and capabilities"""
+        from defog.llm.utils import get_provider_instance
+        from defog.llm.providers.grok_provider import GrokProvider
+        from defog.llm.config import LLMConfig
+
+        config = LLMConfig(api_keys={"grok": "test-api-key"})
+        provider = get_provider_instance("grok", config)
+        self.assertIsInstance(provider, GrokProvider)
+        self.assertEqual(provider.get_provider_name(), "grok")
+        self.assertEqual(provider.api_key, "test-api-key")
+        self.assertEqual(provider.base_url, "https://api.x.ai")
 
     def test_deepseek_structured_output_build_params(self):
         """Test DeepSeek provider's structured output parameter building for both models"""
@@ -203,6 +219,8 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
             test_models.extend(["gemini-2.0-flash", "gemini-2.5-pro"])
         if AVAILABLE_MODELS.get("mistral"):
             test_models.append("mistral-small-latest")
+        if AVAILABLE_MODELS.get("grok"):
+            test_models.extend(AVAILABLE_MODELS["grok"])
 
         models = [m for m in test_models if m in sum(AVAILABLE_MODELS.values(), [])]
         messages = [
@@ -227,6 +245,27 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
 
         # Verify all models completed successfully
         self.assertEqual(len(results), len(models))
+
+    @pytest.mark.asyncio(loop_scope="session")
+    @skip_if_no_api_key("grok")
+    async def test_grok_simple_chat_async(self):
+        messages = [
+            {
+                "role": "user",
+                "content": "Reply with a single-word greeting.",
+            }
+        ]
+
+        response = await chat_async(
+            provider=LLMProvider.GROK,
+            model="grok-4-fast-non-reasoning-latest",
+            messages=messages,
+            temperature=0.0,
+            max_retries=1,
+        )
+
+        self.assertIsInstance(response.content, str)
+        self.assertLessEqual(len(response.content.split()), 3)
 
     @pytest.mark.asyncio(loop_scope="session")
     @skip_if_no_models()

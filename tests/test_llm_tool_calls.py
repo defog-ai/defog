@@ -5,6 +5,7 @@ from defog.llm.utils_function_calling import (
     get_function_specs,
     is_pydantic_style_function,
     wrap_regular_function,
+    convert_tool_choice,
 )
 from tests.conftest import skip_if_no_api_key
 
@@ -88,6 +89,7 @@ class TestGetFunctionSpecs(unittest.TestCase):
     def setUp(self):
         self.openai_model = "gpt-4.1"
         self.anthropic_model = "claude-3-7-sonnet-latest"
+        self.grok_model = "grok-4-fast-non-reasoning-latest"
         self.mistral_model = "mistral-small-latest"
         self.tools = [get_weather, numsum, numprod]
         self.maxDiff = None
@@ -186,12 +188,26 @@ class TestGetFunctionSpecs(unittest.TestCase):
     def test_get_function_specs(self):
         openai_specs = get_function_specs(self.tools, self.openai_model)
         anthropic_specs = get_function_specs(self.tools, self.anthropic_model)
+        grok_specs = get_function_specs(self.tools, self.grok_model)
         mistral_specs = get_function_specs(self.tools, self.mistral_model)
 
         self.assertEqual(openai_specs, self.openai_specs)
         self.assertEqual(anthropic_specs, self.anthropic_specs)
+        self.assertEqual(grok_specs, self.anthropic_specs)
         # Mistral uses OpenAI-compatible format
         self.assertEqual(mistral_specs, self.openai_specs)
+
+    def test_convert_tool_choice_grok(self):
+        tool_names = [func.__name__ for func in self.tools]
+
+        auto_choice = convert_tool_choice("auto", tool_names, self.grok_model)
+        self.assertEqual(auto_choice, {"type": "auto"})
+
+        forced_choice = convert_tool_choice("get_weather", tool_names, self.grok_model)
+        self.assertEqual(forced_choice, {"type": "tool", "name": "get_weather"})
+
+        with self.assertRaises(ValueError):
+            convert_tool_choice("unknown_tool", tool_names, self.grok_model)
 
 
 class TestToolUseFeatures(unittest.IsolatedAsyncioTestCase):
@@ -280,6 +296,48 @@ class TestToolUseFeatures(unittest.IsolatedAsyncioTestCase):
                 {
                     "role": "user",
                     "content": self.weather_qn,
+                },
+            ],
+            tools=self.tools,
+            max_retries=1,
+        )
+        print(result)
+        tools_used = [output["name"] for output in result.tool_outputs]
+        self.assertSetEqual(set(tools_used), {"get_weather"})
+        self.assertEqual(result.tool_outputs[0]["name"], "get_weather")
+        self.assertGreaterEqual(float(result.content), 21)
+        self.assertLessEqual(float(result.content), 38)
+
+    @pytest.mark.asyncio
+    @skip_if_no_api_key("grok")
+    async def test_tool_use_arithmetic_async_grok(self):
+        result = await chat_async(
+            provider="grok",
+            model="grok-4-fast-non-reasoning-latest",
+            messages=[
+                {
+                    "role": "user",
+                    "content": self.arithmetic_qn,
+                },
+            ],
+            tools=self.tools,
+            max_retries=1,
+        )
+        print(result)
+        self.assertEqual(result.content, self.arithmetic_answer)
+        tools_used = [output["name"] for output in result.tool_outputs]
+        self.assertSetEqual(set(tools_used), {"numsum", "numprod"})
+
+    @pytest.mark.asyncio
+    @skip_if_no_api_key("grok")
+    async def test_tool_use_weather_async_grok(self):
+        result = await chat_async(
+            provider="grok",
+            model="grok-4-fast-non-reasoning-latest",
+            messages=[
+                {
+                    "role": "user",
+                    "content": self.weather_qn_specific,
                 },
             ],
             tools=self.tools,

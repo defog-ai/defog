@@ -114,6 +114,17 @@ else:
     AVAILABLE_PROVIDERS["alibaba"] = False
     AVAILABLE_MODELS["alibaba"] = []
 
+if os.getenv("XAI_API_KEY") or os.getenv("GROK_API_KEY"):
+    AVAILABLE_PROVIDERS["grok"] = True
+    AVAILABLE_MODELS["grok"] = [
+        "grok-4",
+        "grok-4-fast-non-reasoning-latest",
+        "grok-4-fast-reasoning-latest",
+    ]
+else:
+    AVAILABLE_PROVIDERS["grok"] = False
+    AVAILABLE_MODELS["grok"] = []
+
 
 def get_available_models():
     """Get all available models across all providers with API keys."""

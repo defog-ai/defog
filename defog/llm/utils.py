@@ -11,6 +11,7 @@ from .providers import (
     TogetherProvider,
     DeepSeekProvider,
     MistralProvider,
+    GrokProvider,
 )
 from .providers.base import LLMResponse
 from .exceptions import LLMError, ConfigurationError
@@ -67,6 +68,7 @@ def get_provider_instance(
         "together": TogetherProvider,
         "deepseek": DeepSeekProvider,
         "mistral": MistralProvider,
+        "grok": GrokProvider,
         "alibaba": OpenAIProvider,  # Alibaba uses OpenAI-compatible API
     }
 
@@ -320,6 +322,8 @@ def map_model_to_provider(model: str) -> LLMProvider:
         return LLMProvider.ANTHROPIC
     elif model.startswith("gemini"):
         return LLMProvider.GEMINI
+    elif model.startswith("grok"):
+        return LLMProvider.GROK
     elif (
         model.startswith("gpt")
         or model.startswith("o1")
