@@ -12,7 +12,7 @@ async def web_search_tool(
     question: str,
     model: str,
     provider: LLMProvider,
-    max_tokens: int = 2048,
+    max_tokens: int = 8192,
     verbose: bool = True,
 ):
     """
@@ -40,7 +40,7 @@ async def web_search_tool(
 
             response = await client.responses.create(
                 model=model,
-                tools=[{"type": "web_search_preview"}],
+                tools=[{"type": "web_search"}],
                 tool_choice="required",
                 input=question,
                 # in the responses API, this means both the reasoning and the output tokens
