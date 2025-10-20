@@ -89,7 +89,7 @@ class TestWebSearchTool(unittest.IsolatedAsyncioTestCase):
     @skip_if_no_api_key("anthropic")
     async def test_web_search_anthropic_structure(self):
         await self._test_provider_structure(
-            LLMProvider.ANTHROPIC, "claude-haiku-4-5-latest", "ANTHROPIC_API_KEY"
+            LLMProvider.ANTHROPIC, "claude-haiku-4-5", "ANTHROPIC_API_KEY"
         )
 
     @pytest.mark.asyncio
@@ -120,7 +120,7 @@ class TestWebSearchTool(unittest.IsolatedAsyncioTestCase):
 
         providers_config = [
             (LLMProvider.OPENAI, "gpt-4.1-mini", "OPENAI_API_KEY"),
-            (LLMProvider.ANTHROPIC, "claude-haiku-4-5-latest", "ANTHROPIC_API_KEY"),
+            (LLMProvider.ANTHROPIC, "claude-haiku-4-5", "ANTHROPIC_API_KEY"),
             (LLMProvider.GEMINI, "gemini-2.0-flash", "GEMINI_API_KEY"),
         ]
 
@@ -161,7 +161,7 @@ class TestWebSearchTool(unittest.IsolatedAsyncioTestCase):
     async def test_web_search_custom_max_tokens(self):
         providers_config = [
             (LLMProvider.OPENAI, "gpt-4.1-mini", "OPENAI_API_KEY"),
-            (LLMProvider.ANTHROPIC, "claude-haiku-4-5-latest", "ANTHROPIC_API_KEY"),
+            (LLMProvider.ANTHROPIC, "claude-haiku-4-5", "ANTHROPIC_API_KEY"),
             (LLMProvider.GEMINI, "gemini-2.0-flash", "GEMINI_API_KEY"),
         ]
 
