@@ -66,6 +66,11 @@ MODEL_COSTS = {
         "cached_input_cost_per1k": 0.00375,
         "output_cost_per1k": 0.075,
     },
+    "claude-haiku-4-5": {
+        "input_cost_per1k": 0.001,
+        "cached_input_cost_per1k": 0.0001,
+        "output_cost_per1k": 0.005,
+    },
     "claude-3-5-haiku": {"input_cost_per1k": 0.00025, "output_cost_per1k": 0.00125},
     "claude-3-opus": {"input_cost_per1k": 0.015, "output_cost_per1k": 0.075},
     "claude-3-sonnet": {"input_cost_per1k": 0.003, "output_cost_per1k": 0.015},
