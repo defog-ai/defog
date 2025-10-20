@@ -139,4 +139,19 @@ MODEL_COSTS = {
         "input_cost_per1k": 0.00005,
         "output_cost_per1k": 0.0002,
     },
+    "grok-code-fast-1": {
+        "input_cost_per1k": 0.0002,
+        "cached_input_cost_per1k": 0.00002,
+        "output_cost_per1k": 0.0015,
+    },
+    "grok-4-fast": {
+        "input_cost_per1k": 0.0002,
+        "cached_input_cost_per1k": 0.00005,
+        "output_cost_per1k": 0.0005,
+    },
+    "grok-4": {
+        "input_cost_per1k": 0.003,
+        "cached_input_cost_per1k": 0.00075,
+        "output_cost_per1k": 0.015,
+    },
 }
