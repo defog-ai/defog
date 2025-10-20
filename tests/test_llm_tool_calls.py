@@ -255,6 +255,36 @@ class TestToolUseFeatures(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(float(result.content), 21)
         self.assertLessEqual(float(result.content), 38)
 
+    # =============================
+    # Grok structured outputs
+    # =============================
+    class GrokStructuredMath(BaseModel):
+        reasoning: str
+        total: int
+
+    @pytest.mark.asyncio
+    @skip_if_no_api_key("grok")
+    async def test_grok_structured_output_simple(self):
+        messages = [
+            {
+                "role": "user",
+                "content": "Add 19 and 23. Return the result in JSON with fields 'reasoning' and integer 'total'.",
+            }
+        ]
+
+        result = await chat_async(
+            provider="grok",
+            model="grok-4-fast-non-reasoning-latest",
+            messages=messages,
+            response_format=TestToolUseFeatures.GrokStructuredMath,
+            max_retries=1,
+        )
+
+        # Should parse into the pydantic model
+        self.assertIsInstance(result.content, TestToolUseFeatures.GrokStructuredMath)
+        # Basic sanity check on computation
+        self.assertEqual(result.content.total, 42)
+
     @pytest.mark.asyncio
     @skip_if_no_api_key("anthropic")
     async def test_tool_use_arithmetic_async_anthropic(self):
