@@ -75,7 +75,7 @@ async def test_tool_budget_with_anthropic():
 
     response = await chat_async(
         provider=LLMProvider.ANTHROPIC,
-        model="claude-haiku-4-5-latest",
+        model="claude-haiku-4-5",
         messages=messages,
         tools=[add, multiply, fibonacci],
         tool_choice="auto",
@@ -251,7 +251,7 @@ async def test_tool_budget_exhaustion():
 
     response = await chat_async(
         provider=LLMProvider.ANTHROPIC,
-        model="claude-haiku-4-5-latest",
+        model="claude-haiku-4-5",
         messages=messages,
         tools=[add, multiply, fibonacci],
         tool_choice="auto",
@@ -311,7 +311,7 @@ async def test_unlimited_tools_with_budget():
 
     response = await chat_async(
         provider=LLMProvider.ANTHROPIC,
-        model="claude-haiku-4-5-latest",
+        model="claude-haiku-4-5",
         messages=messages,
         tools=[add, multiply, fibonacci],
         tool_choice="auto",
@@ -348,7 +348,7 @@ async def test_zero_budget():
 
     response = await chat_async(
         provider=LLMProvider.ANTHROPIC,
-        model="claude-haiku-4-5-latest",
+        model="claude-haiku-4-5",
         messages=messages,
         tools=[add, multiply],
         tool_choice="auto",

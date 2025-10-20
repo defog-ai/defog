@@ -93,13 +93,13 @@ async def test_text_data_extractor_initialization():
     """Test TextDataExtractor initialization."""
     extractor = TextDataExtractor(
         analysis_provider="anthropic",
-        analysis_model="claude-haiku-4-5-latest",
+        analysis_model="claude-haiku-4-5",
         max_parallel_extractions=3,
         temperature=0.5,
     )
 
     assert extractor.analysis_provider == "anthropic"
-    assert extractor.analysis_model == "claude-haiku-4-5-latest"
+    assert extractor.analysis_model == "claude-haiku-4-5"
     assert extractor.max_parallel_extractions == 3
     assert extractor.temperature == 0.5
     assert extractor.enable_caching is True
