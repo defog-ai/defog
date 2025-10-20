@@ -240,7 +240,11 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
                 params["tool_choice"] = {"type": "auto"}
 
             # Add parallel tool calls configuration
-            if "tool_choice" in params and isinstance(params["tool_choice"], dict):
+            if (
+                "tool_choice" in params
+                and isinstance(params["tool_choice"], dict)
+                and not model.startswith("grok")
+            ):
                 if not parallel_tool_calls:
                     params["tool_choice"]["disable_parallel_tool_use"] = True
 
