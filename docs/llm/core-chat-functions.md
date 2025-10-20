@@ -2,6 +2,8 @@
 
 The library provides a unified interface for working with multiple LLM providers.
 
+Supported providers: OpenAI, Anthropic, Gemini, Grok (xAI), Together.
+
 ## Basic Usage
 
 ```python
@@ -88,5 +90,13 @@ response = await chat_async(
     provider=LLMProvider.TOGETHER,
     model="mixtral-8x7b",
     messages=messages
+)
+
+# Grok (xAI)
+response = await chat_async(
+    provider=LLMProvider.GROK,
+    model="grok-4",
+    messages=messages,
+    tools=[my_function],          # Function calling supported
 )
 ```

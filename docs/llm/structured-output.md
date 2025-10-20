@@ -1,6 +1,6 @@
 ## Structured Output
 
-Get validated, structured responses using Pydantic models.
+Get validated, structured responses using Pydantic models across providers (OpenAI, Anthropic, Gemini, Grok, Together).
 
 ### Basic Structured Output
 
@@ -55,4 +55,22 @@ response = await chat_async(
 notes = response.parsed
 print(f"Meeting on {notes.date}")
 print(f"Attendees: {', '.join(p.name for p in notes.attendees)}")
+
+### Grok (xAI) Structured Output
+
+```python
+from pydantic import BaseModel
+
+class Math(BaseModel):
+    reasoning: str
+    total: int
+
+response = await chat_async(
+    provider=LLMProvider.GROK,
+    model="grok-4",
+    messages=[{"role": "user", "content": "Add 19 and 23."}],
+    response_format=Math
+)
+print(response.content.total)  # 42
+```
 ```
