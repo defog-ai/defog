@@ -202,7 +202,7 @@ class TestToolCitations(unittest.IsolatedAsyncioTestCase):
 
         response = await chat_async(
             provider=LLMProvider.ANTHROPIC,
-            model="claude-sonnet-4-20250514",
+            model="claude-haiku-4-5-latest",
             messages=messages,
             tools=[calculate_area],
             tool_choice="auto",
