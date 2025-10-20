@@ -28,7 +28,7 @@ class TestMCPChatAsync:
 
         response = await chat_async(
             provider=LLMProvider.ANTHROPIC,
-            model="claude-3-7-sonnet-20250219",
+            model="claude-haiku-4-5-latest",
             messages=messages,
             temperature=0.0,
         )
@@ -37,7 +37,7 @@ class TestMCPChatAsync:
         assert response.content is not None
         assert isinstance(response.content, str)
         assert "4" in response.content
-        assert response.model == "claude-3-7-sonnet-20250219"
+        assert response.model == "claude-haiku-4-5-latest"
         assert response.input_tokens > 0
         assert response.output_tokens > 0
 
@@ -57,7 +57,7 @@ class TestMCPChatAsync:
 
         response = await chat_async(
             provider=LLMProvider.ANTHROPIC,
-            model="claude-3-7-sonnet-20250219",
+            model="claude-haiku-4-5-latest",
             messages=messages,
             temperature=0.0,
             mcp_servers=["https://mcp.deepwiki.com/mcp"],
@@ -66,7 +66,7 @@ class TestMCPChatAsync:
         assert response is not None
         assert response.content is not None
         assert isinstance(response.content, str)
-        assert response.model == "claude-3-7-sonnet-20250219"
+        assert response.model == "claude-haiku-4-5-latest"
         assert response.input_tokens > 0
         assert response.output_tokens > 0
 
@@ -101,7 +101,7 @@ class TestMCPChatAsync:
 
         response = await chat_async(
             provider=LLMProvider.ANTHROPIC,
-            model="claude-3-7-sonnet-20250219",
+            model="claude-haiku-4-5-latest",
             messages=messages,
             temperature=0.0,
             mcp_servers=["https://mcp.deepwiki.com/mcp"],
@@ -254,7 +254,7 @@ class TestMCPChatAsync:
 
         response = await chat_async(
             provider=LLMProvider.ANTHROPIC,
-            model="claude-3-7-sonnet-20250219",
+            model="claude-haiku-4-5-latest",
             messages=messages,
             temperature=0.0,
             mcp_servers=["https://mcp.deepwiki.com/mcp"],

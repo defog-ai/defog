@@ -75,7 +75,7 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
 
     def test_map_model_to_provider(self):
         self.assertEqual(
-            map_model_to_provider("claude-3-5-sonnet-20241022"),
+            map_model_to_provider("claude-haiku-4-5-latest"),
             LLMProvider.ANTHROPIC,
         )
 
@@ -212,7 +212,7 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
         # Use a subset of available models for this test
         test_models = []
         if AVAILABLE_MODELS.get("anthropic"):
-            test_models.append("claude-3-7-sonnet-latest")
+            test_models.append("claude-haiku-4-5-latest")
         if AVAILABLE_MODELS.get("openai"):
             test_models.extend(["gpt-4.1-mini", "o4-mini", "o3"])
         if AVAILABLE_MODELS.get("gemini"):
@@ -311,9 +311,9 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
             test_models.append("o4-mini")
         if (
             AVAILABLE_MODELS.get("anthropic")
-            and "claude-3-7-sonnet-latest" in AVAILABLE_MODELS["anthropic"]
+            and "claude-haiku-4-5-latest" in AVAILABLE_MODELS["anthropic"]
         ):
-            test_models.append("claude-3-7-sonnet-latest")
+            test_models.append("claude-haiku-4-5-latest")
 
         if not test_models:
             self.skipTest("No models with reasoning effort support available")
@@ -357,7 +357,7 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
         if AVAILABLE_MODELS.get("gemini"):
             test_models.extend(["gemini-2.0-flash", "gemini-2.5-pro"])
         if AVAILABLE_MODELS.get("anthropic"):
-            test_models.append("claude-3-7-sonnet-latest")
+            test_models.append("claude-haiku-4-5-latest")
         if AVAILABLE_MODELS.get("mistral"):
             test_models.append("mistral-small-latest")
 

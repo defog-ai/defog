@@ -13,7 +13,7 @@ class TestLLMResponse(unittest.TestCase):
         )
 
         self.assertAlmostEqual(
-            CostCalculator.calculate_cost("claude-3-5-sonnet", 1000, 1000),
+            CostCalculator.calculate_cost("claude-haiku-4-5-latest", 1000, 1000),
             (0.003 * 1 + 0.015 * 1) * 100,
             places=10,
         )
@@ -66,7 +66,7 @@ class TestLLMResponse(unittest.TestCase):
                 "output_tokens": 1000,
             },
             {
-                "model_name": "claude-3-5-sonnet",
+                "model_name": "claude-haiku-4-5-latest",
                 "input_tokens": 1000,
                 "cached_input_tokens": 0,
                 "output_tokens": 1000,

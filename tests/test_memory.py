@@ -192,7 +192,7 @@ class TestTokenCounter:
         # All providers should use OpenAI tokenizer as approximation
         openai_tokens = counter.count_tokens(messages, "gpt-4", "openai")
         anthropic_tokens = counter.count_tokens(
-            messages, "claude-3-sonnet", "anthropic"
+            messages, "claude-haiku-4-5-latest", "anthropic"
         )
         gemini_tokens = counter.count_tokens(messages, "gemini-pro", "gemini")
         together_tokens = counter.count_tokens(messages, "llama-2", "together")
@@ -232,7 +232,7 @@ class TestCompactifyMessagesReal:
             messages_to_summarize=[],
             preserved_messages=preserved,
             provider="anthropic",
-            model="claude-3-7-sonnet-latest",
+            model="claude-haiku-4-5-latest",
             max_summary_tokens=500,
         )
 
@@ -262,7 +262,7 @@ class TestCompactifyMessagesReal:
             messages_to_summarize=to_summarize,
             preserved_messages=preserved,
             provider="anthropic",
-            model="claude-3-7-sonnet-latest",
+            model="claude-haiku-4-5-latest",
             max_summary_tokens=200,
         )
 

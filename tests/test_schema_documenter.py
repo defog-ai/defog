@@ -17,7 +17,7 @@ class TestDocumentationConfig:
         """Test default configuration values."""
         config = DocumentationConfig()
         assert config.provider == "anthropic"
-        assert config.model == "claude-sonnet-4-20250514"
+        assert config.model == "claude-haiku-4-5-latest"
         assert config.sample_size == 100
         assert config.min_confidence_score == 0.7
         assert config.include_data_patterns is True

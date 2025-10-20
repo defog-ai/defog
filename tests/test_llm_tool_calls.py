@@ -88,7 +88,7 @@ def numprod(input: Numbers):
 class TestGetFunctionSpecs(unittest.TestCase):
     def setUp(self):
         self.openai_model = "gpt-4.1"
-        self.anthropic_model = "claude-3-7-sonnet-latest"
+        self.anthropic_model = "claude-haiku-4-5-latest"
         self.grok_model = "grok-4-fast-non-reasoning-latest"
         self.mistral_model = "mistral-small-latest"
         self.tools = [get_weather, numsum, numprod]
@@ -272,7 +272,7 @@ class TestToolUseFeatures(unittest.IsolatedAsyncioTestCase):
     async def test_tool_use_arithmetic_async_anthropic(self):
         result = await chat_async(
             provider="anthropic",
-            model="claude-3-7-sonnet-latest",
+            model="claude-haiku-4-5-latest",
             messages=[
                 {
                     "role": "user",
@@ -291,7 +291,7 @@ class TestToolUseFeatures(unittest.IsolatedAsyncioTestCase):
     async def test_tool_use_weather_async_anthropic(self):
         result = await chat_async(
             provider="anthropic",
-            model="claude-3-7-sonnet-latest",
+            model="claude-haiku-4-5-latest",
             messages=[
                 {
                     "role": "user",
@@ -355,7 +355,7 @@ class TestToolUseFeatures(unittest.IsolatedAsyncioTestCase):
     async def test_tool_use_arithmetic_async_anthropic_reasoning_effort(self):
         result = await chat_async(
             provider="anthropic",
-            model="claude-3-7-sonnet-latest",
+            model="claude-haiku-4-5-latest",
             messages=[
                 {
                     "role": "user",
@@ -439,7 +439,7 @@ class TestToolUseFeatures(unittest.IsolatedAsyncioTestCase):
     async def test_post_tool_calls_anthropic(self):
         result = await chat_async(
             provider="anthropic",
-            model="claude-3-7-sonnet-latest",
+            model="claude-haiku-4-5-latest",
             messages=[
                 {
                     "role": "user",
@@ -655,7 +655,7 @@ Return only the final results.""",
         start_time = time.time()
         result_parallel = await chat_async(
             provider="anthropic",
-            model="claude-sonnet-4-20250514",
+            model="claude-haiku-4-5-latest",
             messages=self.messages,
             tools=self.tools,
             parallel_tool_calls=True,
@@ -668,7 +668,7 @@ Return only the final results.""",
         start_time = time.time()
         result_sequential = await chat_async(
             provider="anthropic",
-            model="claude-sonnet-4-20250514",
+            model="claude-haiku-4-5-latest",
             messages=self.messages,
             tools=self.tools,
             parallel_tool_calls=False,
@@ -818,7 +818,7 @@ class TestRegularFunctionTools(unittest.TestCase):
         self.assertIn("greeting", specs[1]["function"]["parameters"]["properties"])
 
         # Test Anthropic format
-        specs = get_function_specs(functions, "claude-3-7-sonnet")
+        specs = get_function_specs(functions, "claude-haiku-4-5-latest")
         self.assertEqual(len(specs), 2)
         self.assertEqual(specs[0]["name"], "add_numbers")
         self.assertIn("a", specs[0]["input_schema"]["properties"])
@@ -954,7 +954,7 @@ class TestToolOutputMaxTokens(unittest.IsolatedAsyncioTestCase):
 
         result = await chat_async(
             provider="anthropic",
-            model="claude-3-7-sonnet-latest",
+            model="claude-haiku-4-5-latest",
             messages=messages,
             tools=[get_text_long],
             temperature=0,
@@ -1056,7 +1056,7 @@ class TestStructuredOutputWithTools(unittest.IsolatedAsyncioTestCase):
         # Test weather report with structured output
         result = await chat_async(
             provider="anthropic",
-            model="claude-3-7-sonnet-latest",
+            model="claude-haiku-4-5-latest",
             messages=self.weather_message,
             tools=self.tools,
             response_format=WeatherReport,
@@ -1082,7 +1082,7 @@ class TestStructuredOutputWithTools(unittest.IsolatedAsyncioTestCase):
         """Test Anthropic with multiple tool calls and structured output."""
         result = await chat_async(
             provider="anthropic",
-            model="claude-3-7-sonnet-latest",
+            model="claude-haiku-4-5-latest",
             messages=self.calculation_message,
             tools=self.tools,
             response_format=CalculationResult,
