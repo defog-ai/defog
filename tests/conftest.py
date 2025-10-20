@@ -46,7 +46,10 @@ AVAILABLE_MODELS = {}
 # Check API keys and populate available providers
 if os.getenv("ANTHROPIC_API_KEY"):
     AVAILABLE_PROVIDERS["anthropic"] = True
-    AVAILABLE_MODELS["anthropic"] = ["claude-3-7-sonnet-latest"]
+    AVAILABLE_MODELS["anthropic"] = [
+        "claude-3-7-sonnet-latest",
+        "claude-haiku-4-5-latest",
+    ]
 else:
     AVAILABLE_PROVIDERS["anthropic"] = False
     AVAILABLE_MODELS["anthropic"] = []

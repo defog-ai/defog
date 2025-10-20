@@ -239,6 +239,9 @@ def get_function_specs(
             keys_to_remove = [k for k in prop if k in ["default", "title"]]
             for k in keys_to_remove:
                 prop.pop(k)
+        # Ensure required fields list is present for providers expecting explicit schema
+        if "required" not in input_schema:
+            input_schema["required"] = list(input_schema["properties"].keys())
 
         if (
             model.startswith("gpt")
