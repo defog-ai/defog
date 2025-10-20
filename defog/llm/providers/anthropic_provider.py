@@ -20,15 +20,26 @@ logger = logging.getLogger(__name__)
 class AnthropicProvider(BaseLLMProvider):
     """Anthropic Claude provider implementation."""
 
-    def __init__(self, api_key: Optional[str] = None, config=None):
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+        config=None,
+    ):
         super().__init__(
-            api_key or defog_config.get("ANTHROPIC_API_KEY"), config=config
+            api_key or defog_config.get("ANTHROPIC_API_KEY"),
+            base_url=base_url,
+            config=config,
         )
 
     @classmethod
     def from_config(cls, config: LLMConfig):
         """Create Anthropic provider from config."""
-        return cls(api_key=config.get_api_key("anthropic"), config=config)
+        return cls(
+            api_key=config.get_api_key("anthropic"),
+            base_url=config.get_base_url("anthropic"),
+            config=config,
+        )
 
     def get_provider_name(self) -> str:
         return "anthropic"
@@ -740,10 +751,15 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
         headers = {}
         headers["anthropic-beta"] = "interleaved-thinking-2025-05-14"
 
-        client = AsyncAnthropic(
-            api_key=self.api_key,
-            default_headers=headers,
-        )
+        client_kwargs = {
+            "api_key": self.api_key,
+            "default_headers": headers,
+        }
+
+        if self.base_url:
+            client_kwargs["base_url"] = self.base_url
+
+        client = AsyncAnthropic(**client_kwargs)
 
         # Filter tools based on budget before building params
         tools = self.filter_tools_by_budget(tools, tool_handler)

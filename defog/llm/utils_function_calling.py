@@ -258,7 +258,7 @@ def get_function_specs(
                     },
                 }
             )
-        elif model.startswith("claude"):
+        elif model.startswith("claude") or model.startswith("grok"):
             input_schema["type"] = "object"
             function_specs.append(
                 {
@@ -313,7 +313,7 @@ def convert_tool_choice(tool_choice: str, tool_name_list: List[str], model: str)
             "custom": {"type": "function", "function": {"name": tool_choice}},
         },
         "anthropic": {
-            "prefixes": ["claude"],
+            "prefixes": ["claude", "grok"],
             "choices": {
                 "auto": {"type": "auto"},
                 "required": {"type": "any"},
