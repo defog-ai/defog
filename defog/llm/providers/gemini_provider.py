@@ -507,6 +507,7 @@ class GeminiProvider(BaseLLMProvider):
         post_response_hook: Optional[Callable] = None,
         image_result_keys: Optional[List[str]] = None,
         tool_budget: Optional[Dict[str, int]] = None,
+        previous_response_id: Optional[str] = None,
         **kwargs,
     ) -> LLMResponse:
         """Execute a chat completion with Gemini."""
@@ -524,8 +525,12 @@ class GeminiProvider(BaseLLMProvider):
         # Filter tools based on budget before building params
         tools = self.filter_tools_by_budget(tools, tool_handler)
 
-        request_params, messages = self.build_params(
-            messages=messages,
+        conversation_messages = self.prepare_conversation_messages(
+            messages, previous_response_id
+        )
+
+        request_params, provider_messages = self.build_params(
+            messages=conversation_messages,
             model=model,
             max_completion_tokens=max_completion_tokens,
             temperature=temperature,
@@ -552,7 +557,7 @@ class GeminiProvider(BaseLLMProvider):
         try:
             response = await client.aio.models.generate_content(
                 model=model,
-                contents=messages,
+                contents=provider_messages,
                 config=GenerateContentConfig(**request_params),
             )
 
@@ -567,7 +572,7 @@ class GeminiProvider(BaseLLMProvider):
                 client=client,
                 response=response,
                 request_params=request_params,
-                messages=messages,
+                messages=provider_messages,
                 tools=tools,
                 tool_dict=tool_dict,
                 response_format=response_format,
@@ -579,6 +584,16 @@ class GeminiProvider(BaseLLMProvider):
         except Exception as e:
             traceback.print_exc()
             raise ProviderError(self.get_provider_name(), f"API call failed: {e}", e)
+
+        api_response_id = getattr(response, "id", None)
+        response_id = api_response_id
+        if store:
+            cache_response_id = api_response_id or self.generate_response_id()
+            history_for_cache = self.append_assistant_message_to_history(
+                conversation_messages, content
+            )
+            self.persist_conversation_history(cache_response_id, history_for_cache)
+            response_id = cache_response_id
 
         # Calculate cost
         cost = CostCalculator.calculate_cost(
@@ -595,4 +610,5 @@ class GeminiProvider(BaseLLMProvider):
             output_tokens_details=output_details,
             cost_in_cents=cost,
             tool_outputs=tool_outputs,
+            response_id=response_id,
         )
