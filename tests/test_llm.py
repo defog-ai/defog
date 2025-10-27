@@ -748,5 +748,82 @@ async def test_chat_async_gemini_follow_up_with_tools_real():
     conversation_cache.clear_cache()
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_chat_async_conversation_follow_up_with_tools_real_grandparent_cache():
+    from defog.llm.memory import conversation_cache
+
+    conversation_cache.clear_cache()
+
+    async def multiply_numbers(x: float, y: float) -> float:
+        """Multiply two numbers via tool call."""
+        return x * y
+
+    model = (
+        AVAILABLE_MODELS["anthropic"][0]
+        if AVAILABLE_MODELS.get("anthropic")
+        else "claude-haiku-4-5"
+    )
+
+    system_prompt = (
+        "You are an assistant that must use available tools when asked. "
+        "You have a tool named multiply_numbers for multiplying two numbers."
+    )
+    initial_messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": "What is 6234 * 42?"},
+    ]
+
+    response1 = await chat_async(
+        provider=LLMProvider.ANTHROPIC,
+        model=model,
+        messages=initial_messages,
+        tools=[multiply_numbers],
+        temperature=0.0,
+        max_retries=1,
+    )
+    assert response1.response_id is not None
+    original_response_id = response1.response_id
+
+    second_messages = [{"role": "user", "content": "Multiply this number by 84"}]
+    response2 = await chat_async(
+        provider=LLMProvider.ANTHROPIC,
+        model=model,
+        messages=second_messages,
+        tools=[multiply_numbers],
+        temperature=0.0,
+        max_retries=1,
+        previous_response_id=original_response_id,
+    )
+    second_response_id = response2.response_id
+    assert response2.response_id is not None
+    assert response2.response_id != original_response_id
+    assert response2.tool_outputs is not None
+    assert response2.tool_outputs[0]["name"] == "multiply_numbers"
+    assert response2.tool_outputs[0]["result"] in (21993552, 21993552.0)
+
+    third_messages = [
+        {
+            "role": "user",
+            "content": "Multiply the result of the *original* question by 7",
+        }
+    ]
+    response3 = await chat_async(
+        provider=LLMProvider.ANTHROPIC,
+        model=model,
+        messages=third_messages,
+        previous_response_id=second_response_id,
+        tools=[multiply_numbers],
+        temperature=0.0,
+        max_retries=1,
+    )
+    print(response3)
+    assert response3.response_id is not None
+    assert response3.tool_outputs is not None
+    assert response3.tool_outputs[0]["name"] == "multiply_numbers"
+    assert response3.tool_outputs[0]["result"] in (1832796, 1832796.0)
+
+    conversation_cache.clear_cache()
+
+
 if __name__ == "__main__":
     unittest.main()
