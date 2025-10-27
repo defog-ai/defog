@@ -147,7 +147,7 @@ async def chat_async(
         insert_tool_citations: If True, adds citations to the response using tool outputs as source documents (OpenAI and Anthropic only)
         parallel_tool_calls: Enable parallel tool calls when set to True (default: False)
         tool_output_max_tokens: Maximum tokens allowed in tool outputs (default: 10000). Set to -1 to disable the check.
-        previous_response_id: Optional id of a previous OpenAI Responses API response to continue from (OpenAI only)
+        previous_response_id: Optional id of a previous response when continuing conversations (supported for OpenAI, Anthropic/Grok, Gemini).
 
     Returns:
         LLMResponse object containing the result

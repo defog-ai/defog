@@ -1,10 +1,17 @@
 from abc import ABC, abstractmethod
 from typing import Dict, List, Any, Optional, Callable, Tuple, Union
 from dataclasses import dataclass
+from copy import deepcopy
 import json
+import logging
 import re
+import uuid
 from ..config.settings import LLMConfig
 from ..exceptions import ProviderError
+from ..memory.conversation_cache import (
+    load_messages as load_cached_messages,
+    store_messages as store_cached_messages,
+)
 from ..tools import ToolHandler
 import inspect
 
@@ -26,6 +33,8 @@ class LLMResponse:
 
 class BaseLLMProvider(ABC):
     """Abstract base class for all LLM providers."""
+
+    logger = logging.getLogger(__name__)
 
     def __init__(
         self,
@@ -347,6 +356,86 @@ class BaseLLMProvider(ABC):
             return available_tools, tool_dict
 
         return tools, tool_handler.build_tool_dict(tools)
+
+    def _load_cached_conversation(
+        self, previous_response_id: Optional[str]
+    ) -> Optional[List[Dict[str, Any]]]:
+        """Fetch cached conversation for a response id."""
+        if not previous_response_id:
+            return None
+        try:
+            return load_cached_messages(previous_response_id)
+        except Exception as exc:
+            self.logger.warning(
+                "Failed to load cached conversation for %s: %s",
+                previous_response_id,
+                exc,
+            )
+            return None
+
+    @staticmethod
+    def _merge_cached_and_new_messages(
+        cached_messages: List[Dict[str, Any]],
+        new_messages: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """Combine cached history with new messages, deduplicating overlaps."""
+        if not cached_messages:
+            return deepcopy(new_messages)
+        if not new_messages:
+            return deepcopy(cached_messages)
+
+        combined = deepcopy(cached_messages)
+        max_overlap = min(len(cached_messages), len(new_messages))
+        overlap = 0
+
+        for size in range(max_overlap, 0, -1):
+            if cached_messages[-size:] == new_messages[:size]:
+                overlap = size
+                break
+
+        combined.extend(deepcopy(new_messages[overlap:]))
+        return combined
+
+    def prepare_conversation_messages(
+        self,
+        messages: List[Dict[str, Any]],
+        previous_response_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Return full conversation including any cached history."""
+        base_messages = deepcopy(messages)
+        cached_messages = self._load_cached_conversation(previous_response_id)
+        if cached_messages:
+            base_messages = self._merge_cached_and_new_messages(
+                cached_messages, base_messages
+            )
+        return base_messages
+
+    def persist_conversation_history(
+        self, response_id: Optional[str], messages: List[Dict[str, Any]]
+    ) -> None:
+        """Persist conversation history for later continuation."""
+        if not response_id or not messages:
+            return
+        try:
+            store_cached_messages(response_id, messages)
+        except Exception as exc:
+            self.logger.warning(
+                "Failed to store conversation history for %s: %s",
+                response_id,
+                exc,
+            )
+
+    def generate_response_id(self) -> str:
+        """Generate a unique response id for conversation chaining."""
+        return f"{self.get_provider_name()}_{uuid.uuid4().hex}"
+
+    def append_assistant_message_to_history(
+        self, messages: List[Dict[str, Any]], assistant_content: Any
+    ) -> List[Dict[str, Any]]:
+        """Return new history with assistant reply appended."""
+        history = deepcopy(messages)
+        history.append({"role": "assistant", "content": deepcopy(assistant_content)})
+        return history
 
     def validate_post_response_hook(
         self, post_response_hook: Optional[Callable]

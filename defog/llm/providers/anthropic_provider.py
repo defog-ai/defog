@@ -736,6 +736,7 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
         post_response_hook: Optional[Callable] = None,
         image_result_keys: Optional[List[str]] = None,
         tool_budget: Optional[Dict[str, int]] = None,
+        previous_response_id: Optional[str] = None,
         **kwargs,
     ) -> LLMResponse:
         """Execute a chat completion with Anthropic."""
@@ -768,8 +769,12 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
         # Filter tools based on budget before building params
         tools = self.filter_tools_by_budget(tools, tool_handler)
 
+        conversation_messages = self.prepare_conversation_messages(
+            messages, previous_response_id
+        )
+
         params, _ = self.build_params(
-            messages=messages,
+            messages=conversation_messages,
             model=model,
             max_completion_tokens=max_completion_tokens,
             temperature=temperature,
@@ -814,6 +819,16 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
             traceback.print_exc()
             raise ProviderError(self.get_provider_name(), f"API call failed: {e}", e)
 
+        api_response_id = getattr(response, "id", None)
+        response_id = api_response_id
+        if store:
+            cache_response_id = api_response_id or self.generate_response_id()
+            history_for_cache = self.append_assistant_message_to_history(
+                conversation_messages, content
+            )
+            self.persist_conversation_history(cache_response_id, history_for_cache)
+            response_id = cache_response_id
+
         # Calculate cost
         cost = CostCalculator.calculate_cost(
             model, input_toks, output_toks, cached_toks
@@ -829,4 +844,5 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
             output_tokens_details=output_details,
             cost_in_cents=cost,
             tool_outputs=tool_outputs,
+            response_id=response_id,
         )
