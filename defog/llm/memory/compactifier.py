@@ -1,7 +1,6 @@
 """Message compactification utilities for conversation memory management."""
 
 from typing import List, Dict, Any, Tuple
-from ..utils import chat_async
 from .token_counter import TokenCounter
 
 
@@ -40,6 +39,8 @@ async def compactify_messages(
     summary_prompt = _create_summary_prompt(messages_to_summarize, max_summary_tokens)
 
     # Generate summary using the same provider/model
+    from ..utils import chat_async
+
     summary_response = await chat_async(
         provider=provider,
         model=model,
