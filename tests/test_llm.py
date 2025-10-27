@@ -687,8 +687,8 @@ async def test_chat_async_gemini_follow_up_with_tools_real():
         {
             "role": "user",
             "content": (
-                "Invoke multiply_numbers exactly once to multiply 8 and 5. "
-                "After the tool responds, summarize the product in one short sentence."
+                "Invoke multiply_numbers exactly once to multiply 6234 and 42. "
+                "After the tool responds, respond with just the product and nothing else."
             ),
         },
     ]
@@ -698,7 +698,6 @@ async def test_chat_async_gemini_follow_up_with_tools_real():
         model=model,
         messages=initial_messages,
         tools=[multiply_numbers],
-        tool_choice="required",
         temperature=0.0,
         max_retries=1,
     )
@@ -706,7 +705,7 @@ async def test_chat_async_gemini_follow_up_with_tools_real():
     assert response1.tool_outputs, "expected multiply_numbers tool to be invoked"
     tool_output = response1.tool_outputs[0]
     assert tool_output["name"] == "multiply_numbers"
-    assert tool_output["result"] in (40, 40.0)
+    assert tool_output["result"] in (261828, 261828.0)
     assert response1.response_id
 
     cached_first = conversation_cache.load_messages(response1.response_id)
@@ -717,8 +716,8 @@ async def test_chat_async_gemini_follow_up_with_tools_real():
         {
             "role": "user",
             "content": (
-                "Using the product you computed, subtract 12 without calling any tools. "
-                "Reply with the final number only."
+                "Using the product you computed, multiply the answer by 84."
+                "Reply with just the final number and nothing else."
             ),
         }
     ]
@@ -730,12 +729,16 @@ async def test_chat_async_gemini_follow_up_with_tools_real():
         temperature=0.0,
         max_retries=1,
         previous_response_id=response1.response_id,
+        tools=[multiply_numbers],
     )
 
     numbers = re.findall(r"-?\d+", str(response2.content))
     assert numbers, "expected numeric answer in follow-up response"
-    assert int(numbers[-1]) == 28
-    assert not response2.tool_outputs
+    assert int(numbers[-1]) == 21993552
+    assert response2.tool_outputs, "expected multiply_numbers tool to be invoked"
+    tool_output = response2.tool_outputs[0]
+    assert tool_output["name"] == "multiply_numbers"
+    assert tool_output["result"] in (21993552, 21993552.0)
 
     cached_second = conversation_cache.load_messages(response2.response_id)
     assert cached_second is not None
