@@ -1,6 +1,10 @@
 import unittest
 import pytest
 import asyncio
+import sys
+from copy import deepcopy
+from types import SimpleNamespace
+import uuid
 from defog.llm.utils import (
     map_model_to_provider,
     chat_async,
@@ -116,7 +120,7 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
         from defog.llm.config import LLMConfig
 
         # Test provider instantiation
-        config = LLMConfig()
+        config = LLMConfig(api_keys={"deepseek": "test-api-key"})
         provider = get_provider_instance("deepseek", config)
         self.assertIsInstance(provider, DeepSeekProvider)
         self.assertEqual(provider.get_provider_name(), "deepseek")
@@ -382,6 +386,363 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
 
         # Verify all models completed successfully
         self.assertEqual(len(results), len(models))
+
+
+@pytest.mark.asyncio
+async def test_anthropic_previous_response_uses_conversation_cache(monkeypatch):
+    from defog.llm.providers.anthropic_provider import AnthropicProvider
+    from defog.llm.memory import conversation_cache
+
+    conversation_cache.clear_cache()
+    provider = AnthropicProvider(api_key="api-key")
+
+    captured_messages = []
+
+    def fake_build_params(self, messages, model, **kwargs):
+        captured_messages.append(deepcopy(messages))
+        return ({"messages": messages, "model": model}, messages)
+
+    monkeypatch.setattr(AnthropicProvider, "build_params", fake_build_params)
+
+    call_index = {"value": 0}
+    assistant_contents = ["First answer", "Second answer"]
+
+    async def fake_process_response(
+        self,
+        client,
+        response,
+        request_params,
+        tools,
+        tool_dict,
+        response_format=None,
+        post_tool_function=None,
+        post_response_hook=None,
+        tool_handler=None,
+        **kwargs,
+    ):
+        content = assistant_contents[call_index["value"]]
+        call_index["value"] += 1
+        return (content, [], 10, 5, 0, None)
+
+    monkeypatch.setattr(AnthropicProvider, "process_response", fake_process_response)
+
+    class FakeAsyncAnthropic:
+        def __init__(self, **kwargs):
+            self.messages = self
+
+        async def create(self, **kwargs):
+            return SimpleNamespace(id=f"anth_{uuid.uuid4().hex}")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "anthropic",
+        SimpleNamespace(AsyncAnthropic=FakeAsyncAnthropic),
+    )
+
+    base_messages = [
+        {"role": "system", "content": "You are helpful."},
+        {"role": "user", "content": "Hello"},
+    ]
+
+    try:
+        response1 = await provider.execute_chat(
+            messages=base_messages,
+            model="claude-3-sonnet",
+        )
+        assert response1.response_id is not None
+
+        cached_first = conversation_cache.load_messages(response1.response_id)
+        assert cached_first == base_messages + [
+            {"role": "assistant", "content": "First answer"}
+        ]
+        assert captured_messages[0] == base_messages
+
+        follow_up = [{"role": "user", "content": "Tell me more"}]
+
+        response2 = await provider.execute_chat(
+            messages=follow_up,
+            model="claude-3-sonnet",
+            previous_response_id=response1.response_id,
+        )
+
+        expected_request_messages = base_messages + [
+            {"role": "assistant", "content": "First answer"},
+            {"role": "user", "content": "Tell me more"},
+        ]
+        assert captured_messages[1] == expected_request_messages
+
+        cached_second = conversation_cache.load_messages(response2.response_id)
+        assert cached_second == expected_request_messages + [
+            {"role": "assistant", "content": "Second answer"}
+        ]
+    finally:
+        conversation_cache.clear_cache()
+
+
+@pytest.mark.asyncio
+async def test_gemini_previous_response_uses_conversation_cache(monkeypatch):
+    from defog.llm.providers.gemini_provider import GeminiProvider
+    from defog.llm.memory import conversation_cache
+
+    conversation_cache.clear_cache()
+    provider = GeminiProvider(api_key="api-key")
+
+    captured_messages = []
+
+    def fake_build_params(self, messages, model, **kwargs):
+        captured_messages.append(deepcopy(messages))
+        return ({"temperature": 0.0}, [["placeholder"]])
+
+    monkeypatch.setattr(GeminiProvider, "build_params", fake_build_params)
+
+    call_index = {"value": 0}
+    assistant_contents = ["Gemini first", "Gemini second"]
+
+    async def fake_process_response(
+        self,
+        client,
+        response,
+        request_params,
+        messages,
+        tools,
+        tool_dict,
+        response_format=None,
+        model: str = "",
+        post_tool_function=None,
+        post_response_hook=None,
+        tool_handler=None,
+        **kwargs,
+    ):
+        content = assistant_contents[call_index["value"]]
+        call_index["value"] += 1
+        return (content, [], 8, 4, None, None)
+
+    monkeypatch.setattr(GeminiProvider, "process_response", fake_process_response)
+
+    class FakeGeminiClient:
+        def __init__(self, **kwargs):
+            self.aio = SimpleNamespace(models=self)
+
+        async def generate_content(self, model, contents, config):
+            return SimpleNamespace(id=f"gem_{uuid.uuid4().hex}")
+
+    monkeypatch.setattr(
+        "defog.llm.providers.gemini_provider.genai.Client", FakeGeminiClient
+    )
+    monkeypatch.setattr(
+        "defog.llm.providers.gemini_provider.GenerateContentConfig",
+        lambda **kwargs: kwargs,
+    )
+
+    base_messages = [
+        {"role": "system", "content": "You are Gemini."},
+        {"role": "user", "content": "Hi"},
+    ]
+
+    try:
+        response1 = await provider.execute_chat(
+            messages=base_messages,
+            model="gemini-1.5-flash",
+        )
+        assert response1.response_id is not None
+
+        cached_first = conversation_cache.load_messages(response1.response_id)
+        assert cached_first == base_messages + [
+            {"role": "assistant", "content": "Gemini first"}
+        ]
+        assert captured_messages[0] == base_messages
+
+        follow_up = [{"role": "user", "content": "Any other info?"}]
+
+        response2 = await provider.execute_chat(
+            messages=follow_up,
+            model="gemini-1.5-flash",
+            previous_response_id=response1.response_id,
+        )
+
+        expected_request_messages = base_messages + [
+            {"role": "assistant", "content": "Gemini first"},
+            {"role": "user", "content": "Any other info?"},
+        ]
+        assert captured_messages[1] == expected_request_messages
+
+        cached_second = conversation_cache.load_messages(response2.response_id)
+        assert cached_second == expected_request_messages + [
+            {"role": "assistant", "content": "Gemini second"}
+        ]
+    finally:
+        conversation_cache.clear_cache()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@skip_if_no_api_key("anthropic")
+async def test_chat_async_conversation_follow_up_with_tools_real():
+    from defog.llm.memory import conversation_cache
+
+    conversation_cache.clear_cache()
+
+    async def multiply_numbers(x: float, y: float) -> float:
+        """Multiply two numbers via tool call."""
+        return x * y
+
+    model = (
+        AVAILABLE_MODELS["anthropic"][0]
+        if AVAILABLE_MODELS.get("anthropic")
+        else "claude-haiku-4-5"
+    )
+
+    system_prompt = (
+        "You are an assistant that must use available tools when asked. "
+        "You have a tool named multiply_numbers for multiplying two numbers."
+    )
+    initial_messages = [
+        {"role": "system", "content": system_prompt},
+        {
+            "role": "user",
+            "content": (
+                "Call the multiply_numbers tool exactly once to multiply 6234 and 42, "
+                "then respond with just the product and nothing else."
+            ),
+        },
+    ]
+
+    response1 = await chat_async(
+        provider=LLMProvider.ANTHROPIC,
+        model=model,
+        messages=initial_messages,
+        tools=[multiply_numbers],
+        temperature=0.0,
+        max_retries=1,
+    )
+
+    assert response1.tool_outputs, "expected multiply_numbers tool to be invoked"
+    tool_output = response1.tool_outputs[0]
+    assert tool_output["name"] == "multiply_numbers"
+    assert tool_output["result"] in (261828, 261828.0)
+    assert response1.response_id
+
+    cached_first = conversation_cache.load_messages(response1.response_id)
+    assert cached_first is not None
+    assert cached_first[-1]["role"] == "assistant"
+
+    follow_up_messages = [
+        {
+            "role": "user",
+            "content": (
+                "Using the product you just computed, multiply the answer by 84."
+                "Reply with the final number only."
+            ),
+        }
+    ]
+
+    response2 = await chat_async(
+        provider=LLMProvider.ANTHROPIC,
+        model=model,
+        messages=follow_up_messages,
+        temperature=0.0,
+        max_retries=1,
+        previous_response_id=response1.response_id,
+        tools=[multiply_numbers],
+    )
+
+    numbers = re.findall(r"-?\d+", str(response2.content))
+    assert numbers, "expected numeric answer in follow-up response"
+    assert int(numbers[-1]) == 21993552
+    assert response2.tool_outputs, "expected multiply_numbers tool to be invoked"
+    tool_output = response2.tool_outputs[0]
+    assert tool_output["name"] == "multiply_numbers"
+    assert tool_output["result"] in (21993552, 21993552.0)
+
+    cached_second = conversation_cache.load_messages(response2.response_id)
+    assert cached_second is not None
+    assert cached_second[-1]["role"] == "assistant"
+    assert cached_second[-1]["content"] == response2.content
+
+    conversation_cache.clear_cache()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@skip_if_no_api_key("gemini")
+async def test_chat_async_gemini_follow_up_with_tools_real():
+    from defog.llm.memory import conversation_cache
+
+    conversation_cache.clear_cache()
+
+    async def multiply_numbers(x: float, y: float) -> float:
+        """Multiply two numbers via tool call."""
+        return x * y
+
+    model = (
+        "gemini-2.5-flash"
+        if "gemini-2.5-flash" in AVAILABLE_MODELS.get("gemini", [])
+        else AVAILABLE_MODELS["gemini"][0]
+    )
+
+    system_prompt = (
+        "You are a helpful assistant. Use the multiply_numbers tool whenever a user asks "
+        "you to multiply numbers."
+    )
+    initial_messages = [
+        {"role": "system", "content": system_prompt},
+        {
+            "role": "user",
+            "content": (
+                "Invoke multiply_numbers exactly once to multiply 8 and 5. "
+                "After the tool responds, summarize the product in one short sentence."
+            ),
+        },
+    ]
+
+    response1 = await chat_async(
+        provider=LLMProvider.GEMINI,
+        model=model,
+        messages=initial_messages,
+        tools=[multiply_numbers],
+        tool_choice="required",
+        temperature=0.0,
+        max_retries=1,
+    )
+
+    assert response1.tool_outputs, "expected multiply_numbers tool to be invoked"
+    tool_output = response1.tool_outputs[0]
+    assert tool_output["name"] == "multiply_numbers"
+    assert tool_output["result"] in (40, 40.0)
+    assert response1.response_id
+
+    cached_first = conversation_cache.load_messages(response1.response_id)
+    assert cached_first is not None
+    assert cached_first[-1]["role"] == "assistant"
+
+    follow_up_messages = [
+        {
+            "role": "user",
+            "content": (
+                "Using the product you computed, subtract 12 without calling any tools. "
+                "Reply with the final number only."
+            ),
+        }
+    ]
+
+    response2 = await chat_async(
+        provider=LLMProvider.GEMINI,
+        model=model,
+        messages=follow_up_messages,
+        temperature=0.0,
+        max_retries=1,
+        previous_response_id=response1.response_id,
+    )
+
+    numbers = re.findall(r"-?\d+", str(response2.content))
+    assert numbers, "expected numeric answer in follow-up response"
+    assert int(numbers[-1]) == 28
+    assert not response2.tool_outputs
+
+    cached_second = conversation_cache.load_messages(response2.response_id)
+    assert cached_second is not None
+    assert cached_second[-1]["role"] == "assistant"
+    assert cached_second[-1]["content"] == response2.content
+
+    conversation_cache.clear_cache()
 
 
 if __name__ == "__main__":
