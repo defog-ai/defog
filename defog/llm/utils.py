@@ -114,6 +114,7 @@ async def chat_async(
     image_result_keys: Optional[List[str]] = None,
     tool_budget: Optional[Dict[str, int]] = None,
     insert_tool_citations: bool = False,
+    citations_instructions: Optional[str] = None,
     parallel_tool_calls: bool = False,
     tool_output_max_tokens: int = 10000,
     previous_response_id: Optional[str] = None,
@@ -253,10 +254,14 @@ async def chat_async(
                 documents = convert_tool_outputs_to_documents(response.tool_outputs)
 
                 # Call citations tool to add citations to the response
+                if citations_instructions:
+                    citation_instructions = citations_instructions
+                else:
+                    citation_instructions = "Add citations to the following response using the tool outputs as source documents: "
+                    +response.content
                 citation_blocks = await citations_tool(
                     question=original_question,
-                    instructions="Add citations to the following response using the tool outputs as source documents: "
-                    + response.content,
+                    instructions=citation_instructions,
                     documents=documents,
                     model=current_model,
                     provider=provider_enum,
