@@ -1,9 +1,11 @@
-from defog import config as defog_config
 import traceback
 import time
 import base64
 import logging
+import uuid
 from typing import Dict, List, Any, Optional, Callable, Tuple, Union
+
+from defog import config as defog_config
 
 from google import genai
 from google.genai.types import (
@@ -41,6 +43,21 @@ class GeminiProvider(BaseLLMProvider):
 
     def get_provider_name(self) -> str:
         return "gemini"
+
+    def _get_or_assign_tool_id(self, tool_call: Any) -> str:
+        """Ensure tool call has a stable id even when Gemini omits it."""
+        tool_id = getattr(tool_call, "id", None)
+        if tool_id:
+            return tool_id
+
+        tool_id = f"gemini-tool-{uuid.uuid4().hex}"
+        try:
+            setattr(tool_call, "id", tool_id)
+        except Exception:
+            logger.debug(
+                "Unable to assign generated tool_id to Gemini function call instance"
+            )
+        return tool_id
 
     def _get_media_type(self, img_data: str) -> str:
         """Detect media type from base64 image data."""
@@ -280,8 +297,7 @@ class GeminiProvider(BaseLLMProvider):
                         for tool_call in response.function_calls:
                             func_name = tool_call.name
                             args = tool_call.args
-                            # set tool_id to None, as Gemini models do not return a tool_id by default
-                            tool_id = getattr(tool_call, "id", None)
+                            tool_id = self._get_or_assign_tool_id(tool_call)
 
                             tool_calls_batch.append(
                                 {
@@ -321,10 +337,11 @@ class GeminiProvider(BaseLLMProvider):
                         for tool_call, result in zip(response.function_calls, results):
                             func_name = tool_call.name
                             args = tool_call.args
-                            tool_id = getattr(tool_call, "id", None)
+                            tool_id = self._get_or_assign_tool_id(tool_call)
 
                             tool_outputs.append(
                                 {
+                                    "tool_call_id": tool_id,
                                     "tool_id": tool_id,
                                     "name": func_name,
                                     "args": args,
