@@ -23,17 +23,18 @@ import time
 IO_STREAM = StringIO()
 
 
-def log_to_file(function_name, input_args, tool_result):
+def log_to_file(function_name, input_args, tool_result, tool_id):
     """
     Simple function to test logging to a StringIO object.
     Used in test_post_tool_calls_openai and test_post_tool_calls_anthropic
     """
     sorted_input_args = {k: input_args[k] for k in sorted(input_args)}
-
+    print(tool_id)
     message = {
         "function_name": function_name,
         "args": sorted_input_args,
         "result": tool_result,
+        "tool_id": tool_id,
     }
     message = json.dumps(message, indent=4)
     IO_STREAM.write(message + "\n")
@@ -230,7 +231,11 @@ class TestToolUseFeatures(unittest.IsolatedAsyncioTestCase):
         )
         print(result)
         self.assertEqual(result.content, self.arithmetic_answer)
-        tools_used = [output["name"] for output in result.tool_outputs]
+        tools_used = [
+            output["name"]
+            for output in result.tool_outputs
+            if output["name"] != "reasoning"
+        ]
         self.assertSetEqual(set(tools_used), {"numsum", "numprod"})
 
     @pytest.mark.asyncio
@@ -249,11 +254,18 @@ class TestToolUseFeatures(unittest.IsolatedAsyncioTestCase):
             max_retries=1,
         )
         print(result)
-        tools_used = [output["name"] for output in result.tool_outputs]
+        tools_used = [
+            output["name"]
+            for output in result.tool_outputs
+            if output["name"] != "reasoning"
+        ]
+        tool_outputs = [
+            output for output in result.tool_outputs if output["name"] != "reasoning"
+        ]
         self.assertSetEqual(set(tools_used), {"get_weather"})
-        self.assertEqual(result.tool_outputs[0]["name"], "get_weather")
-        self.assertGreaterEqual(float(result.content), 21)
-        self.assertLessEqual(float(result.content), 38)
+        self.assertEqual(tool_outputs[0]["name"], "get_weather")
+        self.assertGreaterEqual(float(tool_outputs[0]["result"]), 21)
+        self.assertLessEqual(float(tool_outputs[0]["result"]), 38)
 
     # =============================
     # Grok structured outputs
@@ -449,7 +461,11 @@ class TestToolUseFeatures(unittest.IsolatedAsyncioTestCase):
         )
         print(result)
         self.assertEqual(result.content, self.arithmetic_answer)
-        tools_used = [output["name"] for output in result.tool_outputs]
+        tools_used = [
+            output["name"]
+            for output in result.tool_outputs
+            if output["name"] != "reasoning"
+        ]
         self.assertSetEqual(set(tools_used), {"numsum", "numprod"})
 
     @pytest.mark.asyncio
@@ -469,7 +485,11 @@ class TestToolUseFeatures(unittest.IsolatedAsyncioTestCase):
         )
         print(result)
         self.assertEqual(result.content, self.arithmetic_answer)
-        tools_used = [output["name"] for output in result.tool_outputs]
+        tools_used = [
+            output["name"]
+            for output in result.tool_outputs
+            if output["name"] != "reasoning"
+        ]
         self.assertSetEqual(set(tools_used), {"numsum", "numprod"})
 
     @pytest.mark.asyncio
@@ -489,7 +509,11 @@ class TestToolUseFeatures(unittest.IsolatedAsyncioTestCase):
         )
         print(result)
         self.assertEqual(result.content, self.arithmetic_answer)
-        tools_used = [output["name"] for output in result.tool_outputs]
+        tools_used = [
+            output["name"]
+            for output in result.tool_outputs
+            if output["name"] != "reasoning"
+        ]
         self.assertSetEqual(set(tools_used), {"numsum", "numprod"})
 
 
