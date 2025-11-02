@@ -138,7 +138,7 @@ async def chat_async(
         tools: List of tools the model can call
         tool_choice: Tool calling behavior ("auto", "required", function name)
         max_retries: Maximum number of retry attempts
-        post_tool_function: Function to call after each tool execution. Must have parameters: function_name, input_args, tool_result
+        post_tool_function: Function to call after each tool execution. Must have parameters: function_name, input_args, tool_result, tool_id
         post_response_hook: Function to call after each response is received from the model. Must have parameters: response, messages
         config: LLM configuration object
         mcp_servers: List of MCP server urls for streamable http servers (e.g., ["http://localhost:8000/mcp", "http://localhost:8001/mcp"])

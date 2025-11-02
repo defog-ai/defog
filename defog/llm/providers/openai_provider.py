@@ -295,12 +295,14 @@ class OpenAIProvider(BaseLLMProvider):
                                     function_name="reasoning",
                                     input_args={},
                                     tool_result=reasoning_summary,
+                                    tool_id=None,
                                 )
                             else:
                                 post_tool_function(
                                     function_name="reasoning",
                                     input_args={},
                                     tool_result=reasoning_summary,
+                                    tool_id=None,
                                 )
 
         return [
