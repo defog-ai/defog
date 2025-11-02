@@ -497,7 +497,8 @@ async def execute_tools_parallel(
 
 def verify_post_tool_function(function: Callable):
     """
-    Verify that the post_tool_function is a function that takes exactly 3 arguments: function_name, input_args, tool_result
+    Verify that the post_tool_function is a function that takes the required arguments:
+    function_name, input_args, tool_result, tool_id
     """
     sig = inspect.signature(function)
     if sig.parameters.get("function_name") is None:
@@ -506,5 +507,7 @@ def verify_post_tool_function(function: Callable):
         raise ValueError("post_tool_function must have parameter named `input_args`")
     if sig.parameters.get("tool_result") is None:
         raise ValueError("post_tool_function must have parameter named `tool_result`")
+    if sig.parameters.get("tool_id") is None:
+        raise ValueError("post_tool_function must have parameter named `tool_id`")
 
     return function

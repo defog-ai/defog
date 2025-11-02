@@ -96,6 +96,7 @@ class ToolHandler:
         args: Dict[str, Any],
         tool_dict: Dict[str, Callable],
         post_tool_function: Optional[Callable] = None,
+        tool_id: Optional[str] = None,
     ) -> Any:
         """Execute a single tool call."""
         logger.debug(f"Executing tool call: '{tool_name}' with args: {args}")
@@ -134,12 +135,14 @@ class ToolHandler:
                         function_name=tool_name,
                         input_args=args,
                         tool_result=result,
+                        tool_id=tool_id,
                     )
                 else:
                     post_tool_function(
                         function_name=tool_name,
                         input_args=args,
                         tool_result=result,
+                        tool_id=tool_id,
                     )
             except Exception as e:
                 raise ToolError(
@@ -178,10 +181,20 @@ class ToolHandler:
                     func_args = tool_call.get("function", {}).get(
                         "arguments"
                     ) or tool_call.get("arguments", {})
+                    tool_id = (
+                        tool_call.get("id")
+                        or tool_call.get("tool_call_id")
+                        or tool_call.get("call_id")
+                        or tool_call.get("tool_use_id")
+                    )
 
                     # Use execute_tool_call which handles budget tracking
                     result = await self.execute_tool_call(
-                        func_name, func_args, tool_dict, post_tool_function
+                        func_name,
+                        func_args,
+                        tool_dict,
+                        post_tool_function,
+                        tool_id=tool_id,
                     )
                     results.append(result)
                 return results
@@ -209,6 +222,12 @@ class ToolHandler:
                     func_args = tool_call.get("function", {}).get(
                         "arguments"
                     ) or tool_call.get("arguments", {})
+                    tool_id = (
+                        tool_call.get("id")
+                        or tool_call.get("tool_call_id")
+                        or tool_call.get("call_id")
+                        or tool_call.get("tool_use_id")
+                    )
 
                     try:
                         if inspect.iscoroutinefunction(post_tool_function):
@@ -216,12 +235,14 @@ class ToolHandler:
                                 function_name=func_name,
                                 input_args=func_args,
                                 tool_result=result,
+                                tool_id=tool_id,
                             )
                         else:
                             post_tool_function(
                                 function_name=func_name,
                                 input_args=func_args,
                                 tool_result=result,
+                                tool_id=tool_id,
                             )
                     except Exception as e:
                         # Don't fail the entire batch for post-tool function errors
