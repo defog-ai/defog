@@ -118,6 +118,9 @@ async def chat_async(
     parallel_tool_calls: bool = False,
     tool_output_max_tokens: int = 10000,
     previous_response_id: Optional[str] = None,
+    citations_model: Optional[str] = None,
+    citations_provider: Optional[Union[LLMProvider, str]] = None,
+    citations_excluded_tools: Optional[List[str]] = None,
 ) -> LLMResponse:
     """
     Execute a chat completion with explicit provider parameter.
@@ -146,6 +149,9 @@ async def chat_async(
         image_result_keys: List of keys to check in tool results for image data (e.g., ['image_base64', 'screenshot_data'])
         tool_budget: Dictionary mapping tool names to maximum allowed calls. Tools not in the dictionary have unlimited calls.
         insert_tool_citations: If True, adds citations to the response using tool outputs as source documents (OpenAI and Anthropic only)
+        citations_model: Optional model to use specifically for generating citations. If provided, the provider is inferred from the model name unless citations_provider is set. If not provided, the main model is used.
+        citations_provider: Optional provider to use for generating citations. Overrides provider inference from citations_model. Accepts LLMProvider enum or string name. If not provided, the main provider is used.
+        citations_excluded_tools: Optional list of tool names to exclude from the documents sent for citation generation.
         parallel_tool_calls: Enable parallel tool calls when set to True (default: False)
         tool_output_max_tokens: Maximum tokens allowed in tool outputs (default: 10000). Set to -1 to disable the check.
         previous_response_id: Optional id of a previous response when continuing conversations (supported for OpenAI, Anthropic/Grok, Gemini).
@@ -198,15 +204,68 @@ async def chat_async(
                     current_model = backup_model
 
             # Validate provider support for citations before execution
+            # Determine which provider/model will be used for citations if enabled
             if insert_tool_citations:
+                # Determine provider for the main call
                 if isinstance(current_provider, str):
-                    provider_enum = LLMProvider(current_provider.lower())
+                    provider_enum_for_main = LLMProvider(current_provider.lower())
                 else:
-                    provider_enum = current_provider
+                    provider_enum_for_main = current_provider
 
-                if provider_enum not in [LLMProvider.OPENAI, LLMProvider.ANTHROPIC]:
+                # Determine citations provider and model
+                # Provider precedence: explicit citations_provider > inferred from citations_model > main provider
+                if citations_provider is not None:
+                    if isinstance(citations_provider, str):
+                        citations_provider_enum = LLMProvider(
+                            citations_provider.lower()
+                        )
+                    else:
+                        citations_provider_enum = citations_provider
+                elif citations_model:
+                    try:
+                        citations_provider_enum = map_model_to_provider(citations_model)
+                    except Exception as e:
+                        raise ConfigurationError(
+                            f"Unable to map citations_model '{citations_model}' to a provider: {e}"
+                        )
+                else:
+                    citations_provider_enum = provider_enum_for_main
+
+                citations_model_to_use = (
+                    citations_model if citations_model else current_model
+                )
+
+                # If both provider and model were provided, check for an obvious mismatch and warn via error
+                if citations_provider is not None and citations_model:
+                    try:
+                        inferred = map_model_to_provider(citations_model)
+                        if inferred != citations_provider_enum:
+                            raise ConfigurationError(
+                                f"citations_model '{citations_model}' appears to map to provider '{inferred.value}', "
+                                f"but citations_provider was set to '{citations_provider_enum.value}'. Please align them."
+                            )
+                    except Exception:
+                        # If mapping fails, we already raised earlier; keep going otherwise
+                        pass
+
+                # Validate provider support for citations
+                if citations_provider_enum not in [
+                    LLMProvider.OPENAI,
+                    LLMProvider.ANTHROPIC,
+                ]:
                     raise ValueError(
                         "insert_tool_citations is only supported for OpenAI and Anthropic providers"
+                    )
+
+                # Validate that we have credentials for the citations provider
+                provider_name = (
+                    citations_provider_enum.value
+                    if hasattr(citations_provider_enum, "value")
+                    else str(citations_provider_enum)
+                )
+                if not config.validate_provider_config(provider_name):
+                    raise ConfigurationError(
+                        f"No API key found for citations provider '{provider_name}'"
                     )
 
             # Get provider instance
@@ -239,32 +298,65 @@ async def chat_async(
                 previous_response_id=previous_response_id,
             )
 
-            # Process citations if requested and provider supports it
+            # Process citations if requested and we have tool outputs
             if insert_tool_citations and response.tool_outputs:
-                # Get the provider enum (already validated above)
+                # Determine citations provider/model (recalculate to use the actual values)
                 if isinstance(current_provider, str):
-                    provider_enum = LLMProvider(current_provider.lower())
+                    provider_enum_for_main = LLMProvider(current_provider.lower())
                 else:
-                    provider_enum = current_provider
+                    provider_enum_for_main = current_provider
+
+                # Provider precedence: explicit citations_provider > inferred from citations_model > main provider
+                if citations_provider is not None:
+                    if isinstance(citations_provider, str):
+                        citations_provider_enum = LLMProvider(
+                            citations_provider.lower()
+                        )
+                    else:
+                        citations_provider_enum = citations_provider
+                elif citations_model:
+                    citations_provider_enum = map_model_to_provider(citations_model)
+                else:
+                    citations_provider_enum = provider_enum_for_main
+
+                citations_model_to_use = (
+                    citations_model if citations_model else current_model
+                )
 
                 # Get the original user question
                 original_question = get_original_user_question(messages)
 
+                # Optionally filter out tool outputs from citation documents
+                tool_outputs_for_citation = response.tool_outputs
+                if citations_excluded_tools:
+                    excluded_set = set(citations_excluded_tools)
+                    tool_outputs_for_citation = [
+                        o
+                        for o in response.tool_outputs
+                        if o.get("name") not in excluded_set
+                    ]
+
                 # Convert tool outputs to documents
-                documents = convert_tool_outputs_to_documents(response.tool_outputs)
+                documents = convert_tool_outputs_to_documents(tool_outputs_for_citation)
+
+                # If no documents remain after filtering, skip citation enhancement
+                if not documents:
+                    return response
 
                 # Call citations tool to add citations to the response
                 if citations_instructions:
                     citation_instructions = citations_instructions
                 else:
-                    citation_instructions = "Add citations to the following response using the tool outputs as source documents: "
-                    +response.content
+                    citation_instructions = (
+                        "Add citations to the following response using the tool outputs "
+                        f"as source documents: {response.content}"
+                    )
                 citation_blocks = await citations_tool(
                     question=original_question,
                     instructions=citation_instructions,
                     documents=documents,
-                    model=current_model,
-                    provider=provider_enum,
+                    model=citations_model_to_use,
+                    provider=citations_provider_enum,
                     max_tokens=max_completion_tokens or 16000,
                     verbose=False,  # Don't show progress for internal citation processing
                 )

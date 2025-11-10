@@ -111,7 +111,94 @@ class TestToolCitations(unittest.IsolatedAsyncioTestCase):
         self.assertIn("insert_tool_citations is only supported", str(context.exception))
 
     @pytest.mark.asyncio
-    @skip_if_no_api_key("openai")
+    @skip_if_no_api_key("anthropic")
+    async def test_citations_model_provider_and_excluded_tools_e2e(self):
+        """End-to-end: citations_model/provider override and excluded tools filtering."""
+
+        # Define two tools: one useful and one noise
+        class CapitalInput(BaseModel):
+            country: str
+
+        def provide_capital(input: CapitalInput):
+            """Return the capital of a given country."""
+            capitals = {"france": "Paris", "spain": "Madrid", "italy": "Rome"}
+            result = capitals.get(input.country.lower(), "Unknown")
+            return {"country": input.country, "capital": result}
+
+        class NoiseInput(BaseModel):
+            tag: str
+
+        def noise_tool(input: NoiseInput):
+            """Return irrelevant noise payload."""
+            return {"noise": f"irrelevant-{input.tag}"}
+
+        messages = [
+            {
+                "role": "user",
+                "content": (
+                    "What is the capital of France? Please call the 'provide_capital' tool."
+                ),
+            }
+        ]
+
+        # 1) Baseline: include all tools in citations
+        response1 = await chat_async(
+            provider="anthropic",
+            model="claude-haiku-4-5",
+            messages=messages,
+            tools=[provide_capital, noise_tool],
+            insert_tool_citations=True,
+        )
+
+        self.assertIsInstance(response1, LLMResponse)
+        self.assertIsNotNone(response1.tool_outputs)
+        # Ensure the intended tool was called
+        called_tool_names = {o.get("name") for o in response1.tool_outputs}
+        self.assertIn("provide_capital", called_tool_names)
+
+        # If citations were added, ensure they don't reference the excluded tool (not excluded yet)
+        if response1.citations:
+            # Should not reference noise tool files
+            for block in response1.citations:
+                for c in block.get("citations", []):
+                    title = c.get("document_title", "")
+                    self.assertFalse(title.startswith("noise_tool_"))
+
+        # 2) Exclude the provide_capital tool from citations documents
+        response2 = await chat_async(
+            provider="anthropic",
+            model="claude-haiku-4-5",
+            messages=messages,
+            tools=[provide_capital, noise_tool],
+            insert_tool_citations=True,
+            citations_excluded_tools=["provide_capital"],
+        )
+
+        self.assertIsInstance(response2, LLMResponse)
+        # Tool still called, but citations skipped because all docs filtered out
+        self.assertIsNotNone(response2.tool_outputs)
+        self.assertIsNone(response2.citations)
+
+        # 3) Use a separate citations model/provider to verify override path works
+        # Prefer a lighter model if available, otherwise fall back
+        response3 = await chat_async(
+            provider="anthropic",
+            model="claude-haiku-4-5",
+            messages=messages,
+            tools=[provide_capital, noise_tool],
+            insert_tool_citations=True,
+            citations_model="claude-sonnet-4-5",
+            citations_provider="anthropic",
+        )
+
+        self.assertIsInstance(response3, LLMResponse)
+        # If citations present, basic structure checks
+        if response3.citations:
+            for block in response3.citations:
+                self.assertIn("type", block)
+                self.assertIn("text", block)
+                self.assertIn("citations", block)
+
     async def test_tool_citations_with_openai(self):
         """Test tool citations with OpenAI provider"""
 
