@@ -61,10 +61,15 @@ MODEL_COSTS = {
         "cached_input_cost_per1k": 0.00075,
         "output_cost_per1k": 0.015,
     },
-    "claude-opus-4": {
+    "claude-opus-4-1": {
         "input_cost_per1k": 0.015,
         "cached_input_cost_per1k": 0.00375,
         "output_cost_per1k": 0.075,
+    },
+    "claude-opus-4-5": {
+        "input_cost_per1k": 0.005,
+        "cached_input_cost_per1k": 0.00125,
+        "output_cost_per1k": 0.025,
     },
     "claude-haiku-4-5": {
         "input_cost_per1k": 0.001,
