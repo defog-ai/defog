@@ -6,7 +6,17 @@ from defog.llm.utils_logging import (
     NoOpSubTaskLogger,
 )
 from defog import config
+from defog.llm.cost.calculator import CostCalculator
 import asyncio
+
+
+class CitationsResult(list):
+    """List-like container that carries citation blocks plus cost metadata."""
+
+    def __init__(self, blocks, cost_in_cents=None, usage=None):
+        super().__init__(blocks or [])
+        self.cost_in_cents = cost_in_cents
+        self.usage = usage
 
 
 async def upload_document_to_openai_vector_store(document, store_id):
@@ -46,6 +56,8 @@ async def citations_tool(
     """
     Use this tool to get an answer to a well-cited answer to a question,
     given a list of documents.
+    Returns a CitationsResult (list subclass) that carries citation blocks plus an
+    optional `cost_in_cents` attribute for the citation generation call.
     """
     tracker_class = ToolProgressTracker if verbose else NoOpToolProgressTracker
     logger_class = SubTaskLogger if verbose else NoOpSubTaskLogger
@@ -120,6 +132,23 @@ async def citations_tool(
                 max_output_tokens=max_tokens,
             )
 
+            usage = getattr(response, "usage", None)
+            cost_in_cents = None
+            if usage:
+                input_tokens = getattr(usage, "input_tokens", 0) or 0
+                output_tokens = getattr(usage, "output_tokens", 0) or 0
+                cached_tokens = (
+                    getattr(
+                        getattr(usage, "input_tokens_details", None),
+                        "cached_tokens",
+                        0,
+                    )
+                    or 0
+                )
+                cost_in_cents = CostCalculator.calculate_cost(
+                    model, input_tokens, output_tokens, cached_tokens
+                )
+
             # convert the response to a list of blocks
             # similar to a subset of the Anthropic citations API
             blocks = []
@@ -147,7 +176,7 @@ async def citations_tool(
                 },
             )
 
-            return blocks
+            return CitationsResult(blocks, cost_in_cents=cost_in_cents, usage=usage)
 
         elif provider in [LLMProvider.ANTHROPIC, LLMProvider.ANTHROPIC.value]:
             from anthropic import AsyncAnthropic
@@ -198,6 +227,15 @@ async def citations_tool(
                 max_tokens=max_tokens,
             )
 
+            usage = getattr(response, "usage", None)
+            cost_in_cents = None
+            if usage:
+                input_tokens = getattr(usage, "input_tokens", 0) or 0
+                output_tokens = getattr(usage, "output_tokens", 0) or 0
+                cost_in_cents = CostCalculator.calculate_cost(
+                    model, input_tokens, output_tokens, None
+                )
+
             tracker.update(90, "Processing results")
             response_with_citations = [item.to_dict() for item in response.content]
 
@@ -209,7 +247,9 @@ async def citations_tool(
                 },
             )
 
-            return response_with_citations
+            return CitationsResult(
+                response_with_citations, cost_in_cents=cost_in_cents, usage=usage
+            )
 
         else:
             raise ValueError(f"Provider {provider} not supported for citations tool")

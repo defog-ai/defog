@@ -379,6 +379,13 @@ async def chat_async(
                         response.citations = citation_blocks
                     # If citation processing failed or returned empty content, keep original content
 
+                # Add citation generation cost to the overall cost if available
+                citation_cost = getattr(citation_blocks, "cost_in_cents", None)
+                if citation_cost is not None:
+                    response.cost_in_cents = (
+                        response.cost_in_cents or 0
+                    ) + citation_cost
+
             return response
 
         except Exception as e:
