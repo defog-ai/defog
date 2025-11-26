@@ -1,6 +1,7 @@
 import unittest
 import pytest
 import os
+from unittest.mock import AsyncMock, patch
 from pydantic import BaseModel
 from defog.llm.utils import (
     chat_async,
@@ -9,6 +10,8 @@ from defog.llm.utils import (
 )
 from defog.llm.llm_providers import LLMProvider
 from defog.llm.providers.base import LLMResponse
+from defog.llm.config import LLMConfig
+from defog.llm.citations import CitationsResult
 from tests.conftest import skip_if_no_api_key
 
 
@@ -82,6 +85,62 @@ class TestToolCitations(unittest.IsolatedAsyncioTestCase):
 
         question = get_original_user_question(messages_no_user)
         self.assertEqual(question, "")
+
+    @pytest.mark.asyncio
+    async def test_citation_costs_are_added_to_response(self):
+        """Ensure citation generation cost is added to the main response cost."""
+
+        class DummyProvider:
+            def validate_post_response_hook(self, hook):
+                return
+
+            async def execute_chat(self, **kwargs):
+                return LLMResponse(
+                    content="base response",
+                    model="gpt-4o",
+                    time=0,
+                    input_tokens=10,
+                    output_tokens=5,
+                    cost_in_cents=1.5,
+                    tool_outputs=[
+                        {
+                            "tool_call_id": "tool-1",
+                            "name": "dummy_tool",
+                            "args": {"value": 1},
+                            "result": {"result": "ok"},
+                        }
+                    ],
+                )
+
+        citation_blocks = CitationsResult(
+            [{"type": "text", "text": "with citations", "citations": []}],
+            cost_in_cents=0.5,
+        )
+
+        config = LLMConfig(api_keys={"openai": "test"})
+
+        with (
+            patch(
+                "defog.llm.utils.get_provider_instance", return_value=DummyProvider()
+            ),
+            patch(
+                "defog.llm.utils.citations_tool",
+                new=AsyncMock(return_value=citation_blocks),
+            ),
+        ):
+            response = await chat_async(
+                provider=LLMProvider.OPENAI,
+                model="gpt-4o",
+                messages=[{"role": "user", "content": "Hi"}],
+                tools=[lambda: "ok"],
+                insert_tool_citations=True,
+                config=config,
+            )
+
+        self.assertIsInstance(response, LLMResponse)
+        self.assertAlmostEqual(response.cost_in_cents, 2.0)
+        self.assertEqual(response.citations, citation_blocks)
+        self.assertEqual(response.content, "with citations")
 
     @pytest.mark.asyncio
     @pytest.mark.xfail(

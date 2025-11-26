@@ -42,13 +42,13 @@ from defog.llm.llm_providers import LLMProvider
 
 response = await chat_async(
     provider=LLMProvider.OPENAI,
-    model="gpt-5",
+    model="gpt-5.1",
     messages=[
         {"role": "system", "content": "You are concise and helpful."},
         {"role": "user", "content": "Summarize the benefits of unit tests."},
     ],
-    # Optional Responses API controls for GPT‑5
-    reasoning_effort="minimal",   # minimal | low | medium | high
+    # Optional Responses API controls for GPT‑5.1
+    reasoning_effort="none",   # none | low | medium | high
     verbosity="low",              # low | medium | high
 )
 print(response.content)
