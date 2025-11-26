@@ -117,6 +117,8 @@ async def chat_async(
     citations_instructions: Optional[str] = None,
     parallel_tool_calls: bool = False,
     tool_output_max_tokens: int = 10000,
+    tool_result_preview_max_tokens: Optional[int] = None,
+    tool_sample_functions: Optional[Dict[str, Callable]] = None,
     previous_response_id: Optional[str] = None,
     citations_model: Optional[str] = None,
     citations_provider: Optional[Union[LLMProvider, str]] = None,
@@ -148,6 +150,8 @@ async def chat_async(
         mcp_servers: List of MCP server urls for streamable http servers (e.g., ["http://localhost:8000/mcp", "http://localhost:8001/mcp"])
         image_result_keys: List of keys to check in tool results for image data (e.g., ['image_base64', 'screenshot_data'])
         tool_budget: Dictionary mapping tool names to maximum allowed calls. Tools not in the dictionary have unlimited calls.
+        tool_result_preview_max_tokens: Optional token budget for the tool output preview that is sent back to the LLM. The full tool result is still stored in tool_outputs.
+        tool_sample_functions: Optional mapping of tool name to sampler function (or a single callable) used to downsample tool outputs before returning them to the LLM.
         insert_tool_citations: If True, adds citations to the response using tool outputs as source documents (OpenAI and Anthropic only)
         citations_model: Optional model to use specifically for generating citations. If provided, the provider is inferred from the model name unless citations_provider is set. If not provided, the main model is used.
         citations_provider: Optional provider to use for generating citations. Overrides provider inference from citations_model. Accepts LLMProvider enum or string name. If not provided, the main provider is used.
@@ -295,6 +299,8 @@ async def chat_async(
                 tool_budget=tool_budget,
                 parallel_tool_calls=parallel_tool_calls,
                 tool_output_max_tokens=tool_output_max_tokens,
+                tool_result_preview_max_tokens=tool_result_preview_max_tokens,
+                tool_sample_functions=tool_sample_functions,
                 previous_response_id=previous_response_id,
                 return_tool_outputs_only=insert_tool_citations,
             )

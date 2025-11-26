@@ -11,7 +11,7 @@ from ..config import LLMConfig
 from ..cost import CostCalculator
 from ..utils_function_calling import get_function_specs, convert_tool_choice
 from ..image_utils import convert_to_anthropic_format
-from ..utils_image_support import process_tool_results_with_images
+from ..utils_image_support import process_tool_results_with_images, ToolResultData
 from ..tools.handler import ToolHandler
 
 logger = logging.getLogger(__name__)
@@ -262,6 +262,8 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
         post_response_hook: Optional[Callable] = None,
         tool_handler: Optional[ToolHandler] = None,
         return_tool_outputs_only: bool = False,
+        tool_sample_functions: Optional[Dict[str, Callable]] = None,
+        tool_result_preview_max_tokens: Optional[int] = None,
         **kwargs,
     ) -> Tuple[
         Any, List[Dict[str, Any]], int, int, Optional[int], Optional[Dict[str, int]]
@@ -287,6 +289,7 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
         total_input_tokens = 0
         total_output_tokens = 0
         return_tool_outputs_only = bool(return_tool_outputs_only)
+        model_for_tokens = request_params.get("model") or "gpt-4.1"
 
         def has_tool_call_outputs() -> bool:
             return any(output.get("tool_call_id") for output in tool_outputs)
@@ -440,11 +443,31 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
                         # Reset consecutive_exceptions when tool calls are successful
                         consecutive_exceptions = 0
 
+                        sampled_results = []
+                        text_previews = []
+
                         # Store tool outputs for all tools (both MCP and regular)
                         for tool_call_block, result in zip(tool_call_blocks, results):
                             func_name = tool_call_block.name
                             args = tool_call_block.input
                             tool_id = tool_call_block.id
+
+                            sampled_result = await tool_handler.sample_tool_result(
+                                func_name,
+                                result,
+                                args,
+                                tool_id=tool_id,
+                                tool_sample_functions=tool_sample_functions,
+                            )
+                            text_for_llm, was_truncated, _ = (
+                                tool_handler.prepare_result_for_llm(
+                                    sampled_result,
+                                    preview_max_tokens=tool_result_preview_max_tokens,
+                                    model=model_for_tokens,
+                                )
+                            )
+                            sampled_results.append(sampled_result)
+                            text_previews.append(text_for_llm)
 
                             # Store the tool call, result, and text
                             tool_outputs.append(
@@ -453,6 +476,11 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
                                     "name": func_name,
                                     "args": args,
                                     "result": result,
+                                    "result_for_llm": text_for_llm,
+                                    "result_truncated_for_llm": was_truncated,
+                                    "sampling_applied": tool_handler.is_sampler_configured(
+                                        func_name, tool_sample_functions
+                                    ),
                                 }
                             )
 
@@ -486,9 +514,24 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
                                 # Build user response with all tool results and handle images
                                 tool_results_data = process_tool_results_with_images(
                                     tool_call_blocks,
-                                    results,
+                                    sampled_results if sampled_results else results,
                                     tool_handler.image_result_keys,
                                 )
+
+                                if sampled_results:
+                                    adjusted_results = []
+                                    for tool_data, preview_text in zip(
+                                        tool_results_data, text_previews
+                                    ):
+                                        adjusted_results.append(
+                                            ToolResultData(
+                                                tool_id=tool_data.tool_id,
+                                                tool_name=tool_data.tool_name,
+                                                tool_result_text=preview_text,
+                                                image_data=tool_data.image_data,
+                                            )
+                                        )
+                                    tool_results_data = adjusted_results
 
                                 # Build tool results content
                                 tool_results_content = []
@@ -751,6 +794,8 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
         post_response_hook: Optional[Callable] = None,
         image_result_keys: Optional[List[str]] = None,
         tool_budget: Optional[Dict[str, int]] = None,
+        tool_sample_functions: Optional[Dict[str, Callable]] = None,
+        tool_result_preview_max_tokens: Optional[int] = None,
         previous_response_id: Optional[str] = None,
         **kwargs,
     ) -> LLMResponse:
@@ -758,8 +803,18 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
         from anthropic import AsyncAnthropic
 
         # Create a ToolHandler instance with tool_budget and image_result_keys if provided
+        sample_functions = tool_sample_functions or kwargs.get("tool_sample_functions")
+        preview_max_tokens = (
+            tool_result_preview_max_tokens
+            if tool_result_preview_max_tokens is not None
+            else kwargs.get("tool_result_preview_max_tokens")
+        )
         tool_handler = self.create_tool_handler_with_budget(
-            tool_budget, image_result_keys, kwargs.get("tool_output_max_tokens")
+            tool_budget,
+            image_result_keys,
+            kwargs.get("tool_output_max_tokens"),
+            tool_sample_functions=sample_functions,
+            tool_result_preview_max_tokens=preview_max_tokens,
         )
         return_tool_outputs_only = kwargs.pop("return_tool_outputs_only", False)
 
@@ -830,6 +885,8 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
                 post_response_hook=post_response_hook,
                 tool_handler=tool_handler,
                 return_tool_outputs_only=return_tool_outputs_only,
+                tool_sample_functions=sample_functions,
+                tool_result_preview_max_tokens=preview_max_tokens,
                 **kwargs,
             )
         except Exception as e:

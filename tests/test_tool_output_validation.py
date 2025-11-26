@@ -56,6 +56,18 @@ class TestTokenCounter:
         expected_count = counter.count_openai_tokens(str(output), "gpt-4")
         assert token_count == expected_count
 
+    def test_truncate_tool_output(self):
+        counter = TokenCounter()
+
+        long_output = "word " * 500
+        original_tokens = counter.count_tool_output_tokens(long_output)
+
+        truncated = counter.truncate_tool_output(long_output, max_tokens=50)
+        truncated_tokens = counter.count_tool_output_tokens(truncated)
+
+        assert original_tokens > truncated_tokens
+        assert "truncated" in truncated
+
     def test_validate_tool_output_size_valid(self):
         counter = TokenCounter()
 
@@ -210,6 +222,30 @@ class TestToolHandler:
         assert results[0] == "Small output"  # First call should succeed
         assert "too large" in results[1]  # Second call should fail validation
         assert results[2] == "Small output"  # Third call should succeed
+
+    @pytest.mark.asyncio
+    async def test_sample_tool_result_uses_sampler(self):
+        handler = ToolHandler(
+            tool_sample_functions={
+                "demo_tool": lambda tool_result, **_: tool_result[:1]
+            }
+        )
+
+        sampled = await handler.sample_tool_result(
+            "demo_tool", [1, 2, 3], {"limit": 1}, tool_id="abc"
+        )
+
+        assert sampled == [1]
+
+    def test_prepare_result_for_llm_uses_preview_limit(self):
+        handler = ToolHandler(tool_result_preview_max_tokens=5)
+        text, truncated, token_count = handler.prepare_result_for_llm(
+            "token " * 50, model="gpt-4o-mini"
+        )
+
+        assert token_count > 5
+        assert truncated is True
+        assert "...[truncated" in text
 
 
 if __name__ == "__main__":

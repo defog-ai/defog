@@ -105,3 +105,27 @@ response = await chat_async(
     max_tool_iterations=3,            # Limit recursive calls
 )
 ```
+
+### Keep Tool Outputs Token-Efficient
+
+Pass lightweight previews back to the model while still storing full tool results:
+
+```python
+def sample_query_output(function_name: str, tool_result: dict, **_):
+    # Keep just a small slice of the data
+    return {
+        "rows": tool_result.get("rows", [])[:5],
+        "row_count": len(tool_result.get("rows", [])),
+    }
+
+response = await chat_async(
+    provider=LLMProvider.OPENAI,
+    model="gpt-4o-mini",
+    messages=messages,
+    tools=[execute_database_query],
+    tool_sample_functions={"execute_database_query": sample_query_output},
+    tool_result_preview_max_tokens=2000,  # Trim what gets sent back to the LLM
+)
+```
+
+The assistant receives the sampled/truncated preview, while `response.tool_outputs` always contains the full tool output for logging or follow-up use.

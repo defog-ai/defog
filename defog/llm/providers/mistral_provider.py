@@ -194,6 +194,8 @@ class MistralProvider(BaseLLMProvider):
         response_format=None,
         post_tool_function: Optional[Callable] = None,
         tool_handler: Optional[ToolHandler] = None,
+        tool_sample_functions: Optional[Dict[str, Callable]] = None,
+        tool_result_preview_max_tokens: Optional[int] = None,
         **kwargs,
     ) -> Tuple[
         Any, List[Dict[str, Any]], int, int, Optional[int], Optional[Dict[str, int]]
@@ -213,6 +215,7 @@ class MistralProvider(BaseLLMProvider):
         tool_outputs = []
         total_input_tokens = response.usage.prompt_tokens
         total_output_tokens = response.usage.completion_tokens
+        model_for_tokens = request_params.get("model") or "gpt-4.1"
 
         # Handle tool calls if present
         if tools and response.choices[0].message.tool_calls:
@@ -251,14 +254,38 @@ class MistralProvider(BaseLLMProvider):
                             tool_handler,
                         )
 
+                        prepared_results = []
+
                         # Store tool outputs
                         for tool_call, result in zip(message.tool_calls, results):
+                            parsed_args = json.loads(tool_call.function.arguments)
+                            sampled_result = await tool_handler.sample_tool_result(
+                                tool_call.function.name,
+                                result,
+                                parsed_args,
+                                tool_id=tool_call.id,
+                                tool_sample_functions=tool_sample_functions,
+                            )
+                            text_for_llm, was_truncated, _ = (
+                                tool_handler.prepare_result_for_llm(
+                                    sampled_result,
+                                    preview_max_tokens=tool_result_preview_max_tokens,
+                                    model=model_for_tokens,
+                                )
+                            )
+                            prepared_results.append((tool_call, text_for_llm))
+
                             tool_outputs.append(
                                 {
                                     "tool_call_id": tool_call.id,
                                     "name": tool_call.function.name,
-                                    "args": json.loads(tool_call.function.arguments),
+                                    "args": parsed_args,
                                     "result": result,
+                                    "result_for_llm": text_for_llm,
+                                    "result_truncated_for_llm": was_truncated,
+                                    "sampling_applied": tool_handler.is_sampler_configured(
+                                        tool_call.function.name, tool_sample_functions
+                                    ),
                                 }
                             )
 
@@ -282,16 +309,12 @@ class MistralProvider(BaseLLMProvider):
                         )
 
                         # Add tool results as tool messages
-                        for tool_call, result in zip(message.tool_calls, results):
+                        for tool_call, text_for_llm in prepared_results:
                             request_params["messages"].append(
                                 {
                                     "role": "tool",
                                     "name": tool_call.function.name,
-                                    "content": (
-                                        json.dumps(result)
-                                        if not isinstance(result, str)
-                                        else result
-                                    ),
+                                    "content": text_for_llm,
                                     "tool_call_id": tool_call.id,
                                 }
                             )
@@ -368,6 +391,8 @@ class MistralProvider(BaseLLMProvider):
         prediction: Optional[Dict[str, str]] = None,
         reasoning_effort: Optional[str] = None,
         post_tool_function: Optional[Callable] = None,
+        tool_sample_functions: Optional[Dict[str, Callable]] = None,
+        tool_result_preview_max_tokens: Optional[int] = None,
         tool_budget: Optional[Dict[str, int]] = None,
         **kwargs,
     ) -> LLMResponse:
@@ -375,8 +400,18 @@ class MistralProvider(BaseLLMProvider):
         from mistralai import Mistral
 
         # Create a ToolHandler instance with tool_budget if provided
+        sample_functions = tool_sample_functions or kwargs.get("tool_sample_functions")
+        preview_max_tokens = (
+            tool_result_preview_max_tokens
+            if tool_result_preview_max_tokens is not None
+            else kwargs.get("tool_result_preview_max_tokens")
+        )
         tool_handler = self.create_tool_handler_with_budget(
-            tool_budget, None, kwargs.get("tool_output_max_tokens")
+            tool_budget,
+            None,
+            kwargs.get("tool_output_max_tokens"),
+            tool_sample_functions=sample_functions,
+            tool_result_preview_max_tokens=preview_max_tokens,
         )
 
         if post_tool_function:
@@ -423,6 +458,8 @@ class MistralProvider(BaseLLMProvider):
                 response_format=response_format,
                 post_tool_function=post_tool_function,
                 tool_handler=tool_handler,
+                tool_sample_functions=sample_functions,
+                tool_result_preview_max_tokens=preview_max_tokens,
             )
         except Exception as e:
             raise ProviderError(self.get_provider_name(), f"API call failed: {e}", e)

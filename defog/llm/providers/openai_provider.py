@@ -330,6 +330,8 @@ class OpenAIProvider(BaseLLMProvider):
         tool_handler: Optional[ToolHandler] = None,
         parallel_tool_calls: bool = False,
         return_tool_outputs_only: bool = False,
+        tool_sample_functions: Optional[Dict[str, Callable]] = None,
+        tool_result_preview_max_tokens: Optional[int] = None,
         **kwargs,
     ) -> Tuple[
         Any,
@@ -459,12 +461,32 @@ class OpenAIProvider(BaseLLMProvider):
                                 except json.JSONDecodeError:
                                     args = {}
 
+                            sampled_result = await tool_handler.sample_tool_result(
+                                func_name,
+                                result,
+                                args,
+                                tool_id=tool_call["call_id"],
+                                tool_sample_functions=tool_sample_functions,
+                            )
+                            text_for_llm, was_truncated, _ = (
+                                tool_handler.prepare_result_for_llm(
+                                    sampled_result,
+                                    preview_max_tokens=tool_result_preview_max_tokens,
+                                    model=model,
+                                )
+                            )
+
                             tool_outputs.append(
                                 {
                                     "tool_call_id": tool_call["call_id"],
                                     "name": func_name,
                                     "args": args,
                                     "result": result,
+                                    "result_for_llm": text_for_llm,
+                                    "result_truncated_for_llm": was_truncated,
+                                    "sampling_applied": tool_handler.is_sampler_configured(
+                                        func_name, tool_sample_functions
+                                    ),
                                     "text": None,
                                 }
                             )
@@ -474,7 +496,7 @@ class OpenAIProvider(BaseLLMProvider):
                                 {
                                     "type": "function_call_output",
                                     "call_id": tool_call["call_id"],
-                                    "output": json.dumps(result),
+                                    "output": text_for_llm,
                                 }
                             )
 
@@ -595,6 +617,8 @@ class OpenAIProvider(BaseLLMProvider):
         image_result_keys: Optional[List[str]] = None,
         tool_budget: Optional[Dict[str, int]] = None,
         parallel_tool_calls: bool = False,
+        tool_sample_functions: Optional[Dict[str, Callable]] = None,
+        tool_result_preview_max_tokens: Optional[int] = None,
         previous_response_id: Optional[str] = None,
         **kwargs,
     ) -> LLMResponse:
@@ -602,8 +626,18 @@ class OpenAIProvider(BaseLLMProvider):
         from openai import AsyncOpenAI
 
         # Create a ToolHandler instance with tool_budget and image_result_keys if provided
+        sample_functions = tool_sample_functions or kwargs.get("tool_sample_functions")
+        preview_max_tokens = (
+            tool_result_preview_max_tokens
+            if tool_result_preview_max_tokens is not None
+            else kwargs.get("tool_result_preview_max_tokens")
+        )
         tool_handler = self.create_tool_handler_with_budget(
-            tool_budget, image_result_keys, kwargs.get("tool_output_max_tokens")
+            tool_budget,
+            image_result_keys,
+            kwargs.get("tool_output_max_tokens"),
+            tool_sample_functions=sample_functions,
+            tool_result_preview_max_tokens=preview_max_tokens,
         )
         return_tool_outputs_only = kwargs.get("return_tool_outputs_only", False)
 
@@ -679,6 +713,8 @@ class OpenAIProvider(BaseLLMProvider):
                 tool_handler=tool_handler,
                 parallel_tool_calls=parallel_tool_calls,
                 return_tool_outputs_only=return_tool_outputs_only,
+                tool_sample_functions=sample_functions,
+                tool_result_preview_max_tokens=preview_max_tokens,
             )
         except Exception as e:
             raise ProviderError(self.get_provider_name(), f"API call failed: {e}", e)
