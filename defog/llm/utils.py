@@ -296,6 +296,7 @@ async def chat_async(
                 parallel_tool_calls=parallel_tool_calls,
                 tool_output_max_tokens=tool_output_max_tokens,
                 previous_response_id=previous_response_id,
+                return_tool_outputs_only=insert_tool_citations,
             )
 
             # Process citations if requested and we have tool outputs
@@ -346,10 +347,15 @@ async def chat_async(
                 # Call citations tool to add citations to the response
                 if citations_instructions:
                     citation_instructions = citations_instructions
-                else:
+                elif response.content:
                     citation_instructions = (
                         "Add citations to the following response using the tool outputs "
                         f"as source documents: {response.content}"
+                    )
+                else:
+                    citation_instructions = (
+                        "Use the tool outputs as source documents to answer the user's question. "
+                        "Add citations that reference the relevant tool call for each fact."
                     )
                 citation_blocks = await citations_tool(
                     question=original_question,

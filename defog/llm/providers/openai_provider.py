@@ -329,6 +329,7 @@ class OpenAIProvider(BaseLLMProvider):
         post_response_hook: Optional[Callable] = None,
         tool_handler: Optional[ToolHandler] = None,
         parallel_tool_calls: bool = False,
+        return_tool_outputs_only: bool = False,
         **kwargs,
     ) -> Tuple[
         Any,
@@ -513,7 +514,14 @@ class OpenAIProvider(BaseLLMProvider):
                 else:
                     break
             # After processing tool calls (or if none were made), extract final content
-            if response_format:
+            has_tool_call_outputs = any(
+                output.get("tool_call_id") for output in tool_outputs or []
+            )
+            skip_final_completion = return_tool_outputs_only and has_tool_call_outputs
+
+            if skip_final_completion:
+                content = ""
+            elif response_format:
                 response = await client.responses.create(
                     **request_params,
                     text={
@@ -597,6 +605,7 @@ class OpenAIProvider(BaseLLMProvider):
         tool_handler = self.create_tool_handler_with_budget(
             tool_budget, image_result_keys, kwargs.get("tool_output_max_tokens")
         )
+        return_tool_outputs_only = kwargs.get("return_tool_outputs_only", False)
 
         if post_tool_function:
             tool_handler.validate_post_tool_function(post_tool_function)
@@ -669,6 +678,7 @@ class OpenAIProvider(BaseLLMProvider):
                 post_response_hook=post_response_hook,
                 tool_handler=tool_handler,
                 parallel_tool_calls=parallel_tool_calls,
+                return_tool_outputs_only=return_tool_outputs_only,
             )
         except Exception as e:
             raise ProviderError(self.get_provider_name(), f"API call failed: {e}", e)

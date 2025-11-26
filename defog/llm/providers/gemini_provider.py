@@ -251,6 +251,7 @@ class GeminiProvider(BaseLLMProvider):
         post_tool_function: Optional[Callable] = None,
         post_response_hook: Optional[Callable] = None,
         tool_handler: Optional[ToolHandler] = None,
+        return_tool_outputs_only: bool = False,
         **kwargs,
     ) -> Tuple[
         Any, List[Dict[str, Any]], int, int, Optional[int], Optional[Dict[str, int]]
@@ -271,6 +272,11 @@ class GeminiProvider(BaseLLMProvider):
         tool_outputs = []
         total_input_tokens = 0
         total_output_tokens = 0
+        return_tool_outputs_only = bool(return_tool_outputs_only)
+
+        def has_tool_outputs() -> bool:
+            return any(output.get("tool_call_id") for output in tool_outputs)
+
         if tools and len(tools) > 0:
             consecutive_exceptions = 0
             while True:
@@ -443,6 +449,10 @@ class GeminiProvider(BaseLLMProvider):
                     )
                 else:
                     # Break out of loop when tool calls are finished
+                    if return_tool_outputs_only and has_tool_outputs():
+                        content = ""
+                        break
+
                     content = response.text.strip() if response.text else None
 
                     # If we have response_format and tools were being used, make one more call
@@ -489,6 +499,9 @@ class GeminiProvider(BaseLLMProvider):
             # No tools provided
             content = response.text.strip() if response.text else None
 
+        if return_tool_outputs_only and has_tool_outputs():
+            content = ""
+
         # Parse structured output if response_format is provided
         if response_format and content:
             # Use base class method for structured response parsing
@@ -532,6 +545,7 @@ class GeminiProvider(BaseLLMProvider):
         tool_handler = self.create_tool_handler_with_budget(
             tool_budget, image_result_keys, kwargs.get("tool_output_max_tokens")
         )
+        return_tool_outputs_only = kwargs.pop("return_tool_outputs_only", False)
 
         if post_tool_function:
             tool_handler.validate_post_tool_function(post_tool_function)
@@ -597,6 +611,7 @@ class GeminiProvider(BaseLLMProvider):
                 post_tool_function=post_tool_function,
                 post_response_hook=post_response_hook,
                 tool_handler=tool_handler,
+                return_tool_outputs_only=return_tool_outputs_only,
             )
         except Exception as e:
             traceback.print_exc()

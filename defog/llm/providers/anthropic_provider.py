@@ -261,6 +261,7 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
         post_tool_function: Optional[Callable] = None,
         post_response_hook: Optional[Callable] = None,
         tool_handler: Optional[ToolHandler] = None,
+        return_tool_outputs_only: bool = False,
         **kwargs,
     ) -> Tuple[
         Any, List[Dict[str, Any]], int, int, Optional[int], Optional[Dict[str, int]]
@@ -285,6 +286,10 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
         tool_outputs = []
         total_input_tokens = 0
         total_output_tokens = 0
+        return_tool_outputs_only = bool(return_tool_outputs_only)
+
+        def has_tool_call_outputs() -> bool:
+            return any(output.get("tool_call_id") for output in tool_outputs)
 
         # Handle tool processing for both local tools and MCP server tools
         if tools and len(tools) > 0:
@@ -604,6 +609,13 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
                     response = await client.messages.create(**request_params)
                 else:
                     # Break out of loop when tool calls are finished
+                    skip_final_response = (
+                        return_tool_outputs_only and has_tool_call_outputs()
+                    )
+                    if skip_final_response:
+                        content = ""
+                        break
+
                     content = "\n".join([block.text for block in text_blocks])
 
                     # If we have response_format and tools were being used, make one more call
@@ -699,6 +711,9 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
                     content = block.text
                     break
 
+        if return_tool_outputs_only and has_tool_call_outputs():
+            content = ""
+
         # Parse structured output if response_format is provided
         if response_format:
             # Use base class method for structured response parsing
@@ -746,6 +761,7 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
         tool_handler = self.create_tool_handler_with_budget(
             tool_budget, image_result_keys, kwargs.get("tool_output_max_tokens")
         )
+        return_tool_outputs_only = kwargs.pop("return_tool_outputs_only", False)
 
         if post_tool_function:
             tool_handler.validate_post_tool_function(post_tool_function)
@@ -813,6 +829,7 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
                 post_tool_function=post_tool_function,
                 post_response_hook=post_response_hook,
                 tool_handler=tool_handler,
+                return_tool_outputs_only=return_tool_outputs_only,
                 **kwargs,
             )
         except Exception as e:
