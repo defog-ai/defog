@@ -42,6 +42,8 @@ async def chat_async_with_memory(
     tool_choice: Optional[str] = None,
     max_retries: Optional[int] = None,
     post_tool_function: Optional[Callable] = None,
+    tool_result_preview_max_tokens: Optional[int] = None,
+    tool_sample_functions: Optional[Dict[str, Callable]] = None,
     config: Optional[LLMConfig] = None,
 ) -> LLMResponse:
     """
@@ -95,6 +97,8 @@ async def chat_async_with_memory(
             tool_choice=tool_choice,
             max_retries=max_retries,
             post_tool_function=post_tool_function,
+            tool_result_preview_max_tokens=tool_result_preview_max_tokens,
+            tool_sample_functions=tool_sample_functions,
             config=config,
         )
 
@@ -161,6 +165,8 @@ async def chat_async_with_memory(
         tool_choice=tool_choice,
         max_retries=max_retries,
         post_tool_function=post_tool_function,
+        tool_result_preview_max_tokens=tool_result_preview_max_tokens,
+        tool_sample_functions=tool_sample_functions,
         config=config,
     )
 

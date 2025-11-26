@@ -1,4 +1,5 @@
 import inspect
+import json
 import logging
 from typing import Dict, List, Callable, Any, Optional
 from ..exceptions import ToolError
@@ -21,6 +22,8 @@ class ToolHandler:
         tool_budget: Optional[Dict[str, int]] = None,
         image_result_keys: Optional[List[str]] = None,
         tool_output_max_tokens: Optional[int] = None,
+        tool_sample_functions: Optional[Dict[str, Callable]] = None,
+        tool_result_preview_max_tokens: Optional[int] = None,
     ):
         self.max_consecutive_errors = max_consecutive_errors
         self.tool_budget = tool_budget.copy() if tool_budget else None
@@ -29,8 +32,14 @@ class ToolHandler:
         self.tool_output_max_tokens = (
             tool_output_max_tokens if tool_output_max_tokens is not None else 10000
         )
+        self.tool_sample_functions = tool_sample_functions
+        self.tool_result_preview_max_tokens = tool_result_preview_max_tokens
         logger.debug(
-            f"ToolHandler initialized with budget: {self.tool_budget}, max_tokens: {self.tool_output_max_tokens}"
+            "ToolHandler initialized with budget: %s, max_tokens: %s, sampler provided: %s, preview_max_tokens: %s",
+            self.tool_budget,
+            self.tool_output_max_tokens,
+            bool(self.tool_sample_functions),
+            self.tool_result_preview_max_tokens,
         )
 
     def is_tool_available(self, tool_name: str) -> bool:
@@ -89,6 +98,122 @@ class ToolHandler:
             output, max_tokens, model
         )
         return is_valid, token_count
+
+    @staticmethod
+    def _stringify_tool_result(output: Any) -> str:
+        """Convert a tool result into a safe string representation for the model."""
+        if isinstance(output, str):
+            return output
+        try:
+            return json.dumps(output)
+        except (TypeError, ValueError):
+            return str(output)
+
+    @staticmethod
+    def _filter_callable_kwargs(
+        function: Callable, kwargs: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Only pass keyword arguments accepted by the callable."""
+        try:
+            sig = inspect.signature(function)
+        except (TypeError, ValueError):
+            return kwargs
+
+        if any(
+            param.kind == inspect.Parameter.VAR_KEYWORD
+            for param in sig.parameters.values()
+        ):
+            return kwargs
+        return {k: v for k, v in kwargs.items() if k in sig.parameters}
+
+    async def sample_tool_result(
+        self,
+        tool_name: str,
+        tool_result: Any,
+        input_args: Optional[Dict[str, Any]] = None,
+        tool_id: Optional[str] = None,
+        tool_sample_functions: Optional[Dict[str, Callable]] = None,
+    ) -> Any:
+        """
+        Apply a user-provided sampler to reduce tool output size before sending to the LLM.
+        Falls back to the original result on errors or when no sampler is configured.
+        """
+        sampler_map = tool_sample_functions or self.tool_sample_functions
+        if not sampler_map:
+            return tool_result
+
+        sample_fn = None
+        if callable(sampler_map):
+            sample_fn = sampler_map  # type: ignore[assignment]
+        elif isinstance(sampler_map, dict):
+            sample_fn = sampler_map.get(tool_name) or sampler_map.get("*")
+
+        if not sample_fn:
+            return tool_result
+
+        kwargs = {
+            "function_name": tool_name,
+            "tool_result": tool_result,
+            "input_args": input_args or {},
+            "tool_id": tool_id,
+        }
+        safe_kwargs = ToolHandler._filter_callable_kwargs(sample_fn, kwargs)
+
+        try:
+            if inspect.iscoroutinefunction(sample_fn):
+                return await sample_fn(**safe_kwargs)
+            return sample_fn(**safe_kwargs)
+        except Exception as exc:
+            logger.warning("Error sampling tool output for %s: %s", tool_name, exc)
+            return tool_result
+
+    def is_sampler_configured(
+        self,
+        tool_name: str,
+        tool_sample_functions: Optional[Dict[str, Callable]] = None,
+    ) -> bool:
+        """Check if a sampler is available for the given tool name."""
+        sampler_map = tool_sample_functions or self.tool_sample_functions
+        if not sampler_map:
+            return False
+        if callable(sampler_map):
+            return True
+        if isinstance(sampler_map, dict):
+            return tool_name in sampler_map or "*" in sampler_map
+        return False
+
+    def prepare_result_for_llm(
+        self,
+        tool_result: Any,
+        preview_max_tokens: Optional[int] = None,
+        model: str = "gpt-4.1",
+    ) -> tuple[str, bool, int]:
+        """
+        Convert a tool result to text for the LLM and optionally truncate to a token budget.
+
+        Returns:
+            (text_for_llm, was_truncated, token_count_before_truncation)
+        """
+        from ..memory.token_counter import TokenCounter
+
+        text_result = ToolHandler._stringify_tool_result(tool_result)
+        token_counter = TokenCounter()
+        token_count = token_counter.count_tool_output_tokens(text_result, model)
+
+        effective_max = (
+            preview_max_tokens
+            if preview_max_tokens is not None
+            else self.tool_result_preview_max_tokens
+        )
+
+        was_truncated = False
+        if effective_max and effective_max > 0 and token_count > effective_max:
+            text_result = token_counter.truncate_tool_output(
+                text_result, max_tokens=effective_max, model=model
+            )
+            was_truncated = True
+
+        return text_result, was_truncated, token_count
 
     async def execute_tool_call(
         self,

@@ -199,6 +199,8 @@ Respond with JSON only.
         model: str = "",
         post_tool_function: Optional[Callable] = None,
         tool_handler: Optional[ToolHandler] = None,
+        tool_sample_functions: Optional[Dict[str, Callable]] = None,
+        tool_result_preview_max_tokens: Optional[int] = None,
         **kwargs,
     ) -> Tuple[
         Any, List[Dict[str, Any]], int, int, Optional[int], Optional[Dict[str, int]]
@@ -221,6 +223,7 @@ Respond with JSON only.
         total_input_tokens = 0
         total_cached_input_tokens = 0
         total_output_tokens = 0
+        model_for_tokens = model or "gpt-4.1"
 
         if tools and len(tools) > 0:
             consecutive_exceptions = 0
@@ -281,6 +284,21 @@ Respond with JSON only.
                             except json.JSONDecodeError:
                                 args = {}
 
+                            sampled_result = await tool_handler.sample_tool_result(
+                                func_name,
+                                result,
+                                args,
+                                tool_id=tool_call.id,
+                                tool_sample_functions=tool_sample_functions,
+                            )
+                            text_for_llm, was_truncated, _ = (
+                                tool_handler.prepare_result_for_llm(
+                                    sampled_result,
+                                    preview_max_tokens=tool_result_preview_max_tokens,
+                                    model=model_for_tokens,
+                                )
+                            )
+
                             # Store the tool call, result, and text
                             tool_outputs.append(
                                 {
@@ -288,6 +306,11 @@ Respond with JSON only.
                                     "name": func_name,
                                     "args": args,
                                     "result": result,
+                                    "result_for_llm": text_for_llm,
+                                    "result_truncated_for_llm": was_truncated,
+                                    "sampling_applied": tool_handler.is_sampler_configured(
+                                        func_name, tool_sample_functions
+                                    ),
                                     "text": (
                                         message.content if message.content else None
                                     ),
@@ -299,7 +322,7 @@ Respond with JSON only.
                                 {
                                     "role": "tool",
                                     "tool_call_id": tool_call.id,
-                                    "content": str(result),
+                                    "content": text_for_llm,
                                 }
                             )
 
@@ -391,6 +414,8 @@ Respond with JSON only.
         prediction: Optional[Dict[str, str]] = None,
         reasoning_effort: Optional[str] = None,
         post_tool_function: Optional[Callable] = None,
+        tool_sample_functions: Optional[Dict[str, Callable]] = None,
+        tool_result_preview_max_tokens: Optional[int] = None,
         tool_budget: Optional[Dict[str, int]] = None,
         **kwargs,
     ) -> LLMResponse:
@@ -398,8 +423,18 @@ Respond with JSON only.
         from openai import AsyncOpenAI
 
         # Create a ToolHandler instance with tool_budget if provided
+        sample_functions = tool_sample_functions or kwargs.get("tool_sample_functions")
+        preview_max_tokens = (
+            tool_result_preview_max_tokens
+            if tool_result_preview_max_tokens is not None
+            else kwargs.get("tool_result_preview_max_tokens")
+        )
         tool_handler = self.create_tool_handler_with_budget(
-            tool_budget, None, kwargs.get("tool_output_max_tokens")
+            tool_budget,
+            None,
+            kwargs.get("tool_output_max_tokens"),
+            tool_sample_functions=sample_functions,
+            tool_result_preview_max_tokens=preview_max_tokens,
         )
 
         if post_tool_function:
@@ -459,6 +494,8 @@ Respond with JSON only.
                 model=model,
                 post_tool_function=post_tool_function,
                 tool_handler=tool_handler,
+                tool_sample_functions=sample_functions,
+                tool_result_preview_max_tokens=preview_max_tokens,
             )
         except Exception as e:
             raise ProviderError(self.get_provider_name(), f"API call failed: {e}", e)

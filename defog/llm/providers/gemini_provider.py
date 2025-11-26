@@ -252,6 +252,8 @@ class GeminiProvider(BaseLLMProvider):
         post_response_hook: Optional[Callable] = None,
         tool_handler: Optional[ToolHandler] = None,
         return_tool_outputs_only: bool = False,
+        tool_sample_functions: Optional[Dict[str, Callable]] = None,
+        tool_result_preview_max_tokens: Optional[int] = None,
         **kwargs,
     ) -> Tuple[
         Any, List[Dict[str, Any]], int, int, Optional[int], Optional[Dict[str, int]]
@@ -273,6 +275,7 @@ class GeminiProvider(BaseLLMProvider):
         total_input_tokens = 0
         total_output_tokens = 0
         return_tool_outputs_only = bool(return_tool_outputs_only)
+        model_for_tokens = model or request_params.get("model") or "gpt-4.1"
 
         def has_tool_outputs() -> bool:
             return any(output.get("tool_call_id") for output in tool_outputs)
@@ -339,11 +342,31 @@ class GeminiProvider(BaseLLMProvider):
                         tool_call_content = response.candidates[0].content
                         messages.append(tool_call_content)
 
+                        sampled_results = []
+                        text_previews = []
+
                         # Store tool outputs for tracking
                         for tool_call, result in zip(response.function_calls, results):
                             func_name = tool_call.name
                             args = tool_call.args
                             tool_id = self._get_or_assign_tool_id(tool_call)
+
+                            sampled_result = await tool_handler.sample_tool_result(
+                                func_name,
+                                result,
+                                args,
+                                tool_id=tool_id,
+                                tool_sample_functions=tool_sample_functions,
+                            )
+                            text_for_llm, was_truncated, _ = (
+                                tool_handler.prepare_result_for_llm(
+                                    sampled_result,
+                                    preview_max_tokens=tool_result_preview_max_tokens,
+                                    model=model_for_tokens,
+                                )
+                            )
+                            sampled_results.append(sampled_result)
+                            text_previews.append(text_for_llm)
 
                             tool_outputs.append(
                                 {
@@ -352,6 +375,11 @@ class GeminiProvider(BaseLLMProvider):
                                     "name": func_name,
                                     "args": args,
                                     "result": result,
+                                    "result_for_llm": text_for_llm,
+                                    "result_truncated_for_llm": was_truncated,
+                                    "sampling_applied": tool_handler.is_sampler_configured(
+                                        func_name, tool_sample_functions
+                                    ),
                                     "text": text,
                                 }
                             )
@@ -359,15 +387,31 @@ class GeminiProvider(BaseLLMProvider):
                         # Use provider-specific image processing
                         from ..utils_image_support import (
                             process_tool_results_with_images,
+                            ToolResultData,
                         )
 
                         # print(results, image_result_keys)
 
                         tool_data_list = process_tool_results_with_images(
                             response.function_calls,
-                            results,
+                            sampled_results if sampled_results else results,
                             tool_handler.image_result_keys,
                         )
+
+                        if sampled_results:
+                            adjusted_tool_data = []
+                            for tool_data, preview_text in zip(
+                                tool_data_list, text_previews
+                            ):
+                                adjusted_tool_data.append(
+                                    ToolResultData(
+                                        tool_id=tool_data.tool_id,
+                                        tool_name=tool_data.tool_name,
+                                        tool_result_text=preview_text,
+                                        image_data=tool_data.image_data,
+                                    )
+                                )
+                            tool_data_list = adjusted_tool_data
 
                         # Create Gemini-specific messages
                         for tool_data in tool_data_list:
@@ -537,13 +581,25 @@ class GeminiProvider(BaseLLMProvider):
         post_response_hook: Optional[Callable] = None,
         image_result_keys: Optional[List[str]] = None,
         tool_budget: Optional[Dict[str, int]] = None,
+        tool_sample_functions: Optional[Dict[str, Callable]] = None,
+        tool_result_preview_max_tokens: Optional[int] = None,
         previous_response_id: Optional[str] = None,
         **kwargs,
     ) -> LLMResponse:
         """Execute a chat completion with Gemini."""
         # Create a ToolHandler instance with tool_budget and image_result_keys if provided
+        sample_functions = tool_sample_functions or kwargs.get("tool_sample_functions")
+        preview_max_tokens = (
+            tool_result_preview_max_tokens
+            if tool_result_preview_max_tokens is not None
+            else kwargs.get("tool_result_preview_max_tokens")
+        )
         tool_handler = self.create_tool_handler_with_budget(
-            tool_budget, image_result_keys, kwargs.get("tool_output_max_tokens")
+            tool_budget,
+            image_result_keys,
+            kwargs.get("tool_output_max_tokens"),
+            tool_sample_functions=sample_functions,
+            tool_result_preview_max_tokens=preview_max_tokens,
         )
         return_tool_outputs_only = kwargs.pop("return_tool_outputs_only", False)
 
@@ -612,6 +668,8 @@ class GeminiProvider(BaseLLMProvider):
                 post_response_hook=post_response_hook,
                 tool_handler=tool_handler,
                 return_tool_outputs_only=return_tool_outputs_only,
+                tool_sample_functions=sample_functions,
+                tool_result_preview_max_tokens=preview_max_tokens,
             )
         except Exception as e:
             traceback.print_exc()

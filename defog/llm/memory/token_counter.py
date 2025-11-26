@@ -264,6 +264,43 @@ class TokenCounter:
         # Use OpenAI tokenizer to count tokens
         return self.count_openai_tokens(output_str, model)
 
+    def truncate_tool_output(
+        self, tool_output: Any, max_tokens: int, model: str = "gpt-4"
+    ) -> str:
+        """
+        Truncate a tool output to a target token budget.
+
+        Args:
+            tool_output: The tool output (string or JSON-serializable object)
+            max_tokens: Maximum tokens to keep
+            model: Model name for tokenization (defaults to gpt-4)
+
+        Returns:
+            String representation trimmed to the requested token budget with a truncation marker when applicable.
+        """
+        # Convert to string so we can consistently trim
+        if isinstance(tool_output, str):
+            output_str = tool_output
+        else:
+            try:
+                output_str = json.dumps(tool_output)
+            except (TypeError, ValueError):
+                output_str = str(tool_output)
+
+        if max_tokens <= 0:
+            return ""
+
+        encoding = self._get_openai_encoding(model)
+        tokens = encoding.encode(output_str)
+        if len(tokens) <= max_tokens:
+            return output_str
+
+        truncated = encoding.decode(tokens[:max_tokens])
+        truncated_tokens = len(tokens) - max_tokens
+        return (
+            f"{truncated}\n\n...[truncated {truncated_tokens} tokens from tool output]"
+        )
+
     def validate_tool_output_size(
         self, tool_output: Any, max_tokens: int = 10000, model: str = "gpt-4"
     ) -> tuple[bool, int]:

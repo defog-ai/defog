@@ -244,8 +244,14 @@ async def chat_async(
     insert_tool_citations: bool = False,
     parallel_tool_calls: bool = False,
     tool_output_max_tokens: int = 10000,
+    tool_result_preview_max_tokens: Optional[int] = None,
+    tool_sample_functions: Optional[Dict[str, Callable]] = None,
+    previous_response_id: Optional[str] = None,
 ) -> LLMResponse
 ```
+
+- `tool_result_preview_max_tokens`: Optional token budget for the tool output preview that is sent back to the LLM. Full tool outputs are still stored on the response object.
+- `tool_sample_functions`: Optional mapping of tool name to a callable (or a single callable) that returns a sampled version of the tool output before it is passed back to the LLM.
 
 ### LLMResponse
 
@@ -265,6 +271,8 @@ class LLMResponse:
     tool_outputs: Optional[List[Dict[str, Any]]] = None
     citations: Optional[List[Dict[str, Any]]] = None
 ```
+
+Each entry in `tool_outputs` contains the full tool `result`, and when sampling/truncation is enabled it also includes a `result_for_llm` preview plus `result_truncated_for_llm` and `sampling_applied` flags.
 
 ### Tool Functions
 

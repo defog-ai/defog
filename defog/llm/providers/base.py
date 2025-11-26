@@ -84,6 +84,8 @@ class BaseLLMProvider(ABC):
         response_format=None,
         post_tool_function: Optional[Callable] = None,
         post_response_hook: Optional[Callable] = None,
+        tool_sample_functions: Optional[Dict[str, Callable]] = None,
+        tool_result_preview_max_tokens: Optional[int] = None,
         **kwargs,
     ) -> Tuple[
         Any, List[Dict[str, Any]], int, int, Optional[int], Optional[Dict[str, int]]
@@ -109,6 +111,8 @@ class BaseLLMProvider(ABC):
         post_tool_function: Optional[Callable] = None,
         post_response_hook: Optional[Callable] = None,
         tool_budget: Optional[Dict[str, int]] = None,
+        tool_sample_functions: Optional[Dict[str, Callable]] = None,
+        tool_result_preview_max_tokens: Optional[int] = None,
         **kwargs,
     ) -> LLMResponse:
         """Execute a chat completion with the provider."""
@@ -257,13 +261,23 @@ class BaseLLMProvider(ABC):
         tool_budget: Optional[Dict[str, int]] = None,
         image_result_keys: Optional[List[str]] = None,
         tool_output_max_tokens: Optional[int] = None,
+        tool_sample_functions: Optional[Dict[str, Callable]] = None,
+        tool_result_preview_max_tokens: Optional[int] = None,
     ) -> ToolHandler:
         """Create a ToolHandler instance with optional tool budget, image result keys, and output token limit."""
-        if tool_budget or image_result_keys or tool_output_max_tokens is not None:
+        if (
+            tool_budget
+            or image_result_keys
+            or tool_output_max_tokens is not None
+            or tool_sample_functions
+            or tool_result_preview_max_tokens is not None
+        ):
             return ToolHandler(
                 tool_budget=tool_budget,
                 image_result_keys=image_result_keys,
                 tool_output_max_tokens=tool_output_max_tokens,
+                tool_sample_functions=tool_sample_functions,
+                tool_result_preview_max_tokens=tool_result_preview_max_tokens,
             )
         return self.tool_handler
 
