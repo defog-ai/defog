@@ -319,6 +319,7 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
         total_output_tokens = 0
         return_tool_outputs_only = bool(return_tool_outputs_only)
         model_for_tokens = request_params.get("model") or "gpt-4.1"
+        tool_calls_executed = False
 
         def has_tool_call_outputs() -> bool:
             return any(output.get("tool_call_id") for output in tool_outputs)
@@ -364,6 +365,7 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
                 )
 
                 if len(tool_call_blocks) > 0:
+                    tool_calls_executed = True
                     try:
                         # Separate MCP tools from regular tools
                         mcp_tool_calls = []
@@ -770,6 +772,8 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
                         total_output_tokens += response.usage.output_tokens
 
                     break
+            if tool_calls_executed:
+                await self.emit_tool_phase_complete(post_tool_function)
         else:
             await self.call_post_response_hook(
                 post_response_hook=post_response_hook,

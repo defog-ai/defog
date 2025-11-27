@@ -508,3 +508,30 @@ class BaseLLMProvider(ABC):
                 )
         except Exception as e:
             raise Exception(f"Error executing post_response_hook: {e}", e)
+
+    async def emit_tool_phase_complete(
+        self,
+        post_tool_function: Optional[Callable],
+        message: str = "exploration done, generating answer",
+    ) -> None:
+        """Notify via post_tool_function when tool execution is finished."""
+        if not post_tool_function:
+            return
+
+        try:
+            if inspect.iscoroutinefunction(post_tool_function):
+                await post_tool_function(
+                    function_name="tool_phase_complete",
+                    input_args={},
+                    tool_result=message,
+                    tool_id=None,
+                )
+            else:
+                post_tool_function(
+                    function_name="tool_phase_complete",
+                    input_args={},
+                    tool_result=message,
+                    tool_id=None,
+                )
+        except Exception as e:
+            raise Exception(f"Error executing post_tool_function: {e}", e)
