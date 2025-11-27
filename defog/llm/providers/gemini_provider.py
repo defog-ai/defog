@@ -302,6 +302,7 @@ class GeminiProvider(BaseLLMProvider):
         total_output_tokens = 0
         return_tool_outputs_only = bool(return_tool_outputs_only)
         model_for_tokens = model or request_params.get("model") or "gpt-4.1"
+        tool_calls_executed = False
 
         def has_tool_outputs() -> bool:
             return any(output.get("tool_call_id") for output in tool_outputs)
@@ -326,6 +327,7 @@ class GeminiProvider(BaseLLMProvider):
                 )
 
                 if response.function_calls:
+                    tool_calls_executed = True
                     try:
                         # Prepare tool calls for batch execution
                         tool_calls_batch = []
@@ -557,6 +559,8 @@ class GeminiProvider(BaseLLMProvider):
 
                         content = response.text.strip() if response.text else None
                     break
+            if tool_calls_executed:
+                await self.emit_tool_phase_complete(post_tool_function)
         else:
             # call this at the start of the while loop
             # to ensure we also log the first message (that comes in the function arg)

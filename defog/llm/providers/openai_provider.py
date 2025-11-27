@@ -388,6 +388,7 @@ class OpenAIProvider(BaseLLMProvider):
         total_input_tokens = 0
         total_cached_input_tokens = 0
         total_output_tokens = 0
+        tool_calls_executed = False
         if tools:
             # this is important, as tools might go to 0 if we run out of tool budget
             consecutive_exceptions = 0
@@ -437,6 +438,7 @@ class OpenAIProvider(BaseLLMProvider):
                         )
 
                 if function_calls:
+                    tool_calls_executed = True
                     # if there is any function call left to make, we will let the model decide what do do next
                     try:
                         iteration_count += 1
@@ -562,6 +564,9 @@ class OpenAIProvider(BaseLLMProvider):
                     request_params["previous_response_id"] = response.id
                 else:
                     break
+
+            if tool_calls_executed:
+                await self.emit_tool_phase_complete(post_tool_function)
             # After processing tool calls (or if none were made), extract final content
             has_tool_call_outputs = any(
                 output.get("tool_call_id") for output in tool_outputs or []
