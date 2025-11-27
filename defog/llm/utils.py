@@ -479,7 +479,14 @@ def convert_tool_outputs_to_documents(
     documents = []
     for output in tool_outputs:
         doc_name = f"{output['name']}_{output['tool_call_id']}"
-        doc_content = f"Function: {output['name']}\nArguments: {json.dumps(output['args'])}\nResult: {json.dumps(output['result'])}"
+        tool_name = output["name"]
+        tool_args = output["args"]
+        if "result_for_llm" in output:
+            tool_result = output["result_for_llm"]
+        else:
+            tool_result = output["result"]
+
+        doc_content = f"Function: {tool_name}\nArguments: {json.dumps(tool_args)}\nResult: {json.dumps(tool_result)}"
         documents.append({"document_name": doc_name, "document_content": doc_content})
     return documents
 
