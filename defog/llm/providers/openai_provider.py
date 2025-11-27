@@ -73,6 +73,29 @@ class OpenAIProvider(BaseLLMProvider):
         """
         instructions_parts: List[str] = []
         input_items: List[Dict[str, Any]] = []
+        empty_assistant_placeholder = (
+            "No content was generated for this turn. "
+            "Refer to the preceding tool outputs for context."
+        )
+
+        def _content_is_empty(content: Any) -> bool:
+            """Detect empty/whitespace-only content (including text blocks)."""
+            if content is None:
+                return True
+            if isinstance(content, str):
+                return content.strip() == ""
+            if isinstance(content, list):
+                for block in content:
+                    if not isinstance(block, dict):
+                        return False
+                    btype = block.get("type")
+                    if btype and btype != "text":
+                        # Non-text blocks (images, files, etc.) count as content
+                        return False
+                    if btype == "text" and block.get("text", "").strip():
+                        return False
+                return True
+            return False
 
         def convert_parts(parts: Any) -> Any:
             if isinstance(parts, str):
@@ -107,6 +130,10 @@ class OpenAIProvider(BaseLLMProvider):
         for msg in messages:
             role = msg.get("role", "user")
             content = msg.get("content", "")
+
+            # Replace empty assistant turns with a small placeholder to avoid empty content
+            if role == "assistant" and _content_is_empty(content):
+                content = empty_assistant_placeholder
 
             if role in ("system", "developer"):
                 # Extract only text portions for instructions

@@ -184,10 +184,36 @@ class GeminiProvider(BaseLLMProvider):
         # For now, Gemini's conversational model expects a single user prompt
         # We'll combine all messages into a single user message with multimodal parts
         all_parts = []
+        empty_assistant_placeholder = (
+            "No content was generated for this turn. "
+            "Refer to the preceding tool outputs for context."
+        )
+
+        def _content_is_empty(content: Any) -> bool:
+            """Detect empty/whitespace-only content (including text blocks)."""
+            if content is None:
+                return True
+            if isinstance(content, str):
+                return content.strip() == ""
+            if isinstance(content, list):
+                for block in content:
+                    if not isinstance(block, dict):
+                        return False
+                    btype = block.get("type")
+                    if btype and btype != "text":
+                        # Non-text blocks (images, files, tool calls) count as content
+                        return False
+                    if btype == "text" and block.get("text", "").strip():
+                        return False
+                return True
+            return False
 
         for msg in messages:
             role = msg["role"]
             content = msg["content"]
+
+            if role == "assistant" and _content_is_empty(content):
+                content = empty_assistant_placeholder
 
             # Add role prefix to help maintain conversation context
             if role == "assistant":

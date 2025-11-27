@@ -129,6 +129,26 @@ class AnthropicProvider(BaseLLMProvider):
         converted_messages = []
         system_messages = []
 
+        def _content_is_empty(content: Any) -> bool:
+            """Detect empty/whitespace-only content (including text blocks)."""
+            if content is None:
+                return True
+            if isinstance(content, str):
+                return content.strip() == ""
+            if isinstance(content, list):
+                for block in content:
+                    if not isinstance(block, dict):
+                        return False
+                    btype = block.get("type")
+                    if btype and btype != "text":
+                        # Non-text blocks (tool_use, tool_result, image) count as content
+                        return False
+                    if btype == "text" and block.get("text", "").strip():
+                        return False
+                # All text blocks were empty/whitespace
+                return True
+            return False
+
         for msg in messages:
             if msg.get("role") == "system":
                 if isinstance(msg["content"], str):
@@ -142,9 +162,18 @@ class AnthropicProvider(BaseLLMProvider):
             else:
                 # Convert message content to Anthropic format
                 converted_msg = msg.copy()
-                converted_msg["content"] = self.convert_content_to_anthropic(
-                    msg["content"]
-                )
+                converted_content = self.convert_content_to_anthropic(msg["content"])
+
+                # Ensure user messages are never empty
+                if msg.get("role") == "assistant" and _content_is_empty(
+                    converted_content
+                ):
+                    converted_content = (
+                        "No content was generated for this turn. "
+                        "Refer to the preceding tool outputs for context."
+                    )
+
+                converted_msg["content"] = converted_content
                 converted_messages.append(converted_msg)
 
         # Concatenate all system messages into a single string
