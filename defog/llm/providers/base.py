@@ -448,7 +448,28 @@ class BaseLLMProvider(ABC):
     ) -> List[Dict[str, Any]]:
         """Return new history with assistant reply appended."""
         history = deepcopy(messages)
-        history.append({"role": "assistant", "content": deepcopy(assistant_content)})
+        content = deepcopy(assistant_content)
+
+        # Avoid caching an empty assistant message, which Anthropic rejects when reused
+        # with previous_response_id. Provide a small placeholder instead.
+        def _is_empty(val: Any) -> bool:
+            if val is None:
+                return True
+            if isinstance(val, str):
+                return val.strip() == ""
+            if isinstance(val, list):
+                return len(val) == 0
+            if isinstance(val, dict):
+                return len(val) == 0
+            return False
+
+        if _is_empty(content):
+            content = (
+                "No text reply was generated in the previous turn; only tool outputs "
+                "were produced. Use those tool outputs for follow-up questions."
+            )
+
+        history.append({"role": "assistant", "content": content})
         return history
 
     def validate_post_response_hook(
