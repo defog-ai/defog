@@ -50,8 +50,9 @@ async def citations_tool(
     documents: list[dict],
     model: str,
     provider: LLMProvider,
-    max_tokens: int = 16000,
+    max_tokens: int = 32000,
     verbose: bool = True,
+    reasoning_effort: str | None = None,
 ):
     """
     Use this tool to get an answer to a well-cited answer to a question,
@@ -117,20 +118,26 @@ async def citations_tool(
             # get the answer
             tracker.update(80, "Generating citations")
             subtask_logger.log_subtask("Querying with file search", "processing")
-
-            response = await client.responses.create(
-                model=model,
-                input=question,
-                tools=[
+            payload = {
+                "model": model,
+                "input": question,
+                "tools": [
                     {
                         "type": "file_search",
                         "vector_store_ids": [store_id],
                     }
                 ],
-                tool_choice="required",
-                instructions=instructions,
-                max_output_tokens=max_tokens,
-            )
+                "tool_choice": "required",
+                "instructions": instructions,
+                "max_output_tokens": max_tokens,
+            }
+            if reasoning_effort:
+                payload["reasoning"] = {
+                    "effort": reasoning_effort,
+                    "summary": "auto",
+                }
+
+            response = await client.responses.create(**payload)
 
             usage = getattr(response, "usage", None)
             cost_in_cents = None
@@ -220,12 +227,28 @@ async def citations_tool(
                 "Calling Anthropic API with citations", "processing"
             )
 
-            response = await client.messages.create(
-                model=model,
-                messages=messages,
-                system=instructions,
-                max_tokens=max_tokens,
-            )
+            payload = {
+                "model": model,
+                "messages": messages,
+                "system": instructions,
+                "max_tokens": max_tokens,
+            }
+            if reasoning_effort:
+                if reasoning_effort == "low":
+                    budget_tokens = 4096
+                elif reasoning_effort == "medium":
+                    budget_tokens = 8192
+                elif reasoning_effort == "high":
+                    budget_tokens = 16384
+                else:
+                    raise ValueError(f"Invalid reasoning effort: {reasoning_effort}")
+
+                payload["thinking"] = {
+                    "type": "enabled",
+                    "budget_tokens": budget_tokens,
+                }
+
+            response = await client.messages.create(**payload)
 
             usage = getattr(response, "usage", None)
             cost_in_cents = None
