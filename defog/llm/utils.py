@@ -123,6 +123,7 @@ async def chat_async(
     citations_model: Optional[str] = None,
     citations_provider: Optional[Union[LLMProvider, str]] = None,
     citations_excluded_tools: Optional[List[str]] = None,
+    citations_reasoning_effort: Optional[str] = None,
 ) -> LLMResponse:
     """
     Execute a chat completion with explicit provider parameter.
@@ -159,7 +160,7 @@ async def chat_async(
         parallel_tool_calls: Enable parallel tool calls when set to True (default: False)
         tool_output_max_tokens: Maximum tokens allowed in tool outputs (default: 10000). Set to -1 to disable the check.
         previous_response_id: Optional id of a previous response when continuing conversations (supported for OpenAI, Anthropic/Grok, Gemini).
-
+        citations_reasoning_effort: Reasoning effort level for citations
     Returns:
         LLMResponse object containing the result
 
@@ -371,6 +372,7 @@ async def chat_async(
                     provider=citations_provider_enum,
                     max_tokens=max_completion_tokens or 16000,
                     verbose=False,  # Don't show progress for internal citation processing
+                    reasoning_effort=citations_reasoning_effort,
                 )
 
                 # Update response with citation-enhanced content and citations
