@@ -86,6 +86,7 @@ class BaseLLMProvider(ABC):
         post_response_hook: Optional[Callable] = None,
         tool_sample_functions: Optional[Dict[str, Callable]] = None,
         tool_result_preview_max_tokens: Optional[int] = None,
+        tool_phase_complete_message: str = "exploration done, generating answer",
         **kwargs,
     ) -> Tuple[
         Any, List[Dict[str, Any]], int, int, Optional[int], Optional[Dict[str, int]]
@@ -113,6 +114,7 @@ class BaseLLMProvider(ABC):
         tool_budget: Optional[Dict[str, int]] = None,
         tool_sample_functions: Optional[Dict[str, Callable]] = None,
         tool_result_preview_max_tokens: Optional[int] = None,
+        tool_phase_complete_message: str = "exploration done, generating answer",
         **kwargs,
     ) -> LLMResponse:
         """Execute a chat completion with the provider."""

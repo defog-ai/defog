@@ -124,6 +124,7 @@ async def chat_async(
     citations_provider: Optional[Union[LLMProvider, str]] = None,
     citations_excluded_tools: Optional[List[str]] = None,
     citations_reasoning_effort: Optional[str] = None,
+    tool_phase_complete_message: str = "exploration done, generating answer",
 ) -> LLMResponse:
     """
     Execute a chat completion with explicit provider parameter.
@@ -304,6 +305,7 @@ async def chat_async(
                 tool_sample_functions=tool_sample_functions,
                 previous_response_id=previous_response_id,
                 return_tool_outputs_only=insert_tool_citations,
+                tool_phase_complete_message=tool_phase_complete_message,
             )
 
             # Process citations if requested and we have tool outputs
