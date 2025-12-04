@@ -280,6 +280,7 @@ class GeminiProvider(BaseLLMProvider):
         return_tool_outputs_only: bool = False,
         tool_sample_functions: Optional[Dict[str, Callable]] = None,
         tool_result_preview_max_tokens: Optional[int] = None,
+        tool_phase_complete_message: str = "exploration done, generating answer",
         **kwargs,
     ) -> Tuple[
         Any, List[Dict[str, Any]], int, int, Optional[int], Optional[Dict[str, int]]
@@ -560,7 +561,9 @@ class GeminiProvider(BaseLLMProvider):
                         content = response.text.strip() if response.text else None
                     break
             if tool_calls_executed:
-                await self.emit_tool_phase_complete(post_tool_function)
+                await self.emit_tool_phase_complete(
+                    post_tool_function, message=tool_phase_complete_message
+                )
         else:
             # call this at the start of the while loop
             # to ensure we also log the first message (that comes in the function arg)
@@ -614,6 +617,7 @@ class GeminiProvider(BaseLLMProvider):
         tool_sample_functions: Optional[Dict[str, Callable]] = None,
         tool_result_preview_max_tokens: Optional[int] = None,
         previous_response_id: Optional[str] = None,
+        tool_phase_complete_message: str = "exploration done, generating answer",
         **kwargs,
     ) -> LLMResponse:
         """Execute a chat completion with Gemini."""
@@ -700,6 +704,7 @@ class GeminiProvider(BaseLLMProvider):
                 return_tool_outputs_only=return_tool_outputs_only,
                 tool_sample_functions=sample_functions,
                 tool_result_preview_max_tokens=preview_max_tokens,
+                tool_phase_complete_message=tool_phase_complete_message,
             )
         except Exception as e:
             traceback.print_exc()

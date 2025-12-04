@@ -359,6 +359,7 @@ class OpenAIProvider(BaseLLMProvider):
         return_tool_outputs_only: bool = False,
         tool_sample_functions: Optional[Dict[str, Callable]] = None,
         tool_result_preview_max_tokens: Optional[int] = None,
+        tool_phase_complete_message: str = "exploration done, generating answer",
         **kwargs,
     ) -> Tuple[
         Any,
@@ -566,7 +567,9 @@ class OpenAIProvider(BaseLLMProvider):
                     break
 
             if tool_calls_executed:
-                await self.emit_tool_phase_complete(post_tool_function)
+                await self.emit_tool_phase_complete(
+                    post_tool_function, message=tool_phase_complete_message
+                )
             # After processing tool calls (or if none were made), extract final content
             has_tool_call_outputs = any(
                 output.get("tool_call_id") for output in tool_outputs or []
@@ -652,6 +655,7 @@ class OpenAIProvider(BaseLLMProvider):
         tool_sample_functions: Optional[Dict[str, Callable]] = None,
         tool_result_preview_max_tokens: Optional[int] = None,
         previous_response_id: Optional[str] = None,
+        tool_phase_complete_message: str = "exploration done, generating answer",
         **kwargs,
     ) -> LLMResponse:
         """Execute a chat completion with OpenAI."""
@@ -747,6 +751,7 @@ class OpenAIProvider(BaseLLMProvider):
                 return_tool_outputs_only=return_tool_outputs_only,
                 tool_sample_functions=sample_functions,
                 tool_result_preview_max_tokens=preview_max_tokens,
+                tool_phase_complete_message=tool_phase_complete_message,
             )
         except Exception as e:
             raise ProviderError(self.get_provider_name(), f"API call failed: {e}", e)
