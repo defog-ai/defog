@@ -401,7 +401,9 @@ class OpenAIProvider(BaseLLMProvider):
                 if usage:
                     total_input_tokens += usage.input_tokens or 0
                     total_cached_input_tokens += (
-                        usage.input_tokens_details.cached_tokens or 0
+                        usage.input_tokens_details.cached_tokens
+                        if getattr(usage, "input_tokens_details", None)
+                        else 0
                     )
                     total_output_tokens += usage.output_tokens or 0
 
@@ -614,15 +616,25 @@ class OpenAIProvider(BaseLLMProvider):
 
         # Final token calculation for Responses API
         usage = response.usage
-        input_tokens = usage.input_tokens if usage else 0
-        output_tokens = usage.output_tokens if usage else 0
-        cached_tokens = (
-            usage.input_tokens_details.cached_tokens if usage else 0 if usage else 0
-        )
+        input_tokens = 0
+        output_tokens = 0
+        cached_tokens = 0
         output_tokens_details = None
-        total_input_tokens += input_tokens
-        total_cached_input_tokens += cached_tokens
-        total_output_tokens += output_tokens
+
+        # When tools were used, usage for the final response has already been aggregated
+        # inside the tool-chaining loop. Only add usage here for the no-tools path.
+        if not tools and usage:
+            input_tokens = usage.input_tokens or 0
+            output_tokens = usage.output_tokens or 0
+            cached_tokens = (
+                (usage.input_tokens_details.cached_tokens)
+                if getattr(usage, "input_tokens_details", None)
+                else 0
+            )
+            total_input_tokens += input_tokens
+            total_cached_input_tokens += cached_tokens
+            total_output_tokens += output_tokens
+
         return (
             content,
             tool_outputs,
