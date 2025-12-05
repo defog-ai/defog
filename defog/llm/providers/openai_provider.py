@@ -374,6 +374,23 @@ class OpenAIProvider(BaseLLMProvider):
         Extract content (including any tool calls) and usage info from OpenAI response.
         Handles chaining of tool calls.
         """
+
+        # Helper to split usage into billable input, cached, and output tokens.
+        def _extract_usage(usage_obj: Any) -> Tuple[int, int, int]:
+            if not usage_obj:
+                return 0, 0, 0
+            raw_input = getattr(usage_obj, "input_tokens", 0) or 0
+            cached = (
+                getattr(
+                    getattr(usage_obj, "input_tokens_details", None), "cached_tokens", 0
+                )
+                or 0
+            )
+            # input_tokens already includes cached tokens for OpenAI Responses
+            billable_input = max(raw_input - cached, 0)
+            output = getattr(usage_obj, "output_tokens", 0) or 0
+            return billable_input, cached, output
+
         # Use provided tool_handler or fall back to self.tool_handler
         if tool_handler is None:
             tool_handler = self.tool_handler
@@ -397,15 +414,12 @@ class OpenAIProvider(BaseLLMProvider):
 
             while True:
                 # Token usage for Responses API
-                usage = response.usage
-                if usage:
-                    total_input_tokens += usage.input_tokens or 0
-                    total_cached_input_tokens += (
-                        usage.input_tokens_details.cached_tokens
-                        if getattr(usage, "input_tokens_details", None)
-                        else 0
-                    )
-                    total_output_tokens += usage.output_tokens or 0
+                billable_input, cached_tokens, output_tokens = _extract_usage(
+                    response.usage
+                )
+                total_input_tokens += billable_input
+                total_cached_input_tokens += cached_tokens
+                total_output_tokens += output_tokens
 
                 # Post-response hook
                 await self.call_post_response_hook(
@@ -615,22 +629,13 @@ class OpenAIProvider(BaseLLMProvider):
                 content = response.output_text or ""
 
         # Final token calculation for Responses API
-        usage = response.usage
-        input_tokens = 0
-        output_tokens = 0
-        cached_tokens = 0
+        billable_input, cached_tokens, output_tokens = _extract_usage(response.usage)
+        input_tokens = billable_input
         output_tokens_details = None
 
         # When tools were used, usage for the final response has already been aggregated
         # inside the tool-chaining loop. Only add usage here for the no-tools path.
-        if not tools and usage:
-            input_tokens = usage.input_tokens or 0
-            output_tokens = usage.output_tokens or 0
-            cached_tokens = (
-                (usage.input_tokens_details.cached_tokens)
-                if getattr(usage, "input_tokens_details", None)
-                else 0
-            )
+        if not tools and response.usage:
             total_input_tokens += input_tokens
             total_cached_input_tokens += cached_tokens
             total_output_tokens += output_tokens
