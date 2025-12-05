@@ -318,6 +318,7 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
         tool_outputs = []
         total_input_tokens = 0
         total_output_tokens = 0
+        cached_input_tokens = 0
         return_tool_outputs_only = bool(return_tool_outputs_only)
         model_for_tokens = request_params.get("model") or "gpt-4.1"
         tool_calls_executed = False
@@ -325,12 +326,19 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
         def has_tool_call_outputs() -> bool:
             return any(output.get("tool_call_id") for output in tool_outputs)
 
+        def add_usage(usage_obj):
+            nonlocal total_input_tokens, total_output_tokens, cached_input_tokens
+            total_input_tokens += getattr(usage_obj, "input_tokens", 0)
+            total_output_tokens += getattr(usage_obj, "output_tokens", 0)
+            cached_input_tokens += getattr(
+                usage_obj, "cache_read_input_tokens", 0
+            ) + getattr(usage_obj, "cache_creation_input_tokens", 0)
+
         # Handle tool processing for both local tools and MCP server tools
         if tools and len(tools) > 0:
             consecutive_exceptions = 0
             while True:
-                total_input_tokens += response.usage.input_tokens
-                total_output_tokens += response.usage.output_tokens
+                add_usage(response.usage)
                 # Check if the response contains a tool call
                 # Collect all blocks by type - check type property instead of isinstance
                 # Handle both regular tool_use and MCP mcp_tool_use blocks
@@ -766,11 +774,7 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
                                 break
 
                         # Update token counts
-                        total_input_tokens += (
-                            response.usage.input_tokens
-                            + response.usage.cache_creation_input_tokens
-                        )
-                        total_output_tokens += response.usage.output_tokens
+                        add_usage(response.usage)
 
                     break
             if tool_calls_executed:
@@ -789,6 +793,7 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
                 if hasattr(block, "type") and block.type == "text":
                     content = block.text
                     break
+            add_usage(response.usage)
 
         if return_tool_outputs_only and has_tool_call_outputs():
             content = ""
@@ -797,11 +802,6 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
         if response_format:
             # Use base class method for structured response parsing
             content = self.parse_structured_response(content, response_format)
-
-        usage = response.usage
-        total_input_tokens += usage.input_tokens + usage.cache_creation_input_tokens
-        total_output_tokens += usage.output_tokens
-        cached_input_tokens = usage.cache_read_input_tokens
 
         return (
             content,
