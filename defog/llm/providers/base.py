@@ -24,6 +24,7 @@ class LLMResponse:
     input_tokens: int
     output_tokens: int
     cached_input_tokens: Optional[int] = None
+    cache_creation_input_tokens: Optional[int] = None
     output_tokens_details: Optional[Dict[str, int]] = None
     cost_in_cents: Optional[float] = None
     tool_outputs: Optional[List[Dict[str, Any]]] = None
