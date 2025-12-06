@@ -11,6 +11,7 @@ class CostCalculator:
         input_tokens: int,
         output_tokens: int,
         cached_input_tokens: Optional[int] = None,
+        cache_creation_input_tokens: Optional[int] = None,
     ) -> Optional[float]:
         """
         Calculate cost in cents for the given token usage.
@@ -46,6 +47,14 @@ class CostCalculator:
         if cached_input_tokens and "cached_input_cost_per1k" in costs:
             cost_in_cents += (
                 cached_input_tokens / 1000 * costs["cached_input_cost_per1k"]
+            ) * 100
+
+        # Add cache creation input cost if available
+        if cache_creation_input_tokens and "cache_creation_input_cost_per1k" in costs:
+            cost_in_cents += (
+                cache_creation_input_tokens
+                / 1000
+                * costs["cache_creation_input_cost_per1k"]
             ) * 100
 
         return cost_in_cents
