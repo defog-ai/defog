@@ -346,6 +346,13 @@ async def chat_async(
                         if o.get("name") not in excluded_set
                     ]
 
+                # filter out all tool outputs that errored out
+                tool_outputs_for_citation = [
+                    o
+                    for o in tool_outputs_for_citation
+                    if not o.get("error") and not o.get("exception")
+                ]
+
                 # Convert tool outputs to documents
                 documents = convert_tool_outputs_to_documents(tool_outputs_for_citation)
 
