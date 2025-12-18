@@ -111,6 +111,7 @@ class TestGetFunctionSpecs(unittest.TestCase):
                             },
                         },
                         "type": "object",
+                        "required": ["latitude", "longitude"],
                     },
                 },
             },
@@ -125,6 +126,7 @@ class TestGetFunctionSpecs(unittest.TestCase):
                             "b": {"type": "integer"},
                         },
                         "type": "object",
+                        "required": ["a", "b"],
                     },
                 },
             },
@@ -139,6 +141,7 @@ class TestGetFunctionSpecs(unittest.TestCase):
                             "b": {"type": "integer"},
                         },
                         "type": "object",
+                        "required": ["a", "b"],
                     },
                 },
             },
@@ -159,6 +162,7 @@ class TestGetFunctionSpecs(unittest.TestCase):
                         },
                     },
                     "type": "object",
+                    "required": ["latitude", "longitude"],
                 },
             },
             {
@@ -170,6 +174,7 @@ class TestGetFunctionSpecs(unittest.TestCase):
                         "b": {"type": "integer"},
                     },
                     "type": "object",
+                    "required": ["a", "b"],
                 },
             },
             {
@@ -181,6 +186,7 @@ class TestGetFunctionSpecs(unittest.TestCase):
                         "b": {"type": "integer"},
                     },
                     "type": "object",
+                    "required": ["a", "b"],
                 },
             },
         ]
