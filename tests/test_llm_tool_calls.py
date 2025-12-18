@@ -407,7 +407,7 @@ class TestToolUseFeatures(unittest.IsolatedAsyncioTestCase):
     async def test_tool_use_arithmetic_async_gemini(self):
         result = await chat_async(
             provider="gemini",
-            model="gemini-2.0-flash",
+            model="gemini-3-flash-preview",
             messages=[
                 {
                     "role": "user",
@@ -426,7 +426,7 @@ class TestToolUseFeatures(unittest.IsolatedAsyncioTestCase):
     async def test_tool_use_weather_async_gemini(self):
         result = await chat_async(
             provider="gemini",
-            model="gemini-2.0-flash",
+            model="gemini-3-flash-preview",
             messages=[
                 {
                     "role": "user",
@@ -499,7 +499,7 @@ class TestToolUseFeatures(unittest.IsolatedAsyncioTestCase):
     async def test_post_tool_calls_gemini(self):
         result = await chat_async(
             provider="gemini",
-            model="gemini-2.0-flash",
+            model="gemini-3-flash-preview",
             messages=[
                 {
                     "role": "user",
@@ -1172,7 +1172,7 @@ class TestStructuredOutputWithTools(unittest.IsolatedAsyncioTestCase):
         # Test weather report with structured output
         result = await chat_async(
             provider="gemini",
-            model="gemini-2.0-flash",
+            model="gemini-3-flash-preview",
             messages=self.weather_message,
             tools=self.tools,
             response_format=WeatherReport,
@@ -1198,7 +1198,7 @@ class TestStructuredOutputWithTools(unittest.IsolatedAsyncioTestCase):
         """Test Gemini with multiple tool calls and structured output."""
         result = await chat_async(
             provider="gemini",
-            model="gemini-2.0-flash",
+            model="gemini-3-flash-preview",
             messages=self.calculation_message,
             tools=self.tools,
             response_format=CalculationResult,
