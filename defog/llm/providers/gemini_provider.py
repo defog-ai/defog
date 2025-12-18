@@ -307,12 +307,26 @@ class GeminiProvider(BaseLLMProvider):
 
         total_input_tokens = 0
         total_output_tokens = 0
+        total_cached_tokens = 0
+        total_reasoning_tokens = 0
 
         if hasattr(response, "usage"):
-            total_input_tokens += getattr(response.usage, "prompt_token_count", 0) or 0
-            total_output_tokens += (
-                getattr(response.usage, "candidates_token_count", 0) or 0
-            )
+            usage = response.usage
+            # Try new fields first, then fallback to old ones
+            input_tokens = getattr(usage, "total_input_tokens", None)
+            if input_tokens is None:
+                input_tokens = getattr(usage, "prompt_token_count", 0)
+
+            output_tokens = getattr(usage, "total_output_tokens", None)
+            if output_tokens is None:
+                output_tokens = getattr(usage, "candidates_token_count", 0)
+
+            total_input_tokens += input_tokens or 0
+            total_output_tokens += output_tokens or 0
+            total_cached_tokens += getattr(usage, "total_cached_tokens", 0) or 0
+            total_reasoning_tokens += getattr(usage, "total_reasoning_tokens", 0) or 0
+            # also add reasoning tokens to output tokens for cost calculation
+            total_output_tokens += total_reasoning_tokens
 
         tool_outputs = []
         tool_calls_executed = False
@@ -458,12 +472,20 @@ class GeminiProvider(BaseLLMProvider):
 
                     # Update usage
                     if hasattr(response, "usage"):
-                        total_input_tokens += (
-                            getattr(response.usage, "prompt_token_count", 0) or 0
+                        usage = response.usage
+                        input_tokens = getattr(usage, "total_input_tokens", None)
+
+                        output_tokens = getattr(usage, "total_output_tokens", None)
+
+                        total_input_tokens += input_tokens or 0
+                        total_output_tokens += output_tokens or 0
+                        total_cached_tokens += (
+                            getattr(usage, "total_cached_tokens", 0) or 0
                         )
-                        total_output_tokens += (
-                            getattr(response.usage, "candidates_token_count", 0) or 0
+                        total_reasoning_tokens += (
+                            getattr(usage, "total_reasoning_tokens", 0) or 0
                         )
+                        total_output_tokens += total_reasoning_tokens
 
                 except Exception as e:
                     raise ProviderError(
@@ -499,8 +521,10 @@ class GeminiProvider(BaseLLMProvider):
             tool_outputs,
             total_input_tokens,
             total_output_tokens,
-            None,
-            None,
+            total_cached_tokens,
+            {"reasoning_tokens": total_reasoning_tokens}
+            if total_reasoning_tokens > 0
+            else None,
         )
 
     async def execute_chat(
