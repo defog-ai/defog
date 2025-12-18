@@ -14,7 +14,7 @@ class TestLLMResponse(unittest.TestCase):
 
         self.assertAlmostEqual(
             CostCalculator.calculate_cost("claude-haiku-4-5", 1000, 1000),
-            (0.003 * 1 + 0.015 * 1) * 100,
+            (0.001 * 1 + 0.005 * 1) * 100,
             places=10,
         )
 
