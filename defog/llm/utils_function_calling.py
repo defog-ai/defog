@@ -271,18 +271,14 @@ def get_function_specs(
                 }
             )
         elif model.startswith("gemini"):
-            from google.genai import types
-
-            func_spec = {
-                "name": func.__name__,
-                "description": docstring,
-                "parameters": input_schema,
-            }
-
-            function_declaration = types.FunctionDeclaration(**func_spec)
-            tool = types.Tool(function_declarations=[function_declaration])
-
-            function_specs.append(tool)
+            function_specs.append(
+                {
+                    "type": "function",
+                    "name": func.__name__,
+                    "description": docstring,
+                    "parameters": input_schema,
+                }
+            )
         elif model.startswith("mistral"):
             function_specs.append(
                 {
