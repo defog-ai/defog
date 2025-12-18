@@ -277,6 +277,27 @@ class GeminiProvider(BaseLLMProvider):
 
         request_params["generation_config"] = generation_config_dict
 
+        if reasoning_effort:
+            if not model.startswith("gemini-3"):
+                raise ValueError(
+                    f"reasoning_effort is not supported for model {model}. It is only supported for gemini-3 models."
+                )
+
+            if reasoning_effort not in ["minimal", "low", "medium", "high"]:
+                raise ValueError(
+                    f"reasoning_effort must be one of 'minimal', 'low', 'medium', or 'high'"
+                )
+
+            if reasoning_effort not in ["low", "high"] and model.startswith(
+                "gemini-3-pro"
+            ):
+                raise ValueError(
+                    f"reasoning_effort must be 'low' or 'high' for model {model}."
+                )
+
+            # Add thinking level directly to generation_config for Interactions API
+            generation_config_dict["thinking_level"] = reasoning_effort
+
         return request_params, new_messages
 
     async def process_response(
@@ -590,6 +611,7 @@ class GeminiProvider(BaseLLMProvider):
             tools=tools,
             tool_choice=tool_choice,
             previous_response_id=previous_response_id,
+            reasoning_effort=reasoning_effort,
         )
 
         # Build tool dict
