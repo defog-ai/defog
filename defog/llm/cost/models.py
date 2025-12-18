@@ -114,12 +114,22 @@ MODEL_COSTS = {
         "output_cost_per1k": 0.0004,
     },
     "gemini-2.5-flash": {
-        "input_cost_per1k": 0.00015,
-        "output_cost_per1k": 0.0035,
+        "input_cost_per1k": 0.0003,
+        "output_cost_per1k": 0.0025,
     },
     "gemini-2.5-pro": {
         "input_cost_per1k": 0.00125,
         "output_cost_per1k": 0.01,
+    },
+    "gemini-3-flash": {
+        "input_cost_per1k": 0.0005,
+        "output_cost_per1k": 0.003,
+        "cached_input_cost_per1k": 0.00005,
+    },
+    "gemini-3-pro": {
+        "input_cost_per1k": 0.002,
+        "output_cost_per1k": 0.012,
+        "cached_input_cost_per1k": 0.0002,
     },
     "deepseek-chat": {
         "input_cost_per1k": 0.00027,
