@@ -8,28 +8,21 @@ from typing import Dict, List, Any, Optional, Callable, Tuple, Union
 from defog import config as defog_config
 
 from google import genai
-from google.genai.types import (
-    Part,
-    Content,
-    AutomaticFunctionCallingConfig,
-    ToolConfig,
-    FunctionCallingConfig,
-    GenerateContentConfig,
-)
+from google.genai import types
+from pydantic import BaseModel
 
 from .base import BaseLLMProvider, LLMResponse
 from ..exceptions import ProviderError, MaxTokensError
 from ..config import LLMConfig
 from ..cost import CostCalculator
 from ..utils_function_calling import get_function_specs, convert_tool_choice
-from ..image_utils import convert_to_gemini_parts
 from ..tools.handler import ToolHandler
 
 logger = logging.getLogger(__name__)
 
 
 class GeminiProvider(BaseLLMProvider):
-    """Google Gemini provider implementation."""
+    """Google Gemini provider implementation using Interactions API."""
 
     def __init__(
         self, api_key: Optional[str] = None, config: Optional[LLMConfig] = None
@@ -59,40 +52,14 @@ class GeminiProvider(BaseLLMProvider):
             )
         return tool_id
 
-    def _get_media_type(self, img_data: str) -> str:
-        """Detect media type from base64 image data."""
-        try:
-            decoded = base64.b64decode(img_data[:100])
-            if decoded.startswith(b"\xff\xd8\xff"):
-                return "image/jpeg"
-            elif decoded.startswith(b"GIF8"):
-                return "image/gif"
-            elif decoded.startswith(b"RIFF"):
-                return "image/webp"
-            else:
-                return "image/png"  # Default
-        except Exception:
-            return "image/png"
-
     def create_image_message(
         self,
         image_base64: Union[str, List[str]],
         description: str = "Tool generated image",
         image_detail: str = "low",
-    ) -> Content:
+    ) -> Dict[str, Any]:
         """
-        Create a message with image content in Gemini's format with validation.
-
-        Args:
-            image_base64: Base64-encoded image data - can be single string or list of strings
-            description: Description of the image(s)
-            image_detail: Level of detail (ignored by Gemini, included for interface consistency)
-
-        Returns:
-            Content object in Gemini's format
-
-        Raises:
-            ValueError: If no valid images are provided or validation fails
+        Create a message with image content in Gemini's format.
         """
         from ..utils_image_support import (
             validate_and_process_image_data,
@@ -107,32 +74,117 @@ class GeminiProvider(BaseLLMProvider):
             raise ValueError(f"Cannot create image message: {error_summary}")
 
         if errors:
-            # Log warnings for any invalid images but continue with valid ones
             for error in errors:
                 logger.warning(f"Skipping invalid image: {error}")
 
-        parts = [Part.from_text(text=description)]
+        parts = [{"type": "text", "text": description}]
 
         # Handle validated images
         for img_data in valid_images:
             media_type, clean_data = safe_extract_media_type_and_data(img_data)
-            # Convert base64 to bytes for Gemini's format
-            try:
-                image_bytes = base64.b64decode(clean_data, validate=True)
-                parts.append(
-                    Part.from_bytes(
-                        data=image_bytes,
-                        mime_type=media_type,
+            parts.append(
+                {"type": "image_bytes", "data": clean_data, "mime_type": media_type}
+            )
+
+        return {"role": "user", "content": parts}
+
+    def _messages_to_interactions_input(
+        self, messages: List[Dict[str, Any]]
+    ) -> Union[str, List[Any]]:
+        """
+        Convert standard messages to Interactions API input format.
+        Returns a list of Turn objects (as dicts).
+        """
+        input_contents = []
+
+        for msg in messages:
+            role = msg.get("role")
+            content = msg.get("content")
+            tool_calls = msg.get("tool_calls")
+
+            parts = []
+
+            if tool_calls:
+                for tc in tool_calls:
+                    function = tc.get("function", {})
+                    part = {
+                        "function_call": {
+                            "name": function.get("name"),
+                            "args": function.get("arguments"),
+                        }
+                    }
+                    # Check for thought signature in the tool call object
+                    # It might be stored as 'thought_signature' or inside 'function' dict depending on how we store it
+                    if "thought_signature" in tc:
+                        part["thought_signature"] = tc["thought_signature"]
+                    parts.append(part)
+
+            if role == "tool":
+                # Map tool role to user role with function_response
+                # We need the tool name. If not present, we might have a problem.
+                # Defog's LLMResponse tool_outputs have 'name'.
+                # Assuming the message has 'name' field (standard in some formats) or we can infer it.
+                # If 'name' is missing, we can't create a valid functionResponse.
+                tool_name = msg.get("name")
+                if tool_name:
+                    # Parse content as result
+                    try:
+                        result_content = (
+                            json.loads(content) if isinstance(content, str) else content
+                        )
+                    except:
+                        result_content = content
+
+                    parts.append(
+                        {
+                            "function_response": {
+                                "name": tool_name,
+                                "response": {"result": result_content},
+                            }
+                        }
                     )
-                )
-            except Exception as e:
-                logger.warning(f"Failed to decode image for Gemini: {e}")
+                else:
+                    # Fallback or error?
+                    # If we don't have name, we can't send functionResponse.
+                    # Maybe just send text?
+                    parts.append({"text": str(content)})
 
-        return Content(role="user", parts=parts)
+                # Force role to user for function_response
+                role = "user"
 
-    def convert_content_to_gemini_parts(self, content: Any, genai_types) -> List[Any]:
-        """Convert message content to Gemini Part objects."""
-        return convert_to_gemini_parts(content, genai_types)
+            elif isinstance(content, str):
+                parts.append({"type": "text", "text": content})
+            elif isinstance(content, list):
+                for block in content:
+                    if isinstance(block, str):
+                        parts.append({"type": "text", "text": block})
+                    elif isinstance(block, dict):
+                        btype = block.get("type")
+                        if btype == "text":
+                            parts.append(
+                                {"type": "text", "text": block.get("text", "")}
+                            )
+                        elif btype == "image_bytes":
+                            # Handle our internal image format
+                            parts.append(
+                                {
+                                    "type": "image",
+                                    "data": block["data"],
+                                    "mime_type": block["mime_type"],
+                                }
+                            )
+                        elif btype == "image_url":
+                            # Handle image_url if present
+                            pass
+                        # Add other types if needed
+
+            # Map 'assistant' to 'model' for Gemini
+            gemini_role = "model" if role == "assistant" else "user"
+
+            if parts:
+                input_contents.append({"role": gemini_role, "content": parts})
+
+        return input_contents
 
     def build_params(
         self,
@@ -149,127 +201,90 @@ class GeminiProvider(BaseLLMProvider):
         prediction: Optional[Dict[str, str]] = None,
         reasoning_effort: Optional[str] = None,
         parallel_tool_calls: bool = False,
+        previous_response_id: Optional[str] = None,
         **kwargs,
-    ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
-        """Construct parameters for Gemini's generate_content call."""
+    ) -> Tuple[Dict[str, Any], Any]:
+        """Construct parameters for Gemini's interactions.create call."""
 
-        from google.genai import types
+        # 1. Handle History / New Messages
+        # For Gemini 3, we prefer stateless (full history) to ensure thought signatures are handled correctly
+        # unless we can guarantee previous_interaction_id works with signatures.
+        # Currently, we force stateless for gemini-3 to be safe.
+        if previous_response_id and "gemini-3" not in model:
+            # If we have a previous response ID, we assume the server has the history.
+            # We only need to send the *new* messages.
+            # Heuristic: Send everything after the last assistant message.
+            last_assistant_idx = -1
+            for i in range(len(messages) - 1, -1, -1):
+                if messages[i].get("role") == "assistant":
+                    last_assistant_idx = i
+                    break
 
-        # Extract all system messages
-        system_messages = []
-        non_system_messages = []
-
-        for msg in messages:
-            if msg.get("role") == "system":
-                content = msg["content"]
-                if not isinstance(content, str):
-                    # System message should always be text
-                    content = " ".join(
-                        [
-                            block.get("text", "")
-                            for block in content
-                            if block.get("type") == "text"
-                        ]
-                    )
-                system_messages.append(content)
+            if last_assistant_idx != -1:
+                new_messages = messages[last_assistant_idx + 1 :]
             else:
-                non_system_messages.append(msg)
+                # If no assistant message found, send everything
+                new_messages = messages
 
-        # Concatenate all system messages into a single string
-        system_msg = "\n\n".join(system_messages) if system_messages else None
-        messages = non_system_messages
+            # If for some reason new_messages is empty (e.g. last msg was assistant),
+            # we might be in a weird state. But let's assume valid flow.
+            if not new_messages:
+                # Maybe we are just continuing generation?
+                # But usually we have a user prompt.
+                pass
+        else:
+            new_messages = messages
 
-        # Convert messages to Gemini Content objects
+        # 2. Convert messages to Interactions Input
+        interactions_input = self._messages_to_interactions_input(new_messages)
 
-        # For now, Gemini's conversational model expects a single user prompt
-        # We'll combine all messages into a single user message with multimodal parts
-        all_parts = []
-        empty_assistant_placeholder = (
-            "No content was generated for this turn. "
-            "Refer to the preceding tool outputs for context."
-        )
-
-        def _content_is_empty(content: Any) -> bool:
-            """Detect empty/whitespace-only content (including text blocks)."""
-            if content is None:
-                return True
-            if isinstance(content, str):
-                return content.strip() == ""
-            if isinstance(content, list):
-                for block in content:
-                    if not isinstance(block, dict):
-                        return False
-                    btype = block.get("type")
-                    if btype and btype != "text":
-                        # Non-text blocks (images, files, tool calls) count as content
-                        return False
-                    if btype == "text" and block.get("text", "").strip():
-                        return False
-                return True
-            return False
-
-        for msg in messages:
-            role = msg["role"]
-            content = msg["content"]
-
-            if role == "assistant" and _content_is_empty(content):
-                content = empty_assistant_placeholder
-
-            # Add role prefix to help maintain conversation context
-            if role == "assistant":
-                all_parts.append(types.Part.from_text(text="\nAssistant: "))
-            elif role == "user" and len(all_parts) > 0:
-                all_parts.append(types.Part.from_text(text="\nUser: "))
-
-            # Convert content to parts
-            parts = self.convert_content_to_gemini_parts(content, types)
-            all_parts.extend(parts)
-
-        # Create a single user content with all parts
-        user_prompt_content = types.Content(
-            role="user",
-            parts=all_parts,
-        )
-        messages = [user_prompt_content]
-        request_params = {
+        # 3. Build Configuration
+        # 3. Build Configuration
+        generation_config_dict = {
             "temperature": temperature,
-            "system_instruction": system_msg,
             "max_output_tokens": max_completion_tokens,
         }
 
+        request_params = {
+            "model": model,
+            "input": interactions_input,
+        }
+
+        if response_format:
+            request_params["response_mime_type"] = "application/json"
+            if isinstance(response_format, type) and issubclass(
+                response_format, BaseModel
+            ):
+                request_params["response_format"] = response_format.model_json_schema()
+            else:
+                request_params["response_format"] = response_format
+
+        if previous_response_id:
+            request_params["previous_interaction_id"] = previous_response_id
+
+        # 4. Tools
         if tools:
             function_specs = get_function_specs(tools, model)
             request_params["tools"] = function_specs
 
-            # Set up automatic_function_calling and tool_config based on tool_choice
             if tool_choice:
                 tool_names_list = [func.__name__ for func in tools]
-                tool_choice = convert_tool_choice(tool_choice, tool_names_list, model)
-            if tool_choice:
-                request_params["automatic_function_calling"] = (
-                    AutomaticFunctionCallingConfig(disable=True)
+                tool_choice_config = convert_tool_choice(
+                    tool_choice, tool_names_list, model
                 )
-                request_params["tool_config"] = tool_choice
+                if tool_choice_config:
+                    generation_config_dict["tool_choice"] = tool_choice_config
 
-            # Note: Gemini handles parallel tool calling automatically
-            # The model decides when to call multiple functions in parallel
-            # This is controlled internally and cannot be disabled
+        request_params["generation_config"] = generation_config_dict
 
-        # When tools are provided, we'll set response_format later in the final call
-        if response_format and not (tools and len(tools) > 0):
-            # If we want a JSON / Pydantic format
-            # "response_schema" is only recognized if the google.genai library supports it
-            request_params["response_mime_type"] = "application/json"
-            request_params["response_schema"] = response_format
-
-        return request_params, messages
+        return request_params, new_messages
 
     async def process_response(
         self,
         client: genai.Client,
-        response: Any,  # Gemini response type
+        response: Any,  # Gemini Interaction object
         request_params: Dict[str, Any],
-        messages: List[Dict[str, Any]],
+        messages: List[Dict[str, Any]],  # These are the messages sent in THIS turn
         tools: Optional[List[Callable]],
         tool_dict: Dict[str, Callable],
         response_format: Optional[Any] = None,
@@ -285,308 +300,200 @@ class GeminiProvider(BaseLLMProvider):
     ) -> Tuple[
         Any, List[Dict[str, Any]], int, int, Optional[int], Optional[Dict[str, int]]
     ]:
-        """Extract content (including any tool calls) and usage info from Gemini response.
-        Handles chaining of tool calls.
-        """
-        # Use provided tool_handler or fall back to self.tool_handler
+        """Process the response from the Interactions API."""
+
         if tool_handler is None:
             tool_handler = self.tool_handler
 
-        if len(response.candidates) == 0:
-            raise ProviderError(self.get_provider_name(), "No response from Gemini")
-        if response.candidates[0].finish_reason == "MAX_TOKENS":
-            raise MaxTokensError("Max tokens reached")
-
-        # If we have tools, handle dynamic chaining:
-        tool_outputs = []
         total_input_tokens = 0
         total_output_tokens = 0
-        return_tool_outputs_only = bool(return_tool_outputs_only)
-        model_for_tokens = model or request_params.get("model") or "gpt-4.1"
+
+        if hasattr(response, "usage"):
+            total_input_tokens += getattr(response.usage, "prompt_token_count", 0) or 0
+            total_output_tokens += (
+                getattr(response.usage, "candidates_token_count", 0) or 0
+            )
+
+        tool_outputs = []
         tool_calls_executed = False
 
-        def has_tool_outputs() -> bool:
-            return any(output.get("tool_call_id") for output in tool_outputs)
+        # We need to loop if there are tool calls
+        while True:
+            # Check for function calls
+            function_calls = []
+            if response.outputs:
+                for part in response.outputs:
+                    # Check if part is a function call
+                    # It could be an object or dict depending on how the client returns it
+                    # Assuming object based on previous errors
+                    if getattr(part, "type", None) == "function_call":
+                        function_calls.append(part)
+                    # Also handle if it's a dict (just in case)
+                    elif isinstance(part, dict) and part.get("type") == "function_call":
+                        # Wrap in SimpleNamespace or similar if needed, or just append
+                        # But downstream code expects object access (fc.name, fc.id)
+                        # Let's assume object for now as the client returns Pydantic models
+                        function_calls.append(part)
 
-        if tools and len(tools) > 0:
-            consecutive_exceptions = 0
-            while True:
-                # this can sometimes be none
-                total_input_tokens += response.usage_metadata.prompt_token_count or 0
-
-                # this can sometimes be none
-                total_output_tokens += (
-                    response.usage_metadata.candidates_token_count or 0
-                )
-
-                # call this at the start of the while loop
-                # to ensure we also log the first message (that comes in the function arg)
-                await self.call_post_response_hook(
-                    post_response_hook=post_response_hook,
-                    response=response,
-                    messages=request_params.get("messages", []),
-                )
-
-                if response.function_calls:
-                    tool_calls_executed = True
-                    try:
-                        # Prepare tool calls for batch execution
-                        tool_calls_batch = []
-                        for tool_call in response.function_calls:
-                            func_name = tool_call.name
-                            args = tool_call.args
-                            tool_id = self._get_or_assign_tool_id(tool_call)
-
-                            tool_calls_batch.append(
-                                {
-                                    "id": tool_id,
-                                    "function": {"name": func_name, "arguments": args},
-                                }
-                            )
-
-                        # Use base class method for tool execution with retry
-                        (
-                            results,
-                            consecutive_exceptions,
-                        ) = await self.execute_tool_calls_with_retry(
-                            tool_calls_batch,
-                            tool_dict,
-                            messages,
-                            post_tool_function,
-                            consecutive_exceptions,
-                            tool_handler,
-                        )
-
-                        # Try to get text if available
-                        try:
-                            # Note that this will throw a warning:
-                            # Warning: there are non-text parts in the response: ['function_call'], returning concatenated text result from text parts. Check the full candidates.content.parts accessor to get the full model response.
-                            # this seems intentional: https://github.com/googleapis/python-genai/issues/850
-                            # happens when accessing .text for responses that also contain function calls
-                            text = response.text
-                        except Exception:
-                            text = None
-
-                        # Append the tool call content to messages
-                        tool_call_content = response.candidates[0].content
-                        messages.append(tool_call_content)
-
-                        sampled_results = []
-                        text_previews = []
-
-                        # Store tool outputs for tracking
-                        for tool_call, result in zip(response.function_calls, results):
-                            func_name = tool_call.name
-                            args = tool_call.args
-                            tool_id = self._get_or_assign_tool_id(tool_call)
-
-                            sampled_result = await tool_handler.sample_tool_result(
-                                func_name,
-                                result,
-                                args,
-                                tool_id=tool_id,
-                                tool_sample_functions=tool_sample_functions,
-                            )
-                            text_for_llm, was_truncated, _ = (
-                                tool_handler.prepare_result_for_llm(
-                                    sampled_result,
-                                    preview_max_tokens=tool_result_preview_max_tokens,
-                                    model=model_for_tokens,
-                                )
-                            )
-                            sampled_results.append(sampled_result)
-                            text_previews.append(text_for_llm)
-
-                            tool_outputs.append(
-                                {
-                                    "tool_call_id": tool_id,
-                                    "tool_id": tool_id,
-                                    "name": func_name,
-                                    "args": args,
-                                    "result": result,
-                                    "result_for_llm": text_for_llm,
-                                    "result_truncated_for_llm": was_truncated,
-                                    "sampling_applied": tool_handler.is_sampler_configured(
-                                        func_name, tool_sample_functions
-                                    ),
-                                    "text": text,
-                                }
-                            )
-
-                        # Use provider-specific image processing
-                        from ..utils_image_support import (
-                            process_tool_results_with_images,
-                            ToolResultData,
-                        )
-
-                        # print(results, image_result_keys)
-
-                        tool_data_list = process_tool_results_with_images(
-                            response.function_calls,
-                            sampled_results if sampled_results else results,
-                            tool_handler.image_result_keys,
-                        )
-
-                        if sampled_results:
-                            adjusted_tool_data = []
-                            for tool_data, preview_text in zip(
-                                tool_data_list, text_previews
-                            ):
-                                adjusted_tool_data.append(
-                                    ToolResultData(
-                                        tool_id=tool_data.tool_id,
-                                        tool_name=tool_data.tool_name,
-                                        tool_result_text=preview_text,
-                                        image_data=tool_data.image_data,
-                                    )
-                                )
-                            tool_data_list = adjusted_tool_data
-
-                        # Create Gemini-specific messages
-                        for tool_data in tool_data_list:
-                            # For Gemini, we need to combine function response and images in one message
-                            parts = [
-                                Part.from_function_response(
-                                    name=tool_data.tool_name,
-                                    response={"result": tool_data.tool_result_text},
-                                )
-                            ]
-
-                            # Add images to the same message if present
-                            if tool_data.image_data:
-                                # Use the create_image_message method to get properly formatted parts
-                                image_message = self.create_image_message(
-                                    image_base64=tool_data.image_data,
-                                    description=f"Image(s) generated by {tool_data.tool_name} tool:",
-                                )
-                                # Extract parts from the image message and add them to our parts list
-                                # Skip the first part which is the description text, as we'll add it separately
-                                parts.append(
-                                    Part.from_text(
-                                        text=f"Image(s) generated by {tool_data.tool_name} tool:"
-                                    )
-                                )
-                                parts.extend(
-                                    image_message.parts[1:]
-                                )  # Add all image parts
-
-                            messages.append(Content(role="user", parts=parts))
-
-                        # Update available tools based on budget
-                        tools, tool_dict = self.update_tools_with_budget(
-                            tools, tool_handler, request_params, model
-                        )
-
-                        # Set tool_choice to AUTO so that the next message will be generated normally without required tool calls
-                        request_params["automatic_function_calling"] = (
-                            AutomaticFunctionCallingConfig(disable=False)
-                        )
-                        request_params["tool_config"] = ToolConfig(
-                            function_calling_config=FunctionCallingConfig(mode="AUTO")
-                        )
-
-                        # If no more tools are available and we have response_format, set it now
-                        if not tools and response_format:
-                            request_params["response_mime_type"] = "application/json"
-                            request_params["response_schema"] = response_format
-                    except ProviderError:
-                        # Re-raise provider errors from base class
-                        raise
-                    except Exception as e:
-                        # For other exceptions, use the same retry logic
-                        consecutive_exceptions += 1
-                        if (
-                            consecutive_exceptions
-                            >= tool_handler.max_consecutive_errors
-                        ):
-                            raise ProviderError(
-                                self.get_provider_name(),
-                                f"Consecutive errors during tool chaining: {e}",
-                                e,
-                            )
-                        print(
-                            f"{e}. Retries left: {tool_handler.max_consecutive_errors - consecutive_exceptions}"
-                        )
-                        messages.append(
-                            Content(
-                                role="model",
-                                parts=[Part.from_text(text=str(e))],
-                            )
-                        )
-
-                    # Make next call
-                    response = await client.aio.models.generate_content(
-                        model=model,
-                        contents=messages,
-                        config=GenerateContentConfig(**request_params),
-                    )
-                else:
-                    # Break out of loop when tool calls are finished
-                    if return_tool_outputs_only and has_tool_outputs():
-                        content = ""
-                        break
-
-                    content = response.text.strip() if response.text else None
-
-                    # If we have response_format and tools were being used, make one more call
-                    if response_format and request_params.get("tools"):
-                        # Add the assistant's response to messages
-                        messages.append(
-                            Content(
-                                role="model",
-                                parts=[Part.from_text(text=content)] if content else [],
-                            )
-                        )
-
-                        # Remove tools and set response format
-                        request_params.pop("tools", None)
-                        request_params.pop("tool_config", None)
-                        request_params.pop("automatic_function_calling", None)
-                        request_params["response_mime_type"] = "application/json"
-                        request_params["response_schema"] = response_format
-
-                        # Make final call for structured output
-                        response = await client.aio.models.generate_content(
-                            model=model,
-                            contents=messages,
-                            config=GenerateContentConfig(**request_params),
-                        )
-
-                        await self.call_post_response_hook(
-                            post_response_hook=post_response_hook,
-                            response=response,
-                            messages=request_params.get("messages", []),
-                        )
-
-                        content = response.text.strip() if response.text else None
-                    break
-            if tool_calls_executed:
-                await self.emit_tool_phase_complete(
-                    post_tool_function, message=tool_phase_complete_message
-                )
-        else:
-            # call this at the start of the while loop
-            # to ensure we also log the first message (that comes in the function arg)
+            # Call post_response_hook
             await self.call_post_response_hook(
                 post_response_hook=post_response_hook,
                 response=response,
-                messages=request_params.get("messages", []),
+                messages=messages,
             )
 
-            # No tools provided
-            content = response.text.strip() if response.text else None
+            if function_calls:
+                tool_calls_executed = True
 
-        if return_tool_outputs_only and has_tool_outputs():
+                # Prepare tool calls
+                tool_calls_batch = []
+                for fc in function_calls:
+                    tool_id = self._get_or_assign_tool_id(fc)
+
+                    # Sanitize tool name (strip namespace if present)
+                    tool_name = fc.name
+                    if ":" in tool_name:
+                        tool_name = tool_name.split(":")[-1]
+
+                    tool_calls_batch.append(
+                        {
+                            "id": tool_id,
+                            "function": {"name": tool_name, "arguments": fc.arguments},
+                        }
+                    )
+
+                # Execute tools
+                consecutive_exceptions = 0
+                (
+                    results,
+                    consecutive_exceptions,
+                ) = await self.execute_tool_calls_with_retry(
+                    tool_calls_batch,
+                    tool_dict,
+                    messages,
+                    post_tool_function,
+                    consecutive_exceptions,
+                    tool_handler,
+                )
+
+                # Process results and prepare next input
+                next_input_parts = []
+
+                for fc, result, tool_call_dict in zip(
+                    function_calls, results, tool_calls_batch
+                ):
+                    tool_id = tool_call_dict["id"]
+
+                    # Sample and prepare for LLM
+                    sampled_result = await tool_handler.sample_tool_result(
+                        fc.name,
+                        result,
+                        fc.arguments,
+                        tool_id=tool_id,
+                        tool_sample_functions=tool_sample_functions,
+                    )
+
+                    text_for_llm, was_truncated, _ = (
+                        tool_handler.prepare_result_for_llm(
+                            sampled_result,
+                            preview_max_tokens=tool_result_preview_max_tokens,
+                            model=model,
+                        )
+                    )
+
+                    tool_outputs.append(
+                        {
+                            "tool_call_id": tool_id,
+                            "name": tool_call_dict["function"]["name"],
+                            "args": fc.arguments,
+                            "result": result,
+                            "result_for_llm": text_for_llm,
+                            "result_truncated_for_llm": was_truncated,
+                            "sampling_applied": tool_handler.is_sampler_configured(
+                                fc.name, tool_sample_functions
+                            ),
+                            "thought_signature": getattr(fc, "thought_signature", None),
+                        }
+                    )
+
+                    next_input_parts.append(
+                        {
+                            "type": "function_result",
+                            "name": fc.name,
+                            "call_id": fc.id,
+                            "result": {"result": text_for_llm},
+                        }
+                    )
+
+                # Send results back to Gemini
+                try:
+                    next_interaction_kwargs = {
+                        "model": model,
+                        "previous_interaction_id": response.id,
+                        "input": next_input_parts,
+                    }
+
+                    # Pass through configuration from request_params
+                    if "tools" in request_params:
+                        next_interaction_kwargs["tools"] = request_params["tools"]
+
+                    if "response_mime_type" in request_params:
+                        next_interaction_kwargs["response_mime_type"] = request_params[
+                            "response_mime_type"
+                        ]
+
+                    if "response_format" in request_params:
+                        next_interaction_kwargs["response_format"] = request_params[
+                            "response_format"
+                        ]
+
+                    if "generation_config" in request_params:
+                        next_interaction_kwargs["generation_config"] = request_params[
+                            "generation_config"
+                        ]
+
+                    response = await client.aio.interactions.create(
+                        **next_interaction_kwargs
+                    )
+
+                    # Update usage
+                    if hasattr(response, "usage"):
+                        total_input_tokens += (
+                            getattr(response.usage, "prompt_token_count", 0) or 0
+                        )
+                        total_output_tokens += (
+                            getattr(response.usage, "candidates_token_count", 0) or 0
+                        )
+
+                except Exception as e:
+                    raise ProviderError(
+                        self.get_provider_name(), f"Failed to send tool results: {e}", e
+                    )
+
+            else:
+                # No function calls, we are done
+                break
+
+        if tool_calls_executed:
+            await self.emit_tool_phase_complete(
+                post_tool_function, message=tool_phase_complete_message
+            )
+
+        # Extract final content
+        content_parts = []
+        if response.outputs:
+            for part in response.outputs:
+                if getattr(part, "type", None) == "text":
+                    content_parts.append(part.text or "")
+        content = "".join(content_parts)
+
+        if return_tool_outputs_only and tool_outputs:
             content = ""
 
-        # Parse structured output if response_format is provided
+        # Parse structured output if needed
         if response_format and content:
-            # Use base class method for structured response parsing
             content = self.parse_structured_response(content, response_format)
 
-        usage = response.usage_metadata
-        total_input_tokens += usage.prompt_token_count or 0
-        total_output_tokens += usage.candidates_token_count or 0
         return (
             content,
             tool_outputs,
@@ -620,8 +527,9 @@ class GeminiProvider(BaseLLMProvider):
         tool_phase_complete_message: str = "exploration done, generating answer",
         **kwargs,
     ) -> LLMResponse:
-        """Execute a chat completion with Gemini."""
-        # Create a ToolHandler instance with tool_budget and image_result_keys if provided
+        """Execute a chat completion with Gemini Interactions API."""
+
+        # Create ToolHandler
         sample_functions = tool_sample_functions or kwargs.get("tool_sample_functions")
         preview_max_tokens = (
             tool_result_preview_max_tokens
@@ -643,14 +551,13 @@ class GeminiProvider(BaseLLMProvider):
         t = time.time()
         client = genai.Client(api_key=self.api_key)
 
-        # Filter tools based on budget before building params
+        # Filter tools
         tools = self.filter_tools_by_budget(tools, tool_handler)
 
-        conversation_messages = self.prepare_conversation_messages(
-            messages, previous_response_id
-        )
+        # We don't need to load cached history anymore
+        conversation_messages = messages
 
-        request_params, provider_messages = self.build_params(
+        request_params, new_messages = self.build_params(
             messages=conversation_messages,
             model=model,
             max_completion_tokens=max_completion_tokens,
@@ -658,29 +565,16 @@ class GeminiProvider(BaseLLMProvider):
             response_format=response_format,
             tools=tools,
             tool_choice=tool_choice,
+            previous_response_id=previous_response_id,
         )
 
-        # Construct a tool dict if needed
+        # Build tool dict
         tool_dict = {}
-        if tools and len(tools) > 0 and "tools" in request_params:
+        if tools:
             tool_dict = tool_handler.build_tool_dict(tools)
 
-            # Set up automatic_function_calling and tool_config based on tool_choice
-            if tool_choice:
-                tool_names_list = [func.__name__ for func in tools]
-                tool_choice = convert_tool_choice(tool_choice, tool_names_list, model)
-            if tool_choice:
-                request_params["automatic_function_calling"] = (
-                    AutomaticFunctionCallingConfig(disable=True)
-                )
-                request_params["tool_config"] = tool_choice
-
         try:
-            response = await client.aio.models.generate_content(
-                model=model,
-                contents=provider_messages,
-                config=GenerateContentConfig(**request_params),
-            )
+            response = await client.aio.interactions.create(**request_params)
 
             (
                 content,
@@ -693,7 +587,7 @@ class GeminiProvider(BaseLLMProvider):
                 client=client,
                 response=response,
                 request_params=request_params,
-                messages=provider_messages,
+                messages=new_messages,
                 tools=tools,
                 tool_dict=tool_dict,
                 response_format=response_format,
@@ -710,16 +604,9 @@ class GeminiProvider(BaseLLMProvider):
             traceback.print_exc()
             raise ProviderError(self.get_provider_name(), f"API call failed: {e}", e)
 
+        # Handle ID and caching
         api_response_id = getattr(response, "id", None)
         response_id = api_response_id
-        if store:
-            cache_response_id = api_response_id or self.generate_response_id()
-            history_for_cache = self.append_assistant_message_to_history(
-                conversation_messages, content
-            )
-            self.persist_conversation_history(cache_response_id, history_for_cache)
-            response_id = cache_response_id
-
         # Calculate cost
         cost = CostCalculator.calculate_cost(
             model, input_toks, output_toks, cached_toks
