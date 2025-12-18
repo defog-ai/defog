@@ -220,7 +220,14 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
         if AVAILABLE_MODELS.get("openai"):
             test_models.extend(["gpt-4.1-mini", "o4-mini", "o3"])
         if AVAILABLE_MODELS.get("gemini"):
-            test_models.extend(["gemini-2.0-flash", "gemini-2.5-pro"])
+            test_models.extend(
+                [
+                    "gemini-2.5-flash",
+                    "gemini-2.5-pro",
+                    "gemini-3-flash-preview",
+                    "gemini-3-pro-preview",
+                ]
+            )
         if AVAILABLE_MODELS.get("mistral"):
             test_models.append("mistral-small-latest")
         if AVAILABLE_MODELS.get("grok"):
@@ -281,7 +288,14 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
                 ["gpt-4o-mini", "o3", "o4-mini", "gpt-4.1-mini", "gpt-4.1-nano"]
             )
         if AVAILABLE_MODELS.get("gemini"):
-            test_models.extend(["gemini-2.0-flash", "gemini-2.5-pro"])
+            test_models.extend(
+                [
+                    "gemini-2.5-flash",
+                    "gemini-2.5-pro",
+                    "gemini-3-flash-preview",
+                    "gemini-3-pro-preview",
+                ]
+            )
         if AVAILABLE_MODELS.get("mistral"):
             test_models.append("mistral-small-latest")
 
@@ -359,7 +373,14 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
         if AVAILABLE_MODELS.get("openai"):
             test_models.extend(["gpt-4o", "o3", "o4-mini", "gpt-4.1", "gpt-4.1-nano"])
         if AVAILABLE_MODELS.get("gemini"):
-            test_models.extend(["gemini-2.0-flash", "gemini-2.5-pro"])
+            test_models.extend(
+                [
+                    "gemini-2.5-flash",
+                    "gemini-2.5-pro",
+                    "gemini-3-flash-preview",
+                    "gemini-3-pro-preview",
+                ]
+            )
         if AVAILABLE_MODELS.get("anthropic"):
             test_models.append("claude-haiku-4-5")
         if AVAILABLE_MODELS.get("mistral"):
@@ -530,7 +551,7 @@ async def test_gemini_previous_response_uses_conversation_cache(monkeypatch):
         "defog.llm.providers.gemini_provider.genai.Client", FakeGeminiClient
     )
     monkeypatch.setattr(
-        "defog.llm.providers.gemini_provider.GenerateContentConfig",
+        "defog.llm.providers.gemini_provider.types.GenerateContentConfig",
         lambda **kwargs: kwargs,
     )
 
