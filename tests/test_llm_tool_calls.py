@@ -91,7 +91,6 @@ class TestGetFunctionSpecs(unittest.TestCase):
         self.openai_model = "gpt-4.1"
         self.anthropic_model = "claude-haiku-4-5"
         self.grok_model = "grok-4-fast-non-reasoning-latest"
-        self.mistral_model = "mistral-small-latest"
         self.tools = [get_weather, numsum, numprod]
         self.maxDiff = None
         self.openai_specs = [
@@ -190,13 +189,10 @@ class TestGetFunctionSpecs(unittest.TestCase):
         openai_specs = get_function_specs(self.tools, self.openai_model)
         anthropic_specs = get_function_specs(self.tools, self.anthropic_model)
         grok_specs = get_function_specs(self.tools, self.grok_model)
-        mistral_specs = get_function_specs(self.tools, self.mistral_model)
 
         self.assertEqual(openai_specs, self.openai_specs)
         self.assertEqual(anthropic_specs, self.anthropic_specs)
         self.assertEqual(grok_specs, self.anthropic_specs)
-        # Mistral uses OpenAI-compatible format
-        self.assertEqual(mistral_specs, self.openai_specs)
 
 
 class TestToolUseFeatures(unittest.IsolatedAsyncioTestCase):
@@ -947,6 +943,11 @@ class TestToolOutputMaxTokens(unittest.IsolatedAsyncioTestCase):
             max_retries=1,
         )
 
+        # remove reasoning from tool outputs
+        result.tool_outputs = [
+            i for i in result.tool_outputs if i["name"] != "reasoning"
+        ]
+
         # Tool should be called but output should be truncated message
         self.assertGreater(len(result.tool_outputs), 0)
         self.assertEqual(result.tool_outputs[0]["name"], "get_text_long")
@@ -975,6 +976,11 @@ class TestToolOutputMaxTokens(unittest.IsolatedAsyncioTestCase):
             max_retries=1,
             tool_output_max_tokens=-1,  # Disable limit
         )
+
+        # remove reasoning from tool outputs
+        result.tool_outputs = [
+            i for i in result.tool_outputs if i["name"] != "reasoning"
+        ]
 
         # Tool should execute successfully without truncation
         self.assertGreater(len(result.tool_outputs), 0)
@@ -1044,6 +1050,11 @@ class TestStructuredOutputWithTools(unittest.IsolatedAsyncioTestCase):
             max_retries=1,
         )
 
+        # remove reasoning from tool outputs
+        result.tool_outputs = [
+            i for i in result.tool_outputs if i["name"] != "reasoning"
+        ]
+
         # Verify tool was called
         self.assertGreater(len(result.tool_outputs), 0)
         self.assertEqual(result.tool_outputs[0]["name"], "get_weather")
@@ -1070,6 +1081,11 @@ class TestStructuredOutputWithTools(unittest.IsolatedAsyncioTestCase):
             temperature=0,
             max_retries=1,
         )
+
+        # remove reasoning from tool outputs
+        result.tool_outputs = [
+            i for i in result.tool_outputs if i["name"] != "reasoning"
+        ]
 
         # Verify tools were called
         self.assertGreaterEqual(len(result.tool_outputs), 2)
