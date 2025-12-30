@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 try:
     import fitz  # PyMuPDF
 except ImportError:
-    logger.error("PyMuPDF not installed. PDF parsing will not be available.")
-    logger.error("Install with: pip install pymupdf")
+    logger.debug("PyMuPDF not installed. PDF parsing will not be available.")
+    logger.debug("Install with: pip install pymupdf")
     pass
 
 
