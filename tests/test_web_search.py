@@ -104,13 +104,6 @@ class TestWebSearchTool(unittest.IsolatedAsyncioTestCase):
 
     @pytest.mark.asyncio
     @skip_if_no_api_key("gemini")
-    async def test_web_search_gemini_structure(self):
-        await self._test_provider_structure(
-            LLMProvider.GEMINI, "gemini-2.0-flash", "GEMINI_API_KEY"
-        )
-
-    @pytest.mark.asyncio
-    @skip_if_no_api_key("gemini")
     async def test_web_search_gemini3_structure(self):
         """Test Gemini 3 model for web search."""
         await self._test_provider_structure(
@@ -139,7 +132,7 @@ class TestWebSearchTool(unittest.IsolatedAsyncioTestCase):
         providers_config = [
             (LLMProvider.OPENAI, "gpt-4.1-mini", "OPENAI_API_KEY"),
             (LLMProvider.ANTHROPIC, "claude-haiku-4-5", "ANTHROPIC_API_KEY"),
-            (LLMProvider.GEMINI, "gemini-2.0-flash", "GEMINI_API_KEY"),
+            (LLMProvider.GEMINI, "gemini-3-flash-preview", "GEMINI_API_KEY"),
         ]
 
         available_providers = [
@@ -180,7 +173,7 @@ class TestWebSearchTool(unittest.IsolatedAsyncioTestCase):
         providers_config = [
             (LLMProvider.OPENAI, "gpt-4.1-mini", "OPENAI_API_KEY"),
             (LLMProvider.ANTHROPIC, "claude-haiku-4-5", "ANTHROPIC_API_KEY"),
-            (LLMProvider.GEMINI, "gemini-2.0-flash", "GEMINI_API_KEY"),
+            (LLMProvider.GEMINI, "gemini-3-flash-preview", "GEMINI_API_KEY"),
         ]
 
         available_providers = [
@@ -271,7 +264,7 @@ class TestWebSearchTool(unittest.IsolatedAsyncioTestCase):
         """Test Gemini web search with structured output."""
         result = await web_search_tool(
             question="What is the capital of France? Include 2-3 key facts.",
-            model="gemini-2.0-flash",
+            model="gemini-3-flash-preview",
             provider=LLMProvider.GEMINI,
             max_tokens=2048,
             response_format=SearchAnswer,
