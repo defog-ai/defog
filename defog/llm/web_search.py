@@ -19,6 +19,7 @@ async def web_search_tool(
     max_tokens: int = 8192,
     verbose: bool = True,
     response_format: Optional[Type[BaseModel]] = None,
+    reasoning_effort: Optional[str] = None,
 ):
     """
     Search the web for the answer to the question.
@@ -31,6 +32,10 @@ async def web_search_tool(
         verbose: Whether to log progress.
         response_format: Optional Pydantic model class for structured output.
             When provided, search_results will contain a parsed instance of this model.
+        reasoning_effort: Optional reasoning effort level for models that support it.
+            - OpenAI (o-series, gpt-5): "low", "medium", "high"
+            - Gemini (gemini-3): "minimal", "low", "medium", "high" (gemini-3-pro only supports "low", "high")
+            - Anthropic (claude-3-7, claude-4): "low", "medium", "high"
 
     Returns:
         dict with keys:
@@ -76,6 +81,15 @@ async def web_search_tool(
                         "name": schema.get("title", response_format.__name__),
                         "schema": schema | {"additionalProperties": False},
                     }
+                }
+
+            # Add reasoning effort for o-series and gpt-5 models
+            if reasoning_effort and (
+                model.startswith("o") or model.startswith("gpt-5")
+            ):
+                request_params["reasoning"] = {
+                    "effort": reasoning_effort,
+                    "summary": "auto",
                 }
 
             response = await client.responses.create(**request_params)
@@ -153,6 +167,19 @@ async def web_search_tool(
                     f"that matches this schema:\n\n```json\n{schema_json}\n```\n\n"
                     f"Output ONLY the JSON object, no other text."
                 )
+
+            # Add reasoning effort for claude-3-7 and claude-4 models
+            if reasoning_effort and ("3-7" in model or "-4-" in model):
+                request_params["temperature"] = 1.0
+                budget_tokens_map = {
+                    "low": 2048,
+                    "medium": 4096,
+                    "high": 8192,
+                }
+                request_params["thinking"] = {
+                    "type": "enabled",
+                    "budget_tokens": budget_tokens_map.get(reasoning_effort, 4096),
+                }
 
             response = await client.messages.create(**request_params)
 
@@ -235,6 +262,22 @@ async def web_search_tool(
             if response_format:
                 request_params["response_mime_type"] = "application/json"
                 request_params["response_format"] = response_format.model_json_schema()
+
+            # Add reasoning effort for gemini-3 models
+            if reasoning_effort and model.startswith("gemini-3"):
+                if reasoning_effort not in ["minimal", "low", "medium", "high"]:
+                    raise ValueError(
+                        "reasoning_effort must be one of 'minimal', 'low', 'medium', or 'high' for Gemini"
+                    )
+                if reasoning_effort not in ["low", "high"] and model.startswith(
+                    "gemini-3-pro"
+                ):
+                    raise ValueError(
+                        f"reasoning_effort must be 'low' or 'high' for model {model}"
+                    )
+                request_params["generation_config"] = {
+                    "thinking_level": reasoning_effort,
+                }
 
             # Use Interactions API for proper token counts
             response = await client.aio.interactions.create(**request_params)
