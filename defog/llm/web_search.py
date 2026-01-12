@@ -292,11 +292,11 @@ async def web_search_tool(
 
             if hasattr(response, "usage") and response.usage:
                 usage_obj = response.usage
-                input_tokens = getattr(usage_obj, "total_input_tokens", 0)
-                output_tokens = getattr(usage_obj, "total_output_tokens", 0)
-                thinking_tokens = getattr(usage_obj, "total_reasoning_tokens", 0)
-                cached_tokens = getattr(usage_obj, "total_cached_tokens", 0)
-                tool_use_tokens = getattr(usage_obj, "total_tool_use_tokens", 0)
+                input_tokens = getattr(usage_obj, "total_input_tokens", 0) or 0
+                output_tokens = getattr(usage_obj, "total_output_tokens", 0) or 0
+                thinking_tokens = getattr(usage_obj, "total_reasoning_tokens", 0) or 0
+                cached_tokens = getattr(usage_obj, "total_cached_tokens", 0) or 0
+                tool_use_tokens = getattr(usage_obj, "total_tool_use_tokens", 0) or 0
 
             usage = {
                 "input_tokens": input_tokens,
