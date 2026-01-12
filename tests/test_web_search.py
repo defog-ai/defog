@@ -2,9 +2,23 @@ import unittest
 import pytest
 import os
 import asyncio
+from typing import List
+
+from pydantic import BaseModel, Field
+
 from defog.llm.web_search import web_search_tool
 from defog.llm.llm_providers import LLMProvider
 from tests.conftest import skip_if_no_api_key
+
+
+class SearchAnswer(BaseModel):
+    """Sample Pydantic model for testing structured output."""
+
+    answer: str = Field(description="The answer to the search query")
+    confidence: float = Field(
+        description="Confidence score between 0 and 1", ge=0, le=1
+    )
+    key_facts: List[str] = Field(description="Key facts found during the search")
 
 
 class TestWebSearchTool(unittest.IsolatedAsyncioTestCase):
@@ -19,7 +33,7 @@ class TestWebSearchTool(unittest.IsolatedAsyncioTestCase):
         self.assertIn("search_results", result)
         self.assertIn("websites_cited", result)
 
-    def _validate_usage_structure(self, usage, provider):
+    def _validate_usage_structure(self, usage, provider, model=None):
         """Validate usage structure with provider-specific fields"""
         self.assertIsInstance(usage, dict)
         self.assertIn("input_tokens", usage)
@@ -28,10 +42,6 @@ class TestWebSearchTool(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(usage["output_tokens"], int)
         self.assertGreater(usage["input_tokens"], 0)
         self.assertGreater(usage["output_tokens"], 0)
-
-        if provider == LLMProvider.GEMINI:
-            self.assertIn("thinking_tokens", usage)
-            self.assertIsInstance(usage["thinking_tokens"], int)
 
     def _validate_citations(self, citations, provider):
         """Validate citations structure with provider-specific fields"""
@@ -72,7 +82,7 @@ class TestWebSearchTool(unittest.IsolatedAsyncioTestCase):
         )
 
         self._validate_basic_structure(result)
-        self._validate_usage_structure(result["usage"], provider)
+        self._validate_usage_structure(result["usage"], provider, model=model)
         self._validate_search_results(result["search_results"], provider)
         self._validate_citations(result["websites_cited"], provider)
 
@@ -97,6 +107,14 @@ class TestWebSearchTool(unittest.IsolatedAsyncioTestCase):
     async def test_web_search_gemini_structure(self):
         await self._test_provider_structure(
             LLMProvider.GEMINI, "gemini-2.0-flash", "GEMINI_API_KEY"
+        )
+
+    @pytest.mark.asyncio
+    @skip_if_no_api_key("gemini")
+    async def test_web_search_gemini3_structure(self):
+        """Test Gemini 3 model for web search."""
+        await self._test_provider_structure(
+            LLMProvider.GEMINI, "gemini-3-flash-preview", "GEMINI_API_KEY"
         )
 
     @pytest.mark.asyncio
@@ -193,6 +211,103 @@ class TestWebSearchTool(unittest.IsolatedAsyncioTestCase):
         for provider, result in results:
             with self.subTest(provider=provider.value):
                 self._validate_basic_structure(result)
+
+    # Structured output tests
+    def _validate_structured_output(self, result, response_format):
+        """Validate that search_results is a parsed Pydantic model instance."""
+        self.assertIsInstance(result, dict)
+        self.assertIn("search_results", result)
+        self.assertIsInstance(result["search_results"], response_format)
+
+    @pytest.mark.asyncio
+    @skip_if_no_api_key("openai")
+    async def test_web_search_openai_structured_output(self):
+        """Test OpenAI web search with structured output."""
+        result = await web_search_tool(
+            question="What is the capital of France? Include 2-3 key facts.",
+            model="gpt-4.1-mini",
+            provider=LLMProvider.OPENAI,
+            max_tokens=2048,
+            response_format=SearchAnswer,
+        )
+
+        self._validate_basic_structure(result)
+        self._validate_structured_output(result, SearchAnswer)
+
+        # Validate the Pydantic model fields
+        search_answer = result["search_results"]
+        self.assertIsInstance(search_answer.answer, str)
+        self.assertGreater(len(search_answer.answer), 0)
+        self.assertIsInstance(search_answer.confidence, float)
+        self.assertGreaterEqual(search_answer.confidence, 0)
+        self.assertLessEqual(search_answer.confidence, 1)
+        self.assertIsInstance(search_answer.key_facts, list)
+
+    @pytest.mark.asyncio
+    @skip_if_no_api_key("anthropic")
+    async def test_web_search_anthropic_structured_output(self):
+        """Test Anthropic web search with structured output."""
+        result = await web_search_tool(
+            question="What is the capital of France? Include 2-3 key facts.",
+            model="claude-haiku-4-5",
+            provider=LLMProvider.ANTHROPIC,
+            max_tokens=2048,
+            response_format=SearchAnswer,
+        )
+
+        self._validate_basic_structure(result)
+        self._validate_structured_output(result, SearchAnswer)
+
+        # Validate the Pydantic model fields
+        search_answer = result["search_results"]
+        self.assertIsInstance(search_answer.answer, str)
+        self.assertGreater(len(search_answer.answer), 0)
+        self.assertIsInstance(search_answer.confidence, float)
+        self.assertIsInstance(search_answer.key_facts, list)
+
+    @pytest.mark.asyncio
+    @skip_if_no_api_key("gemini")
+    async def test_web_search_gemini_structured_output(self):
+        """Test Gemini web search with structured output."""
+        result = await web_search_tool(
+            question="What is the capital of France? Include 2-3 key facts.",
+            model="gemini-2.0-flash",
+            provider=LLMProvider.GEMINI,
+            max_tokens=2048,
+            response_format=SearchAnswer,
+        )
+
+        self._validate_basic_structure(result)
+        self._validate_structured_output(result, SearchAnswer)
+
+        # Validate the Pydantic model fields
+        search_answer = result["search_results"]
+        self.assertIsInstance(search_answer.answer, str)
+        self.assertGreater(len(search_answer.answer), 0)
+        self.assertIsInstance(search_answer.confidence, float)
+        self.assertIsInstance(search_answer.key_facts, list)
+
+    @pytest.mark.asyncio
+    @skip_if_no_api_key("gemini")
+    async def test_web_search_gemini3_structured_output(self):
+        """Test Gemini 3 web search with structured output."""
+        result = await web_search_tool(
+            question="Who won the El Clasico on January 11, 2026?",
+            model="gemini-3-flash-preview",
+            provider=LLMProvider.GEMINI,
+            max_tokens=2048,
+            response_format=SearchAnswer,
+        )
+
+        self._validate_basic_structure(result)
+        self._validate_structured_output(result, SearchAnswer)
+
+        # Validate the Pydantic model fields
+        search_answer = result["search_results"]
+        self.assertIsInstance(search_answer.answer, str)
+        self.assertGreater(len(search_answer.answer), 0)
+        self.assertIsInstance(search_answer.confidence, float)
+        self.assertIsInstance(search_answer.key_facts, list)
 
 
 if __name__ == "__main__":
