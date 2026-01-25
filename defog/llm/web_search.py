@@ -304,10 +304,25 @@ async def web_search_tool(
                 "cached_input_tokens": cached_tokens,
             }
 
-            # Extract websites from grounding metadata
+            # Extract websites from grounding metadata or google_search_result outputs
             websites_cited = []
+            seen_urls = set()
             if hasattr(response, "outputs") and response.outputs:
                 for output in response.outputs:
+                    output_type = getattr(output, "type", None)
+                    if output_type == "google_search_result":
+                        result_items = getattr(output, "result", None) or []
+                        for item in result_items:
+                            if isinstance(item, dict):
+                                url = item.get("url")
+                                title = item.get("title") or item.get("source")
+                            else:
+                                url = getattr(item, "url", None)
+                                title = getattr(item, "title", None)
+                            if url and url not in seen_urls:
+                                websites_cited.append({"source": title, "url": url})
+                                seen_urls.add(url)
+                        continue
                     if (
                         hasattr(output, "grounding_metadata")
                         and output.grounding_metadata
@@ -319,12 +334,15 @@ async def web_search_tool(
                         ):
                             for chunk in grounding.grounding_chunks:
                                 if hasattr(chunk, "web") and chunk.web:
-                                    websites_cited.append(
-                                        {
-                                            "source": chunk.web.title,
-                                            "url": chunk.web.uri,
-                                        }
-                                    )
+                                    url = chunk.web.uri
+                                    if url and url not in seen_urls:
+                                        websites_cited.append(
+                                            {
+                                                "source": chunk.web.title,
+                                                "url": url,
+                                            }
+                                        )
+                                        seen_urls.add(url)
 
             # Extract text from outputs
             output_text = ""
