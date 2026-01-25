@@ -165,8 +165,12 @@ def cleanup_obj(obj: dict, model: str):
 
     keys = new_obj.keys()
     if "anyOf" in new_obj:
-        new_obj["any_of"] = new_obj["anyOf"]
-        del new_obj["anyOf"]
+        if model.startswith("gemini"):
+            # Gemini Interactions expects standard JSON Schema keywords.
+            pass
+        else:
+            new_obj["any_of"] = new_obj["anyOf"]
+            del new_obj["anyOf"]
 
     if "type" in new_obj:
         if model.startswith("gemini"):
@@ -336,36 +340,19 @@ def convert_tool_choice(tool_choice: str, tool_name_list: List[str], model: str)
     for model_type, config in model_map.items():
         if any(model.startswith(prefix) for prefix in config["prefixes"]):
             if model_type == "gemini":
-                from google.genai import types
-
                 config = {
                     "choices": {
-                        "auto": types.ToolConfig(
-                            function_calling_config=types.FunctionCallingConfig(
-                                mode="AUTO"
-                            )
-                        ),
-                        "required": types.ToolConfig(
-                            function_calling_config=types.FunctionCallingConfig(
-                                mode="ANY"
-                            )
-                        ),
-                        "any": types.ToolConfig(
-                            function_calling_config=types.FunctionCallingConfig(
-                                mode="ANY"
-                            )
-                        ),
-                        "none": types.ToolConfig(
-                            function_calling_config=types.FunctionCallingConfig(
-                                mode="NONE"
-                            )
-                        ),
+                        "auto": "auto",
+                        "required": "any",
+                        "any": "any",
+                        "none": "none",
                     },
-                    "custom": types.ToolConfig(
-                        function_calling_config=types.FunctionCallingConfig(
-                            mode="ANY", allowed_function_names=[tool_choice]
-                        )
-                    ),
+                    "custom": {
+                        "allowed_tools": {
+                            "mode": "any",
+                            "tools": [tool_choice],
+                        }
+                    },
                 }
             if tool_choice not in config["choices"]:
                 # Validate custom tool_choice
