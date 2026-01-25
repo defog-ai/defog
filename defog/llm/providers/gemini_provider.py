@@ -240,10 +240,9 @@ class GeminiProvider(BaseLLMProvider):
 
         # 3. Build Configuration
         # 3. Build Configuration
-        generation_config_dict = {
-            "temperature": temperature,
-            "max_output_tokens": max_completion_tokens,
-        }
+        generation_config_dict = {"temperature": temperature}
+        if max_completion_tokens is not None:
+            generation_config_dict["max_output_tokens"] = max_completion_tokens
 
         request_params = {
             "model": model,
