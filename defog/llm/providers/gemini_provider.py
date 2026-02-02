@@ -1,3 +1,4 @@
+import json
 import traceback
 import time
 import base64
@@ -389,10 +390,20 @@ class GeminiProvider(BaseLLMProvider):
                     if ":" in tool_name:
                         tool_name = tool_name.split(":")[-1]
 
+                    # Parse arguments if they're a JSON string (like OpenAI provider does)
+                    try:
+                        args = (
+                            json.loads(fc.arguments)
+                            if isinstance(fc.arguments, str)
+                            else (fc.arguments or {})
+                        )
+                    except json.JSONDecodeError:
+                        args = fc.arguments if fc.arguments else {}
+
                     tool_calls_batch.append(
                         {
                             "id": tool_id,
-                            "function": {"name": tool_name, "arguments": fc.arguments},
+                            "function": {"name": tool_name, "arguments": args},
                         }
                     )
 
@@ -419,10 +430,11 @@ class GeminiProvider(BaseLLMProvider):
                     tool_id = tool_call_dict["id"]
 
                     # Sample and prepare for LLM
+                    parsed_args = tool_call_dict["function"]["arguments"]
                     sampled_result = await tool_handler.sample_tool_result(
                         fc.name,
                         result,
-                        fc.arguments,
+                        parsed_args,
                         tool_id=tool_id,
                         tool_sample_functions=tool_sample_functions,
                     )
@@ -439,7 +451,7 @@ class GeminiProvider(BaseLLMProvider):
                         {
                             "tool_call_id": tool_id,
                             "name": tool_call_dict["function"]["name"],
-                            "args": fc.arguments,
+                            "args": parsed_args,
                             "result": result,
                             "result_for_llm": text_for_llm,
                             "result_truncated_for_llm": was_truncated,
