@@ -181,23 +181,38 @@ class AnthropicProvider(BaseLLMProvider):
 
         messages = converted_messages
 
-        if reasoning_effort is not None and ("3-7" in model or "-4-" in model):
+        # Extended thinking: "-4" catches all Claude 4+ models (sonnet-4,
+        # opus-4-1, opus-4-5, opus-4-6, haiku-4-5, etc.), "3-7" catches
+        # Claude 3.7 Sonnet. Using "-4" instead of "-4-" so that
+        # "claude-sonnet-4" (no date suffix) is also matched.
+        supports_thinking = "3-7" in model or "-4" in model
+        # Opus 4.6+ uses adaptive thinking (type: "adaptive") with effort
+        # via output_config, replacing the deprecated budget_tokens param.
+        # Update this tuple when new models add adaptive thinking support.
+        supports_adaptive = any(p in model for p in ("opus-4-6",))
+
+        if reasoning_effort is not None and supports_thinking:
             temperature = 1.0
-            if reasoning_effort == "low":
+            if supports_adaptive:
                 thinking = {
-                    "type": "enabled",
-                    "budget_tokens": 2048,
+                    "type": "adaptive",
                 }
-            elif reasoning_effort == "medium":
-                thinking = {
-                    "type": "enabled",
-                    "budget_tokens": 4096,
-                }
-            elif reasoning_effort == "high":
-                thinking = {
-                    "type": "enabled",
-                    "budget_tokens": 8192,
-                }
+            else:
+                if reasoning_effort == "low":
+                    thinking = {
+                        "type": "enabled",
+                        "budget_tokens": 2048,
+                    }
+                elif reasoning_effort == "medium":
+                    thinking = {
+                        "type": "enabled",
+                        "budget_tokens": 4096,
+                    }
+                elif reasoning_effort in ("high", "max"):
+                    thinking = {
+                        "type": "enabled",
+                        "budget_tokens": 8192,
+                    }
         else:
             thinking = {
                 "type": "disabled",
@@ -216,6 +231,10 @@ class AnthropicProvider(BaseLLMProvider):
             "timeout": timeout,
             "thinking": thinking,
         }
+
+        # For adaptive thinking models, pass the effort level via output_config
+        if supports_adaptive and reasoning_effort is not None:
+            params["output_config"] = {"effort": reasoning_effort}
 
         # Add cache control to the last 2 messages
         if messages:
@@ -1003,7 +1022,9 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
 
         t = time.time()
 
-        # Set up headers based on whether MCP servers are provided
+        # Interleaved thinking beta header: required for Claude 4/4.5 models,
+        # automatic for Opus 4.6+ (adaptive thinking enables it implicitly).
+        # Safe to always include — the API ignores it for unsupported models.
         headers = {}
         headers["anthropic-beta"] = "interleaved-thinking-2025-05-14"
 
