@@ -12,7 +12,6 @@ Comprehensive guide to LLM operations including:
 - **[Multimodal Support](llm/multimodal-support.md)** - Image inputs across all providers
 - **[Function Calling](llm/function-calling.md)** - Define tools for LLMs with automatic schema generation
 - **[Structured Output](llm/structured-output.md)** - Get validated responses using Pydantic models
-- **[Memory Management](llm/memory-management.md)** - Handle long conversations with automatic summarization
 - **Specialized Tools** - [Code interpreter](llm/code-interpreter.md), [web search](llm/web-search.md), [YouTube transcription](llm/youtube-transcription.md), [citations](llm/citations-tool.md)
 
 #### [Database Operations](database/)
@@ -74,7 +73,6 @@ Command-line interface documentation:
 - **Extract data from PDFs** → [PDF Extraction](data-extraction.md#pdf-data-extraction)
 - **Analyze images/charts** → [Image Extraction](data-extraction.md#image-data-extraction)
 - **Document my database** → [Schema Documentation](database-operations.md#schema-documentation)
-- **Manage long conversations** → [Memory Management](llm-utilities.md#memory-management)
 - **Coordinate multiple agents** → [Agent Orchestration](agent-orchestration.md)
 - **Search the web with AI** → [Web Search](llm-utilities.md#web-search)
 - **Execute Python code** → [Code Interpreter](llm-utilities.md#code-interpreter)

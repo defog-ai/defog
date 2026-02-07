@@ -108,7 +108,6 @@ class DeepSeekProvider(BaseLLMProvider):
         store: bool = True,
         metadata: Optional[Dict[str, str]] = None,
         timeout: int = 600,
-        prediction: Optional[Dict[str, str]] = None,
         reasoning_effort: Optional[str] = None,
         **kwargs,
     ) -> Tuple[Dict[str, Any], List[Dict[str, str]]]:
@@ -411,7 +410,6 @@ Respond with JSON only.
         store: bool = True,
         metadata: Optional[Dict[str, str]] = None,
         timeout: int = 600,
-        prediction: Optional[Dict[str, str]] = None,
         reasoning_effort: Optional[str] = None,
         post_tool_function: Optional[Callable] = None,
         tool_sample_functions: Optional[Dict[str, Callable]] = None,
@@ -454,7 +452,6 @@ Respond with JSON only.
             response_format=response_format,
             tools=tools,
             tool_choice=tool_choice,
-            prediction=prediction,
             reasoning_effort=reasoning_effort,
             store=store,
             metadata=metadata,

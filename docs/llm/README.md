@@ -11,7 +11,6 @@ This directory contains detailed documentation for all LLM-related functionality
 
 ## Advanced Features
 
-- [Memory Management](memory-management.md) - Handle long conversations with automatic summarization
 - [Tool Budget Management](tool-budget-management.md) - Limit tool usage to control costs
 - [Tool Citations](tool-citations.md) - Automatic citation addition for tool outputs
 - [Cost Tracking](cost-tracking.md) - Track and monitor LLM operation costs

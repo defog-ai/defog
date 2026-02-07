@@ -107,7 +107,6 @@ class MistralProvider(BaseLLMProvider):
         store: bool = True,
         metadata: Optional[Dict[str, str]] = None,
         timeout: int = 600,
-        prediction: Optional[Dict[str, str]] = None,
         reasoning_effort: Optional[str] = None,
         **kwargs,
     ) -> Tuple[Dict[str, Any], List[Dict[str, str]]]:
@@ -388,7 +387,6 @@ class MistralProvider(BaseLLMProvider):
         store: bool = True,
         metadata: Optional[Dict[str, str]] = None,
         timeout: int = 600,
-        prediction: Optional[Dict[str, str]] = None,
         reasoning_effort: Optional[str] = None,
         post_tool_function: Optional[Callable] = None,
         tool_sample_functions: Optional[Dict[str, Callable]] = None,

@@ -20,8 +20,8 @@ except RateLimitError:
     await asyncio.sleep(60)
     response = await chat_async(...)
 except ContextLengthError:
-    # Use memory management or chunk content
-    response = await chat_async_with_memory(...)
+    # Chunk content or reduce message history
+    response = await chat_async(...)
 except LLMError as e:
     print(f"LLM error: {e}")
 ```
@@ -32,7 +32,7 @@ except LLMError as e:
 - Enable caching for repeated operations (especially PDFs)
 - Use structured output for consistent parsing
 - Batch operations when possible
-- Configure memory management for long conversations
+- Manage conversation history to stay within context limits
 
 ### 4. Cost Optimization
 
