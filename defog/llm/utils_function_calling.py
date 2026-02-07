@@ -13,6 +13,7 @@ from typing import (
 )
 from pydantic import BaseModel, Field, create_model
 from defog.llm.models import OpenAIFunctionSpecs, AnthropicFunctionSpecs
+from defog.llm.llm_providers import LLMProvider
 
 
 def python_type_to_json_schema_type(python_type):
@@ -153,7 +154,14 @@ def is_pydantic_style_function(func: Callable) -> bool:
     return isinstance(model_class, type) and issubclass(model_class, BaseModel)
 
 
-def cleanup_obj(obj: dict, model: str):
+def _normalize_provider(provider: Union[LLMProvider, str]) -> str:
+    """Normalize a provider to its string value."""
+    if isinstance(provider, LLMProvider):
+        return provider.value
+    return provider
+
+
+def cleanup_obj(obj: dict, provider: Union[LLMProvider, str]):
     """
     Converts a pydantic model's json to a format that gemini supports (recursively):
     - Converts properties called "anyOf" to "any_of"
@@ -161,11 +169,12 @@ def cleanup_obj(obj: dict, model: str):
     - Removes "$defs" properties that are created by nested pydantic models
     - Removes $ref properties that are also created by nested pydantic models
     """
+    provider_str = _normalize_provider(provider)
     new_obj = obj
 
     keys = new_obj.keys()
     if "anyOf" in new_obj:
-        if model.startswith("gemini"):
+        if provider_str == "gemini":
             # Gemini Interactions expects standard JSON Schema keywords.
             pass
         else:
@@ -173,7 +182,7 @@ def cleanup_obj(obj: dict, model: str):
             del new_obj["anyOf"]
 
     if "type" in new_obj:
-        if model.startswith("gemini"):
+        if provider_str == "gemini":
             new_obj["type"] = new_obj["type"].upper()
         else:
             new_obj["type"] = new_obj["type"]
@@ -186,15 +195,16 @@ def cleanup_obj(obj: dict, model: str):
 
     for k in keys:
         if isinstance(new_obj[k], dict):
-            new_obj[k] = cleanup_obj(new_obj[k], model)
+            new_obj[k] = cleanup_obj(new_obj[k], provider)
 
     return new_obj
 
 
 def get_function_specs(
-    functions: List[Callable], model: str
+    functions: List[Callable], provider: Union[LLMProvider, str]
 ) -> List[Union[OpenAIFunctionSpecs, AnthropicFunctionSpecs]]:
     """Return a list of dictionaries describing each function's name, docstring, and input schema."""
+    provider_str = _normalize_provider(provider)
     function_specs = []
 
     for func in functions:
@@ -234,7 +244,7 @@ def get_function_specs(
         input_schema = jsonref.replace_refs(input_schema, proxies=False)
 
         # cleanup object
-        input_schema = cleanup_obj(input_schema, model)
+        input_schema = cleanup_obj(input_schema, provider)
 
         # Remove title from input_schema
         input_schema.pop("title")
@@ -247,14 +257,7 @@ def get_function_specs(
         if "required" not in input_schema:
             input_schema["required"] = list(input_schema["properties"].keys())
 
-        if (
-            model.startswith("gpt")
-            or model.startswith("o1")
-            or model.startswith("chatgpt")
-            or model.startswith("o3")
-            or model.startswith("o4")
-            or model.startswith("deepseek")
-        ):
+        if provider_str in ("openai", "deepseek", "together", "alibaba"):
             function_specs.append(
                 {
                     "type": "function",
@@ -265,7 +268,7 @@ def get_function_specs(
                     },
                 }
             )
-        elif model.startswith("claude") or model.startswith("grok"):
+        elif provider_str in ("anthropic", "grok"):
             input_schema["type"] = "object"
             function_specs.append(
                 {
@@ -274,7 +277,7 @@ def get_function_specs(
                     "input_schema": input_schema,
                 }
             )
-        elif model.startswith("gemini"):
+        elif provider_str == "gemini":
             function_specs.append(
                 {
                     "type": "function",
@@ -283,7 +286,7 @@ def get_function_specs(
                     "parameters": input_schema,
                 }
             )
-        elif model.startswith("mistral"):
+        elif provider_str == "mistral":
             function_specs.append(
                 {
                     "type": "function",
@@ -295,18 +298,50 @@ def get_function_specs(
                 }
             )
         else:
-            raise ValueError(f"Model does not support function calling: {model}")
+            raise ValueError(
+                f"Provider does not support function calling: {provider_str}"
+            )
 
     return function_specs
 
 
-def convert_tool_choice(tool_choice: str, tool_name_list: List[str], model: str):
+def convert_tool_choice(
+    tool_choice: str, tool_name_list: List[str], provider: Union[LLMProvider, str]
+):
     """
-    Convert a tool choice to a function calling tool choice that is compatible with the model.
+    Convert a tool choice to a function calling tool choice that is compatible with the provider.
     """
-    model_map = {
+    provider_str = _normalize_provider(provider)
+
+    provider_map = {
         "openai": {
-            "prefixes": ["gpt", "o1", "chatgpt", "o3", "o4", "deepseek"],
+            "choices": {
+                "auto": "auto",
+                "required": "required",
+                "any": "required",
+                "none": "none",
+            },
+            "custom": {"type": "function", "function": {"name": tool_choice}},
+        },
+        "deepseek": {
+            "choices": {
+                "auto": "auto",
+                "required": "required",
+                "any": "required",
+                "none": "none",
+            },
+            "custom": {"type": "function", "function": {"name": tool_choice}},
+        },
+        "together": {
+            "choices": {
+                "auto": "auto",
+                "required": "required",
+                "any": "required",
+                "none": "none",
+            },
+            "custom": {"type": "function", "function": {"name": tool_choice}},
+        },
+        "alibaba": {
             "choices": {
                 "auto": "auto",
                 "required": "required",
@@ -316,7 +351,6 @@ def convert_tool_choice(tool_choice: str, tool_name_list: List[str], model: str)
             "custom": {"type": "function", "function": {"name": tool_choice}},
         },
         "anthropic": {
-            "prefixes": ["claude", "grok"],
             "choices": {
                 "auto": {"type": "auto"},
                 "required": {"type": "any"},
@@ -324,9 +358,29 @@ def convert_tool_choice(tool_choice: str, tool_name_list: List[str], model: str)
             },
             "custom": {"type": "tool", "name": tool_choice},
         },
-        "gemini": {"prefixes": ["gemini"]},
+        "grok": {
+            "choices": {
+                "auto": {"type": "auto"},
+                "required": {"type": "any"},
+                "any": {"type": "any"},
+            },
+            "custom": {"type": "tool", "name": tool_choice},
+        },
+        "gemini": {
+            "choices": {
+                "auto": "auto",
+                "required": "any",
+                "any": "any",
+                "none": "none",
+            },
+            "custom": {
+                "allowed_tools": {
+                    "mode": "any",
+                    "tools": [tool_choice],
+                }
+            },
+        },
         "mistral": {
-            "prefixes": ["mistral"],
             "choices": {
                 "auto": "auto",
                 "required": "any",
@@ -337,33 +391,20 @@ def convert_tool_choice(tool_choice: str, tool_name_list: List[str], model: str)
         },
     }
 
-    for model_type, config in model_map.items():
-        if any(model.startswith(prefix) for prefix in config["prefixes"]):
-            if model_type == "gemini":
-                config = {
-                    "choices": {
-                        "auto": "auto",
-                        "required": "any",
-                        "any": "any",
-                        "none": "none",
-                    },
-                    "custom": {
-                        "allowed_tools": {
-                            "mode": "any",
-                            "tools": [tool_choice],
-                        }
-                    },
-                }
-            if tool_choice not in config["choices"]:
-                # Validate custom tool_choice
-                if tool_choice not in tool_name_list:
-                    raise ValueError(
-                        f"Forced function `{tool_choice}` is not in the list of provided tools"
-                    )
-                return config["custom"]
-            return config["choices"][tool_choice]
+    config = provider_map.get(provider_str)
+    if config is None:
+        raise ValueError(
+            f"Provider `{provider_str}` does not support tools and function calling"
+        )
 
-    raise ValueError(f"Model `{model}` does not support tools and function calling")
+    if tool_choice not in config["choices"]:
+        # Validate custom tool_choice
+        if tool_choice not in tool_name_list:
+            raise ValueError(
+                f"Forced function `{tool_choice}` is not in the list of provided tools"
+            )
+        return config["custom"]
+    return config["choices"][tool_choice]
 
 
 def execute_tool(tool: Callable, inputs: Dict[str, Any]):

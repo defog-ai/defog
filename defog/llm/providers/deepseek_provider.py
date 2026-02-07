@@ -132,11 +132,13 @@ class DeepSeekProvider(BaseLLMProvider):
 
         # Tools are supported for deepseek-chat
         if tools and len(tools) > 0:
-            function_specs = get_function_specs(tools, model)
+            function_specs = get_function_specs(tools, "deepseek")
             request_params["tools"] = function_specs
             if tool_choice:
                 tool_names_list = [func.__name__ for func in tools]
-                tool_choice = convert_tool_choice(tool_choice, tool_names_list, model)
+                tool_choice = convert_tool_choice(
+                    tool_choice, tool_names_list, "deepseek"
+                )
                 request_params["tool_choice"] = tool_choice
             else:
                 request_params["tool_choice"] = "auto"
@@ -327,7 +329,7 @@ Respond with JSON only.
 
                         # Update available tools based on budget
                         tools, tool_dict = self.update_tools_with_budget(
-                            tools, tool_handler, request_params, model
+                            tools, tool_handler, request_params
                         )
 
                         # Set tool_choice to "auto" so that the next message will be generated normally

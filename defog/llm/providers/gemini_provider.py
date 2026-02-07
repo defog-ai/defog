@@ -263,13 +263,13 @@ class GeminiProvider(BaseLLMProvider):
 
         # 4. Tools
         if tools:
-            function_specs = get_function_specs(tools, model)
+            function_specs = get_function_specs(tools, "gemini")
             request_params["tools"] = function_specs
 
             if tool_choice:
                 tool_names_list = [func.__name__ for func in tools]
                 tool_choice_config = convert_tool_choice(
-                    tool_choice, tool_names_list, model
+                    tool_choice, tool_names_list, "gemini"
                 )
                 if tool_choice_config:
                     generation_config_dict["tool_choice"] = tool_choice_config
