@@ -304,14 +304,16 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
                             break
 
         if tools:
-            function_specs = get_function_specs(tools, model)
+            function_specs = get_function_specs(tools, self.get_provider_name())
             # Add cache_control to the last tool
             if function_specs and len(function_specs) > 0:
                 function_specs[-1]["cache_control"] = {"type": "ephemeral"}
             params["tools"] = function_specs
             if tool_choice:
                 tool_names_list = [func.__name__ for func in tools]
-                tool_choice = convert_tool_choice(tool_choice, tool_names_list, model)
+                tool_choice = convert_tool_choice(
+                    tool_choice, tool_names_list, self.get_provider_name()
+                )
                 params["tool_choice"] = tool_choice
             else:
                 params["tool_choice"] = {"type": "auto"}
@@ -802,7 +804,6 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
                                     tools,
                                     tool_handler,
                                     request_params,
-                                    request_params.get("model"),
                                 )
                             else:
                                 # Only MCP tools, conversation is complete
@@ -838,7 +839,7 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
 
                     # Update available tools based on budget before making next call
                     tools, tool_dict = self.update_tools_with_budget(
-                        tools, tool_handler, request_params, request_params.get("model")
+                        tools, tool_handler, request_params
                     )
 
                     # Enforce cache limit before making the next call

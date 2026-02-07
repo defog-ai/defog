@@ -155,7 +155,7 @@ class MistralProvider(BaseLLMProvider):
 
         # Handle tools
         if tools:
-            function_specs = get_function_specs(tools, model)
+            function_specs = get_function_specs(tools, "mistral")
             # Convert to Mistral format
             mistral_tools = []
             for spec in function_specs:
@@ -323,7 +323,6 @@ class MistralProvider(BaseLLMProvider):
                             tools,
                             tool_handler,
                             request_params,
-                            request_params.get("model"),
                         )
 
                         # Make next call

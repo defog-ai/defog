@@ -295,7 +295,6 @@ class BaseLLMProvider(ABC):
         tools: Optional[List[Callable]],
         tool_handler: ToolHandler,
         request_params: Dict[str, Any],
-        model: str,
     ) -> Tuple[Optional[List[Callable]], Dict[str, Callable]]:
         """Update available tools based on budget and rebuild parameters."""
         from ..utils_function_calling import get_function_specs
@@ -316,7 +315,9 @@ class BaseLLMProvider(ABC):
             # Tools have changed, update parameters
             if available_tools:
                 # Rebuild tool specs with only available tools
-                function_specs = get_function_specs(available_tools, model)
+                function_specs = get_function_specs(
+                    available_tools, self.get_provider_name()
+                )
                 request_params["tools"] = function_specs
                 tool_dict = tool_handler.build_tool_dict(available_tools)
             else:

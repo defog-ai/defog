@@ -232,7 +232,7 @@ class OpenAIProvider(BaseLLMProvider):
             request_params["previous_response_id"] = previous_response_id
 
         if tools:
-            function_specs = get_function_specs(tools, model)
+            function_specs = get_function_specs(tools, "openai")
             # Responses API expects function tools with a top-level name field
             flat_specs = []
             for spec in function_specs:
@@ -256,7 +256,9 @@ class OpenAIProvider(BaseLLMProvider):
 
             if tool_choice:
                 tool_names_list = [func.__name__ for func in tools]
-                tool_choice = convert_tool_choice(tool_choice, tool_names_list, model)
+                tool_choice = convert_tool_choice(
+                    tool_choice, tool_names_list, "openai"
+                )
                 # Flatten function choice for Responses API
                 if (
                     isinstance(tool_choice, dict)
@@ -547,7 +549,7 @@ class OpenAIProvider(BaseLLMProvider):
 
                         # Update available tools based on budget
                         tools, tool_dict = self.update_tools_with_budget(
-                            tools, tool_handler, request_params, model
+                            tools, tool_handler, request_params
                         )
                     except ProviderError:
                         # Re-raise provider errors from base class

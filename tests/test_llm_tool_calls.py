@@ -88,9 +88,9 @@ def numprod(input: Numbers):
 # ==================================================================================================
 class TestGetFunctionSpecs(unittest.TestCase):
     def setUp(self):
-        self.openai_model = "gpt-4.1"
-        self.anthropic_model = "claude-haiku-4-5"
-        self.grok_model = "grok-4-fast-non-reasoning-latest"
+        self.openai_provider = "openai"
+        self.anthropic_provider = "anthropic"
+        self.grok_provider = "grok"
         self.tools = [get_weather, numsum, numprod]
         self.maxDiff = None
         self.openai_specs = [
@@ -192,9 +192,9 @@ class TestGetFunctionSpecs(unittest.TestCase):
         ]
 
     def test_get_function_specs(self):
-        openai_specs = get_function_specs(self.tools, self.openai_model)
-        anthropic_specs = get_function_specs(self.tools, self.anthropic_model)
-        grok_specs = get_function_specs(self.tools, self.grok_model)
+        openai_specs = get_function_specs(self.tools, self.openai_provider)
+        anthropic_specs = get_function_specs(self.tools, self.anthropic_provider)
+        grok_specs = get_function_specs(self.tools, self.grok_provider)
 
         self.assertEqual(openai_specs, self.openai_specs)
         self.assertEqual(anthropic_specs, self.anthropic_specs)
@@ -844,7 +844,7 @@ class TestRegularFunctionTools(unittest.TestCase):
         functions = [add_numbers, greet]
 
         # Test OpenAI format
-        specs = get_function_specs(functions, "gpt-4.1")
+        specs = get_function_specs(functions, "openai")
         self.assertEqual(len(specs), 2)
 
         # Check first function
@@ -862,7 +862,7 @@ class TestRegularFunctionTools(unittest.TestCase):
         self.assertIn("greeting", specs[1]["function"]["parameters"]["properties"])
 
         # Test Anthropic format
-        specs = get_function_specs(functions, "claude-haiku-4-5")
+        specs = get_function_specs(functions, "anthropic")
         self.assertEqual(len(specs), 2)
         self.assertEqual(specs[0]["name"], "add_numbers")
         self.assertIn("a", specs[0]["input_schema"]["properties"])
