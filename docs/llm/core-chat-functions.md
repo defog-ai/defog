@@ -58,6 +58,51 @@ response = await chat_async(
 )
 ```
 
+## Custom Base URLs
+
+You can point any provider at a custom endpoint (e.g. a proxy, self-hosted model, or Azure deployment) using the `base_url` parameter:
+
+```python
+# Use a custom endpoint for OpenAI-compatible APIs
+response = await chat_async(
+    provider="openai",
+    model="gpt-4o",
+    messages=[{"role": "user", "content": "Hello!"}],
+    base_url="https://my-openai-proxy.example.com/v1/",
+)
+
+# Use a custom endpoint for Anthropic
+response = await chat_async(
+    provider="anthropic",
+    model="claude-sonnet-4-20250514",
+    messages=[{"role": "user", "content": "Hello!"}],
+    base_url="https://my-anthropic-proxy.example.com",
+)
+```
+
+Alternatively, set the corresponding environment variable and it will be picked up automatically:
+- `OPENAI_BASE_URL`
+- `ANTHROPIC_BASE_URL`
+- `GEMINI_BASE_URL`, `DEEPSEEK_BASE_URL`, `TOGETHER_BASE_URL`, `MISTRAL_BASE_URL`, `GROK_BASE_URL`, `ALIBABA_BASE_URL`
+
+Or use the `LLMConfig` object for multi-provider configuration:
+
+```python
+from defog.llm.config import LLMConfig
+
+config = LLMConfig(base_urls={
+    "openai": "https://my-proxy.example.com/v1/",
+    "anthropic": "https://my-anthropic-proxy.example.com",
+})
+
+response = await chat_async(
+    provider="openai",
+    model="gpt-4o",
+    messages=[{"role": "user", "content": "Hello!"}],
+    config=config,
+)
+```
+
 ## Provider-Specific Examples
 
 ```python

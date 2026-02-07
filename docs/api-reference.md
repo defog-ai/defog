@@ -231,13 +231,13 @@ async def chat_async(
     timeout: int = 600,
     backup_model: Optional[str] = None,
     backup_provider: Optional[Union[LLMProvider, str]] = None,
-    prediction: Optional[Dict[str, str]] = None,
     reasoning_effort: Optional[str] = None,
     tools: Optional[List[Callable]] = None,
     tool_choice: Optional[str] = None,
     max_retries: Optional[int] = None,
     post_tool_function: Optional[Callable] = None,
     config: Optional[LLMConfig] = None,
+    base_url: Optional[str] = None,
     mcp_servers: Optional[List[str]] = None,
     image_result_keys: Optional[List[str]] = None,
     tool_budget: Optional[Dict[str, int]] = None,
@@ -250,6 +250,7 @@ async def chat_async(
 ) -> LLMResponse
 ```
 
+- `base_url`: Custom base URL for the provider's API endpoint (e.g. for proxies or self-hosted models). Overrides the default URL for the primary provider. Can also be set via environment variables (`OPENAI_BASE_URL`, `ANTHROPIC_BASE_URL`, etc.) or through `LLMConfig`.
 - `tool_result_preview_max_tokens`: Optional token budget for the tool output preview that is sent back to the LLM. Full tool outputs are still stored on the response object.
 - `tool_sample_functions`: Optional mapping of tool name to a callable (or a single callable) that returns a sampled version of the tool output before it is passed back to the LLM.
 
@@ -384,48 +385,6 @@ class PDFAnalysisInput(BaseModel):
     cache_duration_minutes: int = 5
     parallel_chunks: bool = True
     include_metadata: bool = False
-```
-
-## Memory Management
-
-### MemoryManager
-
-```python
-class MemoryManager:
-    def __init__(
-        self,
-        token_threshold: int = 100000,
-        preserve_last_n_messages: int = 10,
-        summary_max_tokens: int = 2000,
-        enabled: bool = True
-    )
-    
-    def add_messages(self, messages: List[dict]) -> None
-    def get_current_messages(self) -> List[dict]
-    def get_stats(self) -> dict
-    def needs_compactification(self) -> bool
-    async def compactify(self, provider: str, model: str) -> None
-```
-
-### EnhancedMemoryManager
-
-```python
-class EnhancedMemoryManager(MemoryManager):
-    def __init__(
-        self,
-        token_threshold: int = 100000,
-        preserve_last_n_messages: int = 10,
-        summary_max_tokens: int = 2000,
-        enabled: bool = True,
-        enable_cross_agent_memory: bool = True,
-        memory_tags: Optional[List[str]] = None,
-        compression_ratio: float = 0.3,
-        preserve_tool_calls: bool = True,
-        preserve_images: bool = False,
-        summary_model: Optional[str] = None,
-        summary_provider: Optional[str] = None,
-        summary_instructions: Optional[str] = None
-    )
 ```
 
 ## Agent Orchestration

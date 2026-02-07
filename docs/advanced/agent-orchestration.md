@@ -139,33 +139,6 @@ orchestrator = AgentOrchestrator(
 )
 ```
 
-## Memory Management
-
-Agents can have memory management enabled:
-
-```python
-# Create agent with memory
-agent = Agent(
-    agent_id="memory_agent",
-    provider="anthropic",
-    model="claude-3-5-sonnet",
-    memory_config={
-        "token_threshold": 50000,
-        "preserve_last_n_messages": 10,
-        "preserve_first_n_messages": 2,
-        "strategy": "similarity",  # similarity, recency, importance
-        "min_messages_to_keep": 5,
-        "grace_period_messages": 2
-    }
-)
-
-# Clear memory when needed
-agent.clear_memory()
-
-# Clear all agent memories
-orchestrator.clear_all_memory()
-```
-
 ## Complete Example
 
 Here's a complete example showing dynamic agent creation and task execution:
@@ -383,6 +356,6 @@ for tool_output in response.tool_outputs:
 1. **Agent Specialization**: Create agents with specific, focused roles
 2. **Tool Selection**: Only provide agents with the tools they need
 3. **Error Handling**: Always configure appropriate retry settings
-4. **Memory Management**: Enable memory for agents handling long conversations
+4. **Conversation Management**: Manage message history to stay within context limits
 5. **Cost Management**: Monitor token usage and costs, especially with parallel execution
 6. **Task Dependencies**: Use dependencies to ensure proper execution order

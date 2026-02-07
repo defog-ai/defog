@@ -102,7 +102,6 @@ async def chat_async(
     timeout: int = 600,
     backup_model: Optional[str] = None,
     backup_provider: Optional[Union[LLMProvider, str]] = None,
-    prediction: Optional[Dict[str, str]] = None,
     reasoning_effort: Optional[str] = None,
     tools: Optional[List[Callable]] = None,
     tool_choice: Optional[str] = None,
@@ -110,6 +109,7 @@ async def chat_async(
     post_tool_function: Optional[Callable] = None,
     post_response_hook: Optional[Callable] = None,
     config: Optional[LLMConfig] = None,
+    base_url: Optional[str] = None,
     mcp_servers: Optional[List[str]] = None,
     image_result_keys: Optional[List[str]] = None,
     tool_budget: Optional[Dict[str, int]] = None,
@@ -141,7 +141,6 @@ async def chat_async(
         timeout: Request timeout in seconds
         backup_model: Fallback model to use on retry
         backup_provider: Fallback provider to use on retry
-        prediction: Predicted output configuration (OpenAI only)
         reasoning_effort: Reasoning effort level (o1/o3 models only)
         tools: List of tools the model can call
         tool_choice: Tool calling behavior ("auto", "required", function name)
@@ -149,6 +148,10 @@ async def chat_async(
         post_tool_function: Function to call after each tool execution. Must have parameters: function_name, input_args, tool_result, tool_id
         post_response_hook: Function to call after each response is received from the model. Must have parameters: response, messages
         config: LLM configuration object
+        base_url: Custom base URL for the provider's API endpoint. Overrides the default URL
+            for the primary provider (e.g., for proxies or self-hosted endpoints).
+            Both the Anthropic and OpenAI SDKs accept this parameter natively.
+            If not provided, falls back to the URL in config, then to the SDK's default.
         mcp_servers: List of MCP server urls for streamable http servers (e.g., ["http://localhost:8000/mcp", "http://localhost:8001/mcp"])
         image_result_keys: List of keys to check in tool results for image data (e.g., ['image_base64', 'screenshot_data'])
         tool_budget: Dictionary mapping tool names to maximum allowed calls. Tools not in the dictionary have unlimited calls.
@@ -175,6 +178,16 @@ async def chat_async(
 
     if config is None:
         config = LLMConfig()
+
+    # Apply base_url override for the primary provider
+    if base_url is not None:
+        if isinstance(provider, LLMProvider):
+            _provider_name = provider.value
+        else:
+            _provider_name = provider.lower()
+        # Avoid mutating a caller-provided config's base_urls dict
+        config.base_urls = dict(config.base_urls)
+        config.base_urls[_provider_name] = base_url
 
     if max_retries is None:
         max_retries = config.max_retries
@@ -293,7 +306,6 @@ async def chat_async(
                 store=store,
                 metadata=metadata,
                 timeout=timeout,
-                prediction=prediction,
                 reasoning_effort=reasoning_effort,
                 post_tool_function=post_tool_function,
                 post_response_hook=post_response_hook,

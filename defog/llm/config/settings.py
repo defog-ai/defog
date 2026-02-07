@@ -61,7 +61,25 @@ class LLMConfig:
             )
 
     def _setup_base_urls(self):
-        """Setup base URLs with defaults."""
+        """Setup base URLs with environment variable overrides and defaults.
+
+        Resolution order per provider:
+        1. Explicitly provided ``base_urls`` dict value (set by caller)
+        2. Provider-specific environment variable (e.g. ``OPENAI_BASE_URL``)
+        3. Hard-coded default (when one exists)
+        """
+        # Environment variable names mirroring what the official SDKs use
+        env_var_mappings = {
+            "openai": "OPENAI_BASE_URL",
+            "anthropic": "ANTHROPIC_BASE_URL",
+            "gemini": "GEMINI_BASE_URL",
+            "deepseek": "DEEPSEEK_BASE_URL",
+            "together": "TOGETHER_BASE_URL",
+            "mistral": "MISTRAL_BASE_URL",
+            "alibaba": "ALIBABA_BASE_URL",
+            "grok": "GROK_BASE_URL",
+        }
+
         default_urls = {
             "openai": OPENAI_BASE_URL,
             "deepseek": DEEPSEEK_BASE_URL,
@@ -69,9 +87,13 @@ class LLMConfig:
             "grok": "https://api.x.ai",
         }
 
-        for provider, url in default_urls.items():
+        for provider, env_var in env_var_mappings.items():
             if provider not in self.base_urls:
-                self.base_urls[provider] = url
+                env_value = os.getenv(env_var)
+                if env_value:
+                    self.base_urls[provider] = env_value
+                elif provider in default_urls:
+                    self.base_urls[provider] = default_urls[provider]
 
     def get_api_key(self, provider: str) -> Optional[str]:
         """Get API key for a provider."""

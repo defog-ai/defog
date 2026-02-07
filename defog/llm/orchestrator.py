@@ -13,7 +13,6 @@ import inspect
 logger = logging.getLogger(__name__)
 
 from .utils import chat_async
-from .utils_memory import chat_async_with_memory, create_memory_manager
 from .providers.base import BaseLLMProvider, LLMResponse
 from .utils_logging import orch_logger
 
@@ -70,7 +69,7 @@ class SubAgentResult:
 
 
 class Agent:
-    """Base agent class with provider, model, tools, and memory support."""
+    """Base agent class with provider, model, and tools."""
 
     def __init__(
         self,
@@ -79,7 +78,6 @@ class Agent:
         model: str,
         system_prompt: Optional[str] = None,
         tools: Optional[List[Callable]] = None,
-        memory_config: Optional[Dict[str, Any]] = None,
         **kwargs,
     ):
         self.agent_id = agent_id
@@ -88,11 +86,6 @@ class Agent:
         self.system_prompt = system_prompt
         self.tools = tools or []
         self.kwargs = kwargs  # Additional params for chat_async
-
-        # Initialize memory if configured
-        self.memory_manager = None
-        if memory_config:
-            self.memory_manager = create_memory_manager(**memory_config)
 
     async def process(
         self,
@@ -126,31 +119,15 @@ class Agent:
         # Merge kwargs
         call_kwargs = {**self.kwargs, **kwargs}
 
-        # Use memory-enabled chat if memory manager exists
-        if self.memory_manager:
-            response = await chat_async_with_memory(
-                provider=self.provider,
-                model=self.model,
-                messages=final_messages,
-                tools=self.tools,
-                memory_manager=self.memory_manager,
-                **call_kwargs,
-            )
-        else:
-            response = await chat_async(
-                provider=self.provider,
-                model=self.model,
-                messages=final_messages,
-                tools=self.tools,
-                **call_kwargs,
-            )
+        response = await chat_async(
+            provider=self.provider,
+            model=self.model,
+            messages=final_messages,
+            tools=self.tools,
+            **call_kwargs,
+        )
 
         return response
-
-    def clear_memory(self):
-        """Clear agent's memory if it exists."""
-        if self.memory_manager:
-            self.memory_manager.clear()
 
 
 class AgentOrchestrator:

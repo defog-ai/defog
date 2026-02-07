@@ -79,7 +79,6 @@ class TogetherProvider(BaseLLMProvider):
         store: bool = True,
         metadata: Optional[Dict[str, str]] = None,
         timeout: int = 600,
-        prediction: Optional[Dict[str, str]] = None,
         reasoning_effort: Optional[str] = None,
         **kwargs,
     ) -> Tuple[Dict[str, Any], List[Dict[str, str]]]:
@@ -128,7 +127,6 @@ class TogetherProvider(BaseLLMProvider):
         store: bool = True,
         metadata: Optional[Dict[str, str]] = None,
         timeout: int = 600,
-        prediction: Optional[Dict[str, str]] = None,
         reasoning_effort: Optional[str] = None,
         post_tool_function: Optional[Callable] = None,
         image_result_keys: Optional[List[str]] = None,
