@@ -471,6 +471,14 @@ class BaseLLMProvider(ABC):
                 "were produced. Use those tool outputs for follow-up questions."
             )
 
+        # Convert Pydantic models to JSON strings so that downstream
+        # format converters (e.g. convert_to_anthropic_format) don't
+        # choke on non-str/list/dict content when replaying history.
+        if hasattr(content, "model_dump_json"):
+            content = content.model_dump_json()
+        elif not isinstance(content, (str, list, dict)):
+            content = str(content)
+
         history.append({"role": "assistant", "content": content})
         return history
 
