@@ -270,13 +270,16 @@ def get_function_specs(
             )
         elif provider_str in ("anthropic", "grok"):
             input_schema["type"] = "object"
-            function_specs.append(
-                {
-                    "name": func.__name__,
-                    "description": docstring,
-                    "input_schema": input_schema,
-                }
-            )
+            tool_spec = {
+                "name": func.__name__,
+                "description": docstring,
+                "input_schema": input_schema,
+            }
+            if provider_str == "anthropic":
+                tool_spec["strict"] = True
+                # strict mode requires additionalProperties: false
+                input_schema["additionalProperties"] = False
+            function_specs.append(tool_spec)
         elif provider_str == "gemini":
             function_specs.append(
                 {
