@@ -67,6 +67,18 @@ MODEL_COSTS = {
         "cache_creation_input_cost_per1k": 0.00375,
         "output_cost_per1k": 0.015,
     },
+    "claude-sonnet-4-5": {
+        "input_cost_per1k": 0.003,
+        "cached_input_cost_per1k": 0.00075,
+        "cache_creation_input_cost_per1k": 0.00375,
+        "output_cost_per1k": 0.015,
+    },
+    "claude-sonnet-4-6": {
+        "input_cost_per1k": 0.003,
+        "cached_input_cost_per1k": 0.00075,
+        "cache_creation_input_cost_per1k": 0.00375,
+        "output_cost_per1k": 0.015,
+    },
     "claude-opus-4-1": {
         "input_cost_per1k": 0.015,
         "cached_input_cost_per1k": 0.00375,
