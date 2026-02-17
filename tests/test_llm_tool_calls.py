@@ -163,6 +163,56 @@ class TestGetFunctionSpecs(unittest.TestCase):
                     },
                     "type": "object",
                     "required": ["latitude", "longitude"],
+                    "additionalProperties": False,
+                },
+                "strict": True,
+            },
+            {
+                "name": "numsum",
+                "description": "This function returns the sum of two numbers",
+                "input_schema": {
+                    "properties": {
+                        "a": {"type": "integer"},
+                        "b": {"type": "integer"},
+                    },
+                    "type": "object",
+                    "required": ["a", "b"],
+                    "additionalProperties": False,
+                },
+                "strict": True,
+            },
+            {
+                "name": "numprod",
+                "description": "This function returns the product of two numbers",
+                "input_schema": {
+                    "properties": {
+                        "a": {"type": "integer"},
+                        "b": {"type": "integer"},
+                    },
+                    "type": "object",
+                    "required": ["a", "b"],
+                    "additionalProperties": False,
+                },
+                "strict": True,
+            },
+        ]
+        self.grok_specs = [
+            {
+                "name": "get_weather",
+                "description": "This function returns the current temperature (in celsius) for the given latitude and longitude.",
+                "input_schema": {
+                    "properties": {
+                        "latitude": {
+                            "description": "The latitude of the location",
+                            "type": "number",
+                        },
+                        "longitude": {
+                            "description": "The longitude of the location",
+                            "type": "number",
+                        },
+                    },
+                    "type": "object",
+                    "required": ["latitude", "longitude"],
                 },
             },
             {
@@ -198,7 +248,7 @@ class TestGetFunctionSpecs(unittest.TestCase):
 
         self.assertEqual(openai_specs, self.openai_specs)
         self.assertEqual(anthropic_specs, self.anthropic_specs)
-        self.assertEqual(grok_specs, self.anthropic_specs)
+        self.assertEqual(grok_specs, self.grok_specs)
 
 
 class TestToolUseFeatures(unittest.IsolatedAsyncioTestCase):

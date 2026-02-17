@@ -1,9 +1,10 @@
 import traceback
 from defog import config as defog_config
 import time
-import json
 import logging
 from typing import Dict, List, Any, Optional, Callable, Tuple, Union
+
+from anthropic import transform_schema
 
 from .base import BaseLLMProvider, LLMResponse
 from ..exceptions import ProviderError, MaxTokensError
@@ -231,9 +232,26 @@ class AnthropicProvider(BaseLLMProvider):
             "thinking": thinking,
         }
 
-        # For adaptive thinking models, pass the effort level via output_config
+        # Build output_config: may include adaptive thinking effort and/or
+        # structured output format (json_schema).
+        output_config = {}
         if supports_adaptive and reasoning_effort is not None:
-            params["output_config"] = {"effort": reasoning_effort}
+            output_config["effort"] = reasoning_effort
+        # Native structured outputs via constrained decoding. We set the
+        # format here regardless of whether tools are present; the API
+        # handles the interaction (tools execute first, then the final
+        # text response is constrained to the schema).
+        if (
+            response_format
+            and isinstance(response_format, type)
+            and hasattr(response_format, "model_json_schema")
+        ):
+            output_config["format"] = {
+                "type": "json_schema",
+                "schema": transform_schema(response_format),
+            }
+        if output_config:
+            params["output_config"] = output_config
 
         # Add cache control to the last 2 messages
         if messages:
@@ -261,47 +279,6 @@ class AnthropicProvider(BaseLLMProvider):
                     last_block = content[-1].copy()
                     last_block["cache_control"] = {"type": "ephemeral"}
                     content[-1] = last_block
-
-        # Handle structured output for Anthropic models
-        # When tools are provided, we'll set response_format later in the final call
-        if response_format and not (tools and len(tools) > 0):
-            # Add instructions to the latest user message to enforce structured output
-            if isinstance(response_format, type) and hasattr(
-                response_format, "model_json_schema"
-            ):
-                schema = response_format.model_json_schema()
-                schema_str = json.dumps(schema, indent=2)
-
-                # Append structured output instructions to the latest user message
-                structured_instruction = f"""
-
-IMPORTANT: You must respond with ONLY a valid, properly formatted JSON object that conforms to the following JSON schema:
-{schema_str}
-
-RESPONSE FORMAT INSTRUCTIONS:
-1. Your entire response must be ONLY the JSON object, with no additional text before or after.
-2. Format the JSON properly with no line breaks within property values.
-3. Use double quotes for all property names and string values.
-4. Do not add comments or explanations outside the JSON structure.
-5. Ensure all required properties in the schema are included.
-6. Make sure the JSON is properly formatted and can be parsed by standard JSON parsers.
-
-THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS BEFORE OR AFTER.
-"""
-                # Find the latest user message and append the structured instruction
-                if messages and len(messages) > 0:
-                    # Find the last user message
-                    for i in range(len(messages) - 1, -1, -1):
-                        if messages[i].get("role") == "user":
-                            # Handle both string content and list content
-                            if isinstance(messages[i]["content"], str):
-                                messages[i]["content"] += structured_instruction
-                            elif isinstance(messages[i]["content"], list):
-                                # For list content, append a text block with the instruction
-                                messages[i]["content"].append(
-                                    {"type": "text", "text": structured_instruction}
-                                )
-                            break
 
         if tools:
             function_specs = get_function_specs(tools, self.get_provider_name())
@@ -876,45 +853,24 @@ THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS B
                             }
                         )
 
-                        # Remove tools and add structured output instructions
+                        # Remove tools for the final structured output call.
+                        # output_config.format is already set in build_params,
+                        # so the API will constrain the response to the schema.
                         request_params.pop("tools", None)
                         request_params.pop("tool_choice", None)
 
-                        # Re-add structured output instructions to the conversation
-                        if isinstance(response_format, type) and hasattr(
-                            response_format, "model_json_schema"
-                        ):
-                            schema = response_format.model_json_schema()
-                            schema_str = json.dumps(schema, indent=2)
-
-                            structured_instruction = f"""
-
-IMPORTANT: You must respond with ONLY a valid, properly formatted JSON object that conforms to the following JSON schema:
-{schema_str}
-
-RESPONSE FORMAT INSTRUCTIONS:
-1. Your entire response must be ONLY the JSON object, with no additional text before or after.
-2. Format the JSON properly with no line breaks within property values.
-3. Use double quotes for all property names and string values.
-4. Do not add comments or explanations outside the JSON structure.
-5. Ensure all required properties in the schema are included.
-6. Make sure the JSON is properly formatted and can be parsed by standard JSON parsers.
-
-THE RESPONSE SHOULD START WITH '{{' AND END WITH '}}' WITH NO OTHER CHARACTERS BEFORE OR AFTER.
-"""
-                            # Add a new user message with the structured output request
-                            request_params["messages"].append(
-                                {
-                                    "role": "user",
-                                    "content": [
-                                        {
-                                            "type": "text",
-                                            "text": "Based on the tool results above, please provide the final answer in the requested JSON format."
-                                            + structured_instruction,
-                                        }
-                                    ],
-                                }
-                            )
+                        # Add a user message prompting for the final answer
+                        request_params["messages"].append(
+                            {
+                                "role": "user",
+                                "content": [
+                                    {
+                                        "type": "text",
+                                        "text": "Based on the tool results above, please provide the final answer in the requested JSON format.",
+                                    }
+                                ],
+                            }
+                        )
 
                         # Make final call for structured output
                         response = await client.messages.create(**request_params)
