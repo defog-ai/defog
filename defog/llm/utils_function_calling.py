@@ -174,8 +174,8 @@ def cleanup_obj(obj: dict, provider: Union[LLMProvider, str]):
 
     keys = new_obj.keys()
     if "anyOf" in new_obj:
-        if provider_str == "gemini":
-            # Gemini Interactions expects standard JSON Schema keywords.
+        if provider_str in ("gemini", "anthropic"):
+            # Gemini and Anthropic APIs expects standard JSON Schema keywords.
             pass
         else:
             new_obj["any_of"] = new_obj["anyOf"]
