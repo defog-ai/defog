@@ -122,6 +122,8 @@ class AnthropicProvider(BaseLLMProvider):
         timeout: int = 600,
         reasoning_effort: Optional[str] = None,
         parallel_tool_calls: bool = False,
+        programmatic_tool_calling: bool = False,
+        container_id: Optional[str] = None,
         **kwargs,
     ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
         """Create the parameter dict for Anthropic's .messages.create()."""
@@ -282,7 +284,20 @@ class AnthropicProvider(BaseLLMProvider):
                     content[-1] = last_block
 
         if tools:
-            function_specs = get_function_specs(tools, self.get_provider_name())
+            function_specs = get_function_specs(
+                tools,
+                self.get_provider_name(),
+                programmatic_tool_calling=programmatic_tool_calling,
+            )
+
+            if programmatic_tool_calling:
+                # Prepend the code execution tool
+                code_exec_tool = {
+                    "type": "code_execution_20250825",
+                    "name": "code_execution",
+                }
+                function_specs = [code_exec_tool] + function_specs
+
             # Add cache_control to the last tool
             if function_specs and len(function_specs) > 0:
                 function_specs[-1]["cache_control"] = {"type": "ephemeral"}
@@ -297,13 +312,21 @@ class AnthropicProvider(BaseLLMProvider):
                 params["tool_choice"] = {"type": "auto"}
 
             # Add parallel tool calls configuration
+            # Suppress disable_parallel_tool_use when programmatic calling is enabled (incompatible)
             if (
                 "tool_choice" in params
                 and isinstance(params["tool_choice"], dict)
                 and not model.startswith("grok")
+                and not programmatic_tool_calling
             ):
                 if not parallel_tool_calls:
                     params["tool_choice"]["disable_parallel_tool_use"] = True
+
+        # Store flag for use by update_tools_with_budget
+        params["_programmatic_tool_calling"] = programmatic_tool_calling
+
+        if container_id:
+            params["container"] = {"id": container_id}
 
         return params, messages
 
@@ -386,6 +409,7 @@ class AnthropicProvider(BaseLLMProvider):
         Optional[int],
         Optional[int],
         Optional[Dict[str, int]],
+        Optional[str],
     ]:
         """
         Extract content (including any tool calls) and usage info from Anthropic response.
@@ -412,6 +436,10 @@ class AnthropicProvider(BaseLLMProvider):
         return_tool_outputs_only = bool(return_tool_outputs_only)
         model_for_tokens = request_params.get("model") or "gpt-4.1"
         tool_calls_executed = False
+        container_id = None
+        programmatic_tool_calling = request_params.get(
+            "_programmatic_tool_calling", False
+        )
 
         def has_tool_call_outputs() -> bool:
             return any(output.get("tool_call_id") for output in tool_outputs)
@@ -434,6 +462,12 @@ class AnthropicProvider(BaseLLMProvider):
             consecutive_exceptions = 0
             while True:
                 add_usage(response.usage)
+
+                # Track container id for programmatic tool calling
+                if hasattr(response, "container") and response.container:
+                    container_id = response.container.id
+                    request_params["container"] = {"id": container_id}
+
                 # Check if the response contains a tool call
                 # Collect all blocks by type - check type property instead of isinstance
                 # Handle both regular tool_use and MCP mcp_tool_use blocks
@@ -474,6 +508,14 @@ class AnthropicProvider(BaseLLMProvider):
                         # Separate MCP tools from regular tools
                         mcp_tool_calls = []
                         regular_tool_calls = []
+                        # Track if all tool calls in this round are programmatic
+                        is_programmatic_round = programmatic_tool_calling and all(
+                            hasattr(b, "caller")
+                            and b.caller is not None
+                            and getattr(b.caller, "type", None)
+                            == "code_execution_20250825"
+                            for b in tool_call_blocks
+                        )
 
                         for tool_call_block in tool_call_blocks:
                             try:
@@ -630,17 +672,27 @@ class AnthropicProvider(BaseLLMProvider):
                             if (
                                 regular_tool_calls
                             ):  # Only continue if we have regular tools to execute
-                                # Build assistant content with all tool calls
+                                # Build assistant content with all block types
                                 assistant_content = []
                                 if len(thinking_blocks) > 0:
                                     assistant_content += thinking_blocks
 
-                                for tool_call_block in tool_call_blocks:
-                                    assistant_content.append(tool_call_block)
+                                # Include server_tool_use and code_execution_tool_result
+                                # blocks for programmatic tool calling
+                                for block in response.content:
+                                    btype = getattr(block, "type", None)
+                                    if btype in (
+                                        "tool_use",
+                                        "mcp_tool_use",
+                                        "server_tool_use",
+                                        "code_execution_tool_result",
+                                    ):
+                                        assistant_content.append(block)
 
                                 # Append the tool calls as an assistant response
                                 # Add cache_control to the last block of the assistant content
-                                if assistant_content:
+                                # (skip for programmatic rounds — these need clean messages)
+                                if assistant_content and not is_programmatic_round:
                                     last_block = assistant_content[-1]
                                     # We can modify this in place as it's a new list we just built
                                     if isinstance(last_block, dict):
@@ -751,17 +803,17 @@ class AnthropicProvider(BaseLLMProvider):
 
                                     tool_results_content.append(tool_result)
 
-                                # Append all tool results in a single user message
-                                # Add cache_control to the last tool result
-                                if tool_results_content:
-                                    last_result = tool_results_content[-1]
-                                    # tool_results_content is a list of dicts (tool_result blocks)
-                                    # The content of a tool_result block can be string or list
-                                    # But cache_control goes on the tool_result block itself?
-                                    # No, cache_control goes on the content block of the message.
-                                    # tool_results_content IS the content list for the message.
-                                    # So we add cache_control to the last item in tool_results_content.
-                                    last_result["cache_control"] = {"type": "ephemeral"}
+                                # For programmatic tool calls, user message should
+                                # contain only tool_result blocks (no cache_control,
+                                # no budget messages).
+                                if not is_programmatic_round:
+                                    # Append all tool results in a single user message
+                                    # Add cache_control to the last tool result
+                                    if tool_results_content:
+                                        last_result = tool_results_content[-1]
+                                        last_result["cache_control"] = {
+                                            "type": "ephemeral"
+                                        }
 
                                 request_params["messages"].append(
                                     {
@@ -826,7 +878,10 @@ class AnthropicProvider(BaseLLMProvider):
                         has_tools=bool(tools and len(tools) > 0),
                     )
 
-                    response = await client.messages.create(**request_params)
+                    api_params_loop = {
+                        k: v for k, v in request_params.items() if not k.startswith("_")
+                    }
+                    response = await client.messages.create(**api_params_loop)
                 else:
                     # Break out of loop when tool calls are finished
                     skip_final_response = (
@@ -884,7 +939,12 @@ class AnthropicProvider(BaseLLMProvider):
                         )
 
                         # Make final call for structured output
-                        response = await client.messages.create(**request_params)
+                        api_params_final = {
+                            k: v
+                            for k, v in request_params.items()
+                            if not k.startswith("_")
+                        }
+                        response = await client.messages.create(**api_params_final)
 
                         await self.call_post_response_hook(
                             post_response_hook=post_response_hook,
@@ -913,6 +973,9 @@ class AnthropicProvider(BaseLLMProvider):
                 response=response,
                 messages=request_params.get("messages", []),
             )
+            # Track container id even when no tools are used
+            if hasattr(response, "container") and response.container:
+                container_id = response.container.id
             # No tools provided
             content = ""
             for block in response.content:
@@ -939,6 +1002,7 @@ class AnthropicProvider(BaseLLMProvider):
             cached_input_tokens,
             cache_creation_input_tokens,
             None,
+            container_id,
         )
 
     async def execute_chat(
@@ -962,6 +1026,8 @@ class AnthropicProvider(BaseLLMProvider):
         tool_result_preview_max_tokens: Optional[int] = None,
         previous_response_id: Optional[str] = None,
         tool_phase_complete_message: str = "exploration done, generating answer",
+        programmatic_tool_calling: bool = False,
+        container_id: Optional[str] = None,
         **kwargs,
     ) -> LLMResponse:
         """Execute a chat completion with Anthropic."""
@@ -1022,6 +1088,8 @@ class AnthropicProvider(BaseLLMProvider):
             reasoning_effort=reasoning_effort,
             timeout=timeout,
             parallel_tool_calls=kwargs.get("parallel_tool_calls", True),
+            programmatic_tool_calling=programmatic_tool_calling,
+            container_id=container_id,
         )
 
         # Construct a tool dict if needed
@@ -1031,8 +1099,11 @@ class AnthropicProvider(BaseLLMProvider):
 
         func_to_call = client.messages.create
 
+        # Remove internal-only keys before sending to the API
+        api_params = {k: v for k, v in params.items() if not k.startswith("_")}
+
         try:
-            response = await func_to_call(**params)
+            response = await func_to_call(**api_params)
 
             (
                 content,
@@ -1042,6 +1113,7 @@ class AnthropicProvider(BaseLLMProvider):
                 cached_toks,
                 cache_creation_toks,
                 output_details,
+                result_container_id,
             ) = await self.process_response(
                 client=client,
                 response=response,
@@ -1089,4 +1161,5 @@ class AnthropicProvider(BaseLLMProvider):
             cost_in_cents=cost,
             tool_outputs=tool_outputs,
             response_id=response_id,
+            container_id=result_container_id,
         )

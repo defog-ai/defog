@@ -129,3 +129,53 @@ response = await chat_async(
 ```
 
 The assistant receives the sampled/truncated preview, while `response.tool_outputs` always contains the full tool output for logging or follow-up use.
+
+### Programmatic Tool Calling (Anthropic)
+
+When `programmatic_tool_calling=True`, Claude writes Python code that calls your tools inside a code execution container, instead of making individual tool calls one at a time. This reduces latency and token usage for multi-tool workflows.
+
+```python
+from pydantic import BaseModel
+from defog.llm.utils import chat_async
+
+class Numbers(BaseModel):
+    a: int = 0
+    b: int = 0
+
+def numsum(input: Numbers):
+    """Returns the sum of two numbers"""
+    return input.a + input.b
+
+def numprod(input: Numbers):
+    """Returns the product of two numbers"""
+    return input.a * input.b
+
+response = await chat_async(
+    provider="anthropic",
+    model="claude-sonnet-4-6",
+    messages=[{
+        "role": "user",
+        "content": "Compute the sum and product of 3 and 5, then add those two results together."
+    }],
+    tools=[numsum, numprod],
+    programmatic_tool_calling=True,
+)
+
+print(response.content)
+# The container_id can be reused for follow-up calls
+print(response.container_id)
+```
+
+**Parameters:**
+
+- `programmatic_tool_calling` (bool, default `False`): Enable programmatic tool calling. Requires at least one tool. Only supported for the Anthropic provider; silently ignored for others.
+- `container_id` (str, optional): Reuse a container from a previous call. Pass `response.container_id` from a prior response to maintain state across calls. If the container has expired, the API creates a new one.
+
+**What changes when enabled:**
+
+- Tool specs use `allowed_callers` instead of `strict` mode
+- `disable_parallel_tool_use` is suppressed (incompatible with programmatic calling)
+- A `code_execution` tool is automatically added to the tool list
+- `response.container_id` is populated on the response
+
+**Compatible models:** Claude Opus 4.6, Sonnet 4.6, Sonnet 4.5, Opus 4.5

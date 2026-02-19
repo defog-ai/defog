@@ -125,6 +125,8 @@ async def chat_async(
     citations_excluded_tools: Optional[List[str]] = None,
     citations_reasoning_effort: Optional[str] = None,
     tool_phase_complete_message: str = "exploration done, generating answer",
+    programmatic_tool_calling: bool = False,
+    container_id: Optional[str] = None,
 ) -> LLMResponse:
     """
     Execute a chat completion with explicit provider parameter.
@@ -209,6 +211,24 @@ async def chat_async(
             tools = tools + mcp_tools
         else:
             tools = mcp_tools
+
+    # Validate programmatic_tool_calling
+    if programmatic_tool_calling:
+        if not tools:
+            raise ConfigurationError(
+                "programmatic_tool_calling=True requires at least one tool"
+            )
+        # Resolve provider name for the check
+        if isinstance(provider, LLMProvider):
+            _ptc_provider = provider.value
+        else:
+            _ptc_provider = provider.lower()
+        if _ptc_provider != "anthropic":
+            print(
+                f"Warning: programmatic_tool_calling is only supported for Anthropic. "
+                f"Ignoring for provider '{_ptc_provider}'."
+            )
+            programmatic_tool_calling = False
 
     for attempt in range(max_retries):
         try:
@@ -318,6 +338,8 @@ async def chat_async(
                 previous_response_id=previous_response_id,
                 return_tool_outputs_only=insert_tool_citations,
                 tool_phase_complete_message=tool_phase_complete_message,
+                programmatic_tool_calling=programmatic_tool_calling,
+                container_id=container_id,
             )
 
             # Process citations if requested and we have tool outputs

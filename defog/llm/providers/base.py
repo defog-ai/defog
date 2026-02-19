@@ -30,6 +30,7 @@ class LLMResponse:
     tool_outputs: Optional[List[Dict[str, Any]]] = None
     citations: Optional[List[Dict[str, Any]]] = None
     response_id: Optional[str] = None
+    container_id: Optional[str] = None
 
 
 class BaseLLMProvider(ABC):
@@ -315,9 +316,20 @@ class BaseLLMProvider(ABC):
             # Tools have changed, update parameters
             if available_tools:
                 # Rebuild tool specs with only available tools
+                ptc = request_params.get("_programmatic_tool_calling", False)
                 function_specs = get_function_specs(
-                    available_tools, self.get_provider_name()
+                    available_tools,
+                    self.get_provider_name(),
+                    programmatic_tool_calling=ptc,
                 )
+                if ptc:
+                    # Re-insert code execution tool at position 0
+                    function_specs = [
+                        {
+                            "type": "code_execution_20250825",
+                            "name": "code_execution",
+                        }
+                    ] + function_specs
                 request_params["tools"] = function_specs
                 tool_dict = tool_handler.build_tool_dict(available_tools)
             else:
