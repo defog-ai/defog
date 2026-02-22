@@ -32,18 +32,10 @@ def test_cost_calculator_with_cache_creation():
     assert cost == pytest.approx(expected_cost)
 
 
-def test_anthropic_build_params_cache_control():
+def test_anthropic_build_params_auto_caching():
+    """Test that build_params uses top-level automatic caching instead of per-block cache_control."""
     provider = AnthropicProvider(api_key="test")
 
-    # Test system message caching
-    # User requested to remove system prompt caching
-    # messages = [
-    #     {"role": "system", "content": "system prompt"},
-    #     {"role": "user", "content": "msg1"},
-    #     {"role": "assistant", "content": "msg2"},
-    #     {"role": "user", "content": "msg3"}
-    # ]
-    # But we need messages for the next test
     messages = [
         {"role": "user", "content": "msg1"},
         {"role": "assistant", "content": "msg2"},
@@ -53,31 +45,19 @@ def test_anthropic_build_params_cache_control():
         messages=messages, model="claude-3-5-sonnet", system="system prompt"
     )
 
-    # assert isinstance(params["system"], list)
-    # assert params["system"][-1]["cache_control"] == {"type": "ephemeral"}
+    # Top-level cache_control should be set
+    assert params["cache_control"] == {"type": "ephemeral"}
 
-    # Test message caching (last 2 messages)
-    # msg3 (last) should be cached
-    assert params["messages"][-1]["content"][-1]["cache_control"] == {
-        "type": "ephemeral"
-    }
-    # msg2 (2nd last) should be cached
-    assert params["messages"][-2]["content"][-1]["cache_control"] == {
-        "type": "ephemeral"
-    }
-    # msg1 (3rd last) should NOT be cached
-    # Note: msg1 content might be string or list depending on implementation details of build_params
-    # But checking if cache_control is absent is tricky if it's a string.
-    # build_params converts strings to list of dicts ONLY if it adds cache_control?
-    # No, it converts everything to list of dicts? Let's check build_params implementation.
-    # It converts content to anthropic format.
-    # If it's just text, it might remain string if no cache control added?
-    # Let's just check that msg1 doesn't have cache_control if it's a dict, or is a string.
-    msg1_content = params["messages"][0]["content"]
-    if isinstance(msg1_content, list):
-        assert "cache_control" not in msg1_content[-1]
+    # Individual messages should NOT have cache_control
+    for msg in params["messages"]:
+        content = msg["content"]
+        if isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict):
+                    assert "cache_control" not in block
+        # String content has no cache_control by nature
 
-    # Test tool caching
+    # Test with tools — tools should NOT have per-block cache_control
     def dummy_tool():
         """Dummy tool"""
         pass
@@ -86,7 +66,9 @@ def test_anthropic_build_params_cache_control():
         messages=messages, model="claude-3-5-sonnet", tools=[dummy_tool]
     )
 
-    assert params["tools"][-1]["cache_control"] == {"type": "ephemeral"}
+    assert params["cache_control"] == {"type": "ephemeral"}
+    for tool in params["tools"]:
+        assert "cache_control" not in tool
 
 
 @pytest.mark.asyncio
@@ -127,7 +109,12 @@ async def test_anthropic_process_response_cache_tokens():
 
 
 @pytest.mark.asyncio
-async def test_anthropic_process_response_tool_caching():
+async def test_anthropic_process_response_tool_no_block_level_caching():
+    """Test that tool chaining does NOT add per-block cache_control.
+
+    With automatic caching, the top-level cache_control handles everything,
+    so individual blocks should not have cache_control set.
+    """
     provider = AnthropicProvider(api_key="test")
 
     # Mock response with tool use
@@ -171,6 +158,7 @@ async def test_anthropic_process_response_tool_caching():
         "messages": [{"role": "user", "content": "hello"}],
         "model": "claude-3-5-sonnet",
         "tool_choice": {"type": "auto"},
+        "cache_control": {"type": "ephemeral"},
     }
 
     # Mock execute_tool_calls_with_retry to return results directly
@@ -190,7 +178,7 @@ async def test_anthropic_process_response_tool_caching():
         tool_handler=tool_handler,
     )
 
-    # Check that client.messages.create was called with cached tool messages
+    # Check that client.messages.create was called
     call_args = client.messages.create.call_args
     assert call_args is not None
     params = call_args[1]  # kwargs
@@ -199,19 +187,19 @@ async def test_anthropic_process_response_tool_caching():
     # 0: User (hello)
     # 1: Assistant (ToolUse)
     # 2: User (ToolResult)
-
     messages = params["messages"]
-
     assert len(messages) == 3
 
-    # Check Assistant ToolUse message caching
+    # Assistant ToolUse message should NOT have per-block cache_control
     asst_msg = messages[1]
     assert asst_msg["role"] == "assistant"
-    # The content is a list of blocks. The last block should have cache_control.
-    assert asst_msg["content"][-1]["cache_control"] == {"type": "ephemeral"}
 
-    # Check User ToolResult message caching
+    # User ToolResult message should NOT have per-block cache_control
     user_msg = messages[2]
     assert user_msg["role"] == "user"
-    # The content is a list of tool_result blocks. The last block should have cache_control.
-    assert user_msg["content"][-1]["cache_control"] == {"type": "ephemeral"}
+    for block in user_msg["content"]:
+        if isinstance(block, dict):
+            assert "cache_control" not in block
+
+    # Top-level cache_control should still be present in params
+    assert params["cache_control"] == {"type": "ephemeral"}

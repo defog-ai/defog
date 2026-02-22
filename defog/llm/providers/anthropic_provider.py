@@ -254,38 +254,13 @@ class AnthropicProvider(BaseLLMProvider):
         if output_config:
             params["output_config"] = output_config
 
-        # Add cache control to the last 2 messages
-        if messages:
-            # We want to cache the last 2 messages to maintain a rolling window of cached context
-            # This ensures that we cache:
-            # 1. The latest user message (for the next turn)
-            # 2. The previous assistant message (to maximize prefix match for the current turn)
-            start_idx = max(0, len(messages) - 2)
-            for i in range(start_idx, len(messages)):
-                msg = messages[i]
-                content = msg["content"]
-
-                # Add cache_control to the last content block
-                if isinstance(content, str):
-                    messages[i]["content"] = [
-                        {
-                            "type": "text",
-                            "text": content,
-                            "cache_control": {"type": "ephemeral"},
-                        }
-                    ]
-                elif isinstance(content, list) and len(content) > 0:
-                    # We need to ensure we don't modify the original list if it's shared
-                    # But here messages is already a copy/converted list
-                    last_block = content[-1].copy()
-                    last_block["cache_control"] = {"type": "ephemeral"}
-                    content[-1] = last_block
+        # Use Anthropic's automatic caching: a single top-level cache_control
+        # on the request body. The API automatically applies the cache breakpoint
+        # to the last cacheable block and moves it forward as conversations grow.
+        params["cache_control"] = {"type": "ephemeral"}
 
         if tools:
             function_specs = get_function_specs(tools, self.get_provider_name())
-            # Add cache_control to the last tool
-            if function_specs and len(function_specs) > 0:
-                function_specs[-1]["cache_control"] = {"type": "ephemeral"}
             params["tools"] = function_specs
             if tool_choice:
                 tool_names_list = [func.__name__ for func in tools]
@@ -306,61 +281,6 @@ class AnthropicProvider(BaseLLMProvider):
                     params["tool_choice"]["disable_parallel_tool_use"] = True
 
         return params, messages
-
-    def _enforce_cache_limit(
-        self, messages: List[Dict[str, Any]], has_tools: bool
-    ) -> None:
-        """
-        Enforce Anthropic's limit of 4 cache breakpoints.
-        Removes cache_control from the earliest messages if limit is exceeded.
-        Always preserves tool cache if present.
-        """
-        MAX_CACHE_BREAKPOINTS = 4
-
-        # Count current breakpoints
-        breakpoints = []
-
-        # Check tools (we assume tools are always cached if present)
-        if has_tools:
-            # We count this as 1 breakpoint (on the last tool)
-            # Note: We don't have access to tools list here directly to check if cache_control is set,
-            # but our implementation always sets it if tools are present.
-            # However, tools are passed in params["tools"], not messages.
-            # This method only modifies messages.
-            # We'll assume 1 breakpoint is reserved for tools if has_tools is True.
-            pass
-
-        # Find breakpoints in messages
-        for i, msg in enumerate(messages):
-            content = msg.get("content")
-            if isinstance(content, list):
-                for j, block in enumerate(content):
-                    if isinstance(block, dict) and "cache_control" in block:
-                        breakpoints.append((i, j))
-                    elif hasattr(block, "cache_control"):
-                        breakpoints.append((i, j))
-
-        total_breakpoints = len(breakpoints) + (1 if has_tools else 0)
-
-        if total_breakpoints > MAX_CACHE_BREAKPOINTS:
-            # Remove oldest breakpoints until we are within limit
-            # We prioritize keeping the tool cache (if any) and the most recent message caches
-            num_to_remove = total_breakpoints - MAX_CACHE_BREAKPOINTS
-
-            for k in range(num_to_remove):
-                if not breakpoints:
-                    break
-
-                msg_idx, block_idx = breakpoints.pop(0)  # Remove from start (oldest)
-
-                # Remove cache_control from this block
-                content = messages[msg_idx]["content"]
-                block = content[block_idx]
-
-                if isinstance(block, dict):
-                    block.pop("cache_control", None)
-                elif hasattr(block, "cache_control"):
-                    delattr(block, "cache_control")
 
     async def process_response(
         self,
@@ -638,33 +558,6 @@ class AnthropicProvider(BaseLLMProvider):
                                 for tool_call_block in tool_call_blocks:
                                     assistant_content.append(tool_call_block)
 
-                                # Append the tool calls as an assistant response
-                                # Add cache_control to the last block of the assistant content
-                                if assistant_content:
-                                    last_block = assistant_content[-1]
-                                    # We can modify this in place as it's a new list we just built
-                                    if isinstance(last_block, dict):
-                                        last_block["cache_control"] = {
-                                            "type": "ephemeral"
-                                        }
-                                    elif hasattr(last_block, "model_dump"):
-                                        # It's a Pydantic model (Anthropic object)
-                                        # Convert to dict to add cache_control
-                                        # We need to replace it in the list
-                                        last_block_dict = last_block.model_dump()
-                                        last_block_dict["cache_control"] = {
-                                            "type": "ephemeral"
-                                        }
-                                        assistant_content[-1] = last_block_dict
-                                    else:
-                                        # Try setting attribute directly (e.g. for mocks or other objects)
-                                        try:
-                                            last_block.cache_control = {
-                                                "type": "ephemeral"
-                                            }
-                                        except Exception:
-                                            pass
-
                                 request_params["messages"].append(
                                     {
                                         "role": "assistant",
@@ -751,18 +644,6 @@ class AnthropicProvider(BaseLLMProvider):
 
                                     tool_results_content.append(tool_result)
 
-                                # Append all tool results in a single user message
-                                # Add cache_control to the last tool result
-                                if tool_results_content:
-                                    last_result = tool_results_content[-1]
-                                    # tool_results_content is a list of dicts (tool_result blocks)
-                                    # The content of a tool_result block can be string or list
-                                    # But cache_control goes on the tool_result block itself?
-                                    # No, cache_control goes on the content block of the message.
-                                    # tool_results_content IS the content list for the message.
-                                    # So we add cache_control to the last item in tool_results_content.
-                                    last_result["cache_control"] = {"type": "ephemeral"}
-
                                 request_params["messages"].append(
                                     {
                                         "role": "user",
@@ -818,12 +699,6 @@ class AnthropicProvider(BaseLLMProvider):
                     # Update available tools based on budget before making next call
                     tools, tool_dict = self.update_tools_with_budget(
                         tools, tool_handler, request_params
-                    )
-
-                    # Enforce cache limit before making the next call
-                    self._enforce_cache_limit(
-                        request_params["messages"],
-                        has_tools=bool(tools and len(tools) > 0),
                     )
 
                     response = await client.messages.create(**request_params)
