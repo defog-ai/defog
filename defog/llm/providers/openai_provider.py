@@ -234,25 +234,7 @@ class OpenAIProvider(BaseLLMProvider):
         if tools:
             function_specs = get_function_specs(tools, "openai")
             # Responses API expects function tools with a top-level name field
-            flat_specs = []
-            for spec in function_specs:
-                if (
-                    isinstance(spec, dict)
-                    and spec.get("type") == "function"
-                    and isinstance(spec.get("function"), dict)
-                ):
-                    f = spec["function"]
-                    flat_specs.append(
-                        {
-                            "type": "function",
-                            "name": f.get("name"),
-                            "description": f.get("description"),
-                            "parameters": f.get("parameters"),
-                        }
-                    )
-                else:
-                    flat_specs.append(spec)
-            request_params["tools"] = flat_specs
+            request_params["tools"] = self._flatten_tool_specs(function_specs)
 
             if tool_choice:
                 tool_names_list = [func.__name__ for func in tools]
@@ -306,6 +288,47 @@ class OpenAIProvider(BaseLLMProvider):
             request_params["verbosity"] = verbosity
 
         return request_params, messages
+
+    @staticmethod
+    def _flatten_tool_specs(specs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Flatten Chat Completions-style tool specs to Responses API format.
+
+        Chat Completions: {"type": "function", "function": {"name": ..., ...}}
+        Responses API:    {"type": "function", "name": ..., ...}
+        """
+        flat = []
+        for spec in specs:
+            if (
+                isinstance(spec, dict)
+                and spec.get("type") == "function"
+                and isinstance(spec.get("function"), dict)
+            ):
+                f = spec["function"]
+                flat.append(
+                    {
+                        "type": "function",
+                        "name": f.get("name"),
+                        "description": f.get("description"),
+                        "parameters": f.get("parameters"),
+                    }
+                )
+            else:
+                flat.append(spec)
+        return flat
+
+    def update_tools_with_budget(
+        self,
+        tools,
+        tool_handler,
+        request_params: Dict[str, Any],
+    ):
+        """Override base to flatten tool specs for the Responses API."""
+        updated_tools, tool_dict = super().update_tools_with_budget(
+            tools, tool_handler, request_params
+        )
+        if "tools" in request_params:
+            request_params["tools"] = self._flatten_tool_specs(request_params["tools"])
+        return updated_tools, tool_dict
 
     async def extract_reasoning_text(
         self, response: Dict[str, Any], post_tool_function: Optional[Callable] = None
@@ -596,8 +619,18 @@ class OpenAIProvider(BaseLLMProvider):
             if skip_final_completion:
                 content = ""
             elif response_format:
+                # Strip tool-related keys for the final structured output call.
+                # Tools are not needed here (we want structured output, not more
+                # tool calls) and update_tools_with_budget may have replaced them
+                # with un-flattened Chat Completions format specs that the
+                # Responses API rejects ("Missing required parameter: tools[0].name").
+                final_params = {
+                    k: v
+                    for k, v in request_params.items()
+                    if k not in ("tools", "tool_choice", "parallel_tool_calls")
+                }
                 response = await client.responses.create(
-                    **request_params,
+                    **final_params,
                     text={
                         "format": {
                             "type": "json_schema",
