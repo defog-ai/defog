@@ -238,14 +238,12 @@ class AnthropicProvider(BaseLLMProvider):
         if supports_adaptive and reasoning_effort is not None:
             output_config["effort"] = reasoning_effort
         # Native structured outputs via constrained decoding.
-        # Only set output_config.format when tools are not present.
-        # When tools ARE present, the structured output will be applied
-        # on the final call after tools are removed (see _chat_inner).
+        # The Anthropic API supports output_config.format alongside tools
+        # with strict: true in the same request, so we always set it here.
         if (
             response_format
             and isinstance(response_format, type)
             and hasattr(response_format, "model_json_schema")
-            and not tools
         ):
             output_config["format"] = {
                 "type": "json_schema",
@@ -712,71 +710,6 @@ class AnthropicProvider(BaseLLMProvider):
                         break
 
                     content = "\n".join([block.text for block in text_blocks])
-
-                    # If we have response_format and tools were being used, make one more call
-                    if response_format and request_params.get("tools"):
-                        # Add the assistant's response to messages
-                        assistant_content = []
-                        if len(thinking_blocks) > 0:
-                            assistant_content += thinking_blocks
-                        for block in text_blocks:
-                            assistant_content.append(block)
-
-                        request_params["messages"].append(
-                            {
-                                "role": "assistant",
-                                "content": assistant_content,
-                            }
-                        )
-
-                        # Remove tools for the final structured output call
-                        # and set the structured output format now that tools
-                        # are gone (we defer it to avoid grammar compilation
-                        # errors when tools + large schemas are both present).
-                        request_params.pop("tools", None)
-                        request_params.pop("tool_choice", None)
-                        if isinstance(response_format, type) and hasattr(
-                            response_format, "model_json_schema"
-                        ):
-                            output_config = request_params.get("output_config", {})
-                            output_config["format"] = {
-                                "type": "json_schema",
-                                "schema": transform_schema(response_format),
-                            }
-                            request_params["output_config"] = output_config
-
-                        # Add a user message prompting for the final answer
-                        request_params["messages"].append(
-                            {
-                                "role": "user",
-                                "content": [
-                                    {
-                                        "type": "text",
-                                        "text": "Based on the tool results above, please provide the final answer in the requested JSON format.",
-                                    }
-                                ],
-                            }
-                        )
-
-                        # Make final call for structured output
-                        response = await client.messages.create(**request_params)
-
-                        await self.call_post_response_hook(
-                            post_response_hook=post_response_hook,
-                            response=response,
-                            messages=request_params.get("messages", []),
-                        )
-
-                        # Extract final content
-                        content = ""
-                        for block in response.content:
-                            if hasattr(block, "type") and block.type == "text":
-                                content = block.text
-                                break
-
-                        # Update token counts
-                        add_usage(response.usage)
-
                     break
             if tool_calls_executed:
                 await self.emit_tool_phase_complete(
@@ -795,7 +728,6 @@ class AnthropicProvider(BaseLLMProvider):
                     content = block.text
                     break
             if response.usage:
-                print(f"DEBUG: usage={response.usage}")
                 add_usage(response.usage)
 
         if return_tool_outputs_only and has_tool_call_outputs():
