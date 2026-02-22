@@ -31,7 +31,7 @@ license-files = ["LICENSE"]
 authors = [{ name = "Full Stack Data Pte. Ltd.", email = "founders@defog.ai" }]
 dependencies = [
     "aiofiles",
-    "anthropic>=0.80.0",
+    "anthropic>=0.83.0",
     "beautifulsoup4>=4.12.0",
     "bleach>=6.0.0",
     "fastmcp",
