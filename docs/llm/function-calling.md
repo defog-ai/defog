@@ -129,3 +129,44 @@ response = await chat_async(
 ```
 
 The assistant receives the sampled/truncated preview, while `response.tool_outputs` always contains the full tool output for logging or follow-up use.
+
+### Programmatic Tool Calling (Anthropic)
+
+When `programmatic_tool_calling=True`, Claude writes Python code that calls your tools inside a code execution sandbox instead of making one-tool-at-a-time round trips. This can reduce latency and token consumption for multi-tool workflows.
+
+```python
+from defog.llm.utils import chat_async
+from defog.llm.llm_providers import LLMProvider
+
+def get_weather(location: str, units: str = "celsius") -> str:
+    """Get current weather for a location."""
+    return f"Weather in {location}: 22 {units}"
+
+def get_population(city: str) -> int:
+    """Get the population of a city."""
+    return 2_161_000
+
+response = await chat_async(
+    provider=LLMProvider.ANTHROPIC,
+    model="claude-sonnet-4-20250514",
+    messages=[{
+        "role": "user",
+        "content": "What's the weather and population of Paris?"
+    }],
+    tools=[get_weather, get_population],
+    programmatic_tool_calling=True,
+)
+
+print(response.content)       # Final answer
+print(response.tool_outputs)  # All tool calls and results
+```
+
+**How it works:**
+- A `code_execution` server tool is added to the request automatically.
+- Each user-defined tool gets `allowed_callers: ["code_execution_20260120"]` so Claude can invoke them from generated Python code.
+- `strict` mode and `disable_parallel_tool_use` are automatically skipped (they are incompatible with programmatic calling).
+- Tool calls are still executed locally by `defog` and results are returned to the sandbox.
+
+**Limitations:**
+- Anthropic provider only.
+- Cannot be combined with `strict` tool schemas or `parallel_tool_calls=False` (the flag is ignored when PTC is enabled).

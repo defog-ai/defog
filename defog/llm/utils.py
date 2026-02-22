@@ -116,6 +116,7 @@ async def chat_async(
     insert_tool_citations: bool = False,
     citations_instructions: Optional[str] = None,
     parallel_tool_calls: bool = False,
+    programmatic_tool_calling: bool = False,
     tool_output_max_tokens: int = 10000,
     tool_result_preview_max_tokens: Optional[int] = None,
     tool_sample_functions: Optional[Dict[str, Callable]] = None,
@@ -162,6 +163,9 @@ async def chat_async(
         citations_provider: Optional provider to use for generating citations. Overrides provider inference from citations_model. Accepts LLMProvider enum or string name. If not provided, the main provider is used.
         citations_excluded_tools: Optional list of tool names to exclude from the documents sent for citation generation.
         parallel_tool_calls: Enable parallel tool calls when set to True (default: False)
+        programmatic_tool_calling: Enable Anthropic's programmatic tool calling (Anthropic only).
+            When True, Claude writes Python code that calls tools inside a code execution sandbox,
+            reducing latency and token consumption for multi-tool workflows.
         tool_output_max_tokens: Maximum tokens allowed in tool outputs (default: 10000). Set to -1 to disable the check.
         previous_response_id: Optional id of a previous response when continuing conversations (supported for OpenAI, Anthropic/Grok, Gemini).
         citations_reasoning_effort: Reasoning effort level for citations
@@ -312,6 +316,7 @@ async def chat_async(
                 image_result_keys=image_result_keys,
                 tool_budget=tool_budget,
                 parallel_tool_calls=parallel_tool_calls,
+                programmatic_tool_calling=programmatic_tool_calling,
                 tool_output_max_tokens=tool_output_max_tokens,
                 tool_result_preview_max_tokens=tool_result_preview_max_tokens,
                 tool_sample_functions=tool_sample_functions,

@@ -122,6 +122,7 @@ class AnthropicProvider(BaseLLMProvider):
         timeout: int = 600,
         reasoning_effort: Optional[str] = None,
         parallel_tool_calls: bool = False,
+        programmatic_tool_calling: bool = False,
         **kwargs,
     ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
         """Create the parameter dict for Anthropic's .messages.create()."""
@@ -261,7 +262,26 @@ class AnthropicProvider(BaseLLMProvider):
 
         if tools:
             function_specs = get_function_specs(tools, self.get_provider_name())
-            params["tools"] = function_specs
+
+            if programmatic_tool_calling:
+                # Programmatic tool calling: Claude writes Python code that
+                # calls tools inside a code execution sandbox.
+                # - Prepend the code_execution server tool
+                # - Add allowed_callers so Claude can invoke tools from code
+                # - strict and additionalProperties are incompatible with PTC
+                code_exec_tool = {
+                    "type": "code_execution_20260120",
+                    "name": "code_execution",
+                }
+                for spec in function_specs:
+                    spec["allowed_callers"] = ["code_execution_20260120"]
+                    spec.pop("strict", None)
+                    if "input_schema" in spec:
+                        spec["input_schema"].pop("additionalProperties", None)
+                params["tools"] = [code_exec_tool] + function_specs
+            else:
+                params["tools"] = function_specs
+
             if tool_choice:
                 tool_names_list = [func.__name__ for func in tools]
                 tool_choice = convert_tool_choice(
@@ -272,8 +292,10 @@ class AnthropicProvider(BaseLLMProvider):
                 params["tool_choice"] = {"type": "auto"}
 
             # Add parallel tool calls configuration
+            # disable_parallel_tool_use is incompatible with programmatic tool calling
             if (
-                "tool_choice" in params
+                not programmatic_tool_calling
+                and "tool_choice" in params
                 and isinstance(params["tool_choice"], dict)
                 and not model.startswith("grok")
             ):
@@ -297,6 +319,7 @@ class AnthropicProvider(BaseLLMProvider):
         tool_sample_functions: Optional[Dict[str, Callable]] = None,
         tool_result_preview_max_tokens: Optional[int] = None,
         tool_phase_complete_message: str = "exploration done, generating answer",
+        programmatic_tool_calling: bool = False,
         **kwargs,
     ) -> Tuple[
         Any,
@@ -368,6 +391,19 @@ class AnthropicProvider(BaseLLMProvider):
                     block
                     for block in response.content
                     if hasattr(block, "type") and block.type == "mcp_tool_result"
+                ]
+                # Collect server_tool_use blocks (code execution sandbox blocks in PTC)
+                server_tool_use_blocks = [
+                    block
+                    for block in response.content
+                    if hasattr(block, "type") and block.type == "server_tool_use"
+                ]
+                # Collect code_execution_tool_result blocks (sandbox output in PTC)
+                code_exec_result_blocks = [
+                    block
+                    for block in response.content
+                    if hasattr(block, "type")
+                    and block.type == "code_execution_tool_result"
                 ]
                 thinking_blocks = [
                     block
@@ -541,8 +577,16 @@ class AnthropicProvider(BaseLLMProvider):
 
                         # Check stop_reason to determine if we should continue
                         if response.stop_reason == "end_turn":
-                            # Conversation is complete, extract final content and break
+                            # Conversation is complete, extract final content
                             content = "\n".join([block.text for block in text_blocks])
+                            # For PTC, also capture stdout/stderr from code execution results
+                            if programmatic_tool_calling and code_exec_result_blocks:
+                                for blk in code_exec_result_blocks:
+                                    stdout = getattr(blk, "stdout", None) or ""
+                                    stderr = getattr(blk, "stderr", None) or ""
+                                    extra = (stdout + stderr).strip()
+                                    if extra and not content:
+                                        content = extra
                             break
                         elif response.stop_reason == "tool_use":
                             # Need to continue conversation with tool results (for regular tools only)
@@ -550,11 +594,16 @@ class AnthropicProvider(BaseLLMProvider):
                             if (
                                 regular_tool_calls
                             ):  # Only continue if we have regular tools to execute
-                                # Build assistant content with all tool calls
+                                # Build assistant content with all blocks from the response
                                 assistant_content = []
                                 if len(thinking_blocks) > 0:
                                     assistant_content += thinking_blocks
-
+                                # Include server_tool_use blocks (PTC code execution)
+                                for blk in server_tool_use_blocks:
+                                    assistant_content.append(blk)
+                                # Include code_execution_tool_result blocks (PTC sandbox output)
+                                for blk in code_exec_result_blocks:
+                                    assistant_content.append(blk)
                                 for tool_call_block in tool_call_blocks:
                                     assistant_content.append(tool_call_block)
 
@@ -563,6 +612,13 @@ class AnthropicProvider(BaseLLMProvider):
                                         "role": "assistant",
                                         "content": assistant_content,
                                     }
+                                )
+
+                                # Determine if all tool calls come from the code execution sandbox
+                                has_ptc_caller = programmatic_tool_calling and all(
+                                    getattr(getattr(blk, "caller", None), "type", None)
+                                    == "code_execution_20260120"
+                                    for blk in tool_call_blocks
                                 )
 
                                 # Build user response with all tool results and handle images
@@ -644,10 +700,18 @@ class AnthropicProvider(BaseLLMProvider):
 
                                     tool_results_content.append(tool_result)
 
+                                # Per Anthropic API: when tool calls come from
+                                # code_execution, the user message must contain
+                                # only tool_result blocks (no text).
+                                if has_ptc_caller:
+                                    user_content = tool_results_content
+                                else:
+                                    user_content = tool_results_content
+
                                 request_params["messages"].append(
                                     {
                                         "role": "user",
-                                        "content": tool_results_content,
+                                        "content": user_content,
                                     }
                                 )
 
@@ -837,6 +901,7 @@ class AnthropicProvider(BaseLLMProvider):
         tool_result_preview_max_tokens: Optional[int] = None,
         previous_response_id: Optional[str] = None,
         tool_phase_complete_message: str = "exploration done, generating answer",
+        programmatic_tool_calling: bool = False,
         **kwargs,
     ) -> LLMResponse:
         """Execute a chat completion with Anthropic."""
@@ -897,6 +962,7 @@ class AnthropicProvider(BaseLLMProvider):
             reasoning_effort=reasoning_effort,
             timeout=timeout,
             parallel_tool_calls=kwargs.get("parallel_tool_calls", True),
+            programmatic_tool_calling=programmatic_tool_calling,
         )
 
         # Construct a tool dict if needed
@@ -931,6 +997,7 @@ class AnthropicProvider(BaseLLMProvider):
                 tool_sample_functions=sample_functions,
                 tool_result_preview_max_tokens=preview_max_tokens,
                 tool_phase_complete_message=tool_phase_complete_message,
+                programmatic_tool_calling=programmatic_tool_calling,
                 **kwargs,
             )
         except Exception as e:
