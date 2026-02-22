@@ -12,7 +12,9 @@ from typing import Optional, Union
 from defog.llm.llm_providers import LLMProvider
 import warnings
 
-from defog.__version__ import __version__
+from importlib.metadata import version as _get_version
+
+__version__ = _get_version("defog")
 
 SUPPORTED_DB_TYPES = [
     "postgres",
