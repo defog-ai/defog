@@ -22,7 +22,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "defog"
-version = "1.4.24"
+version = "1.4.25"
 description = "Defog is a Python library that helps you generate data queries from natural language questions."
 readme = "README.md"
 requires-python = ">=3.10"
