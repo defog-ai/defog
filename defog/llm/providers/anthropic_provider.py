@@ -191,28 +191,32 @@ class AnthropicProvider(BaseLLMProvider):
         # Update this tuple when new models add adaptive thinking support.
         supports_adaptive = any(p in model for p in ("opus-4-6",))
 
-        if reasoning_effort is not None and supports_thinking:
+        if supports_adaptive:
+            # Opus 4.6+ always uses adaptive thinking; it cannot be disabled.
+            # Without adaptive thinking, Opus 4.6 cannot reason about tool
+            # usage and will produce degenerate empty structured outputs.
+            # The effort level is optionally set via output_config below.
+            thinking = {
+                "type": "adaptive",
+            }
             temperature = 1.0
-            if supports_adaptive:
+        elif reasoning_effort is not None and supports_thinking:
+            temperature = 1.0
+            if reasoning_effort == "low":
                 thinking = {
-                    "type": "adaptive",
+                    "type": "enabled",
+                    "budget_tokens": 2048,
                 }
-            else:
-                if reasoning_effort == "low":
-                    thinking = {
-                        "type": "enabled",
-                        "budget_tokens": 2048,
-                    }
-                elif reasoning_effort == "medium":
-                    thinking = {
-                        "type": "enabled",
-                        "budget_tokens": 4096,
-                    }
-                elif reasoning_effort in ("high", "max"):
-                    thinking = {
-                        "type": "enabled",
-                        "budget_tokens": 8192,
-                    }
+            elif reasoning_effort == "medium":
+                thinking = {
+                    "type": "enabled",
+                    "budget_tokens": 4096,
+                }
+            elif reasoning_effort in ("high", "max"):
+                thinking = {
+                    "type": "enabled",
+                    "budget_tokens": 8192,
+                }
         else:
             thinking = {
                 "type": "disabled",
