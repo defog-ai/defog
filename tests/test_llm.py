@@ -838,3 +838,135 @@ async def test_gemini_previous_response_uses_conversation_cache(monkeypatch):
         # ]
     finally:
         conversation_cache.clear_cache()
+
+
+class TestGeminiSystemInstruction:
+    """Test that system messages are extracted into system_instruction."""
+
+    def test_system_message_extracted_from_interactions_input(self):
+        """System messages should be returned as system_instruction, not as user turns."""
+        from defog.llm.providers.gemini_provider import GeminiProvider
+
+        provider = GeminiProvider(api_key="test-key")
+        messages = [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "Hello"},
+        ]
+
+        system_instruction, input_contents = provider._messages_to_interactions_input(
+            messages
+        )
+
+        assert system_instruction == "You are a helpful assistant."
+        assert len(input_contents) == 1
+        assert input_contents[0]["role"] == "user"
+
+    def test_multiple_system_messages_concatenated(self):
+        """Multiple system messages should be joined with double newlines."""
+        from defog.llm.providers.gemini_provider import GeminiProvider
+
+        provider = GeminiProvider(api_key="test-key")
+        messages = [
+            {"role": "system", "content": "Instruction 1."},
+            {"role": "system", "content": "Instruction 2."},
+            {"role": "user", "content": "Hello"},
+        ]
+
+        system_instruction, input_contents = provider._messages_to_interactions_input(
+            messages
+        )
+
+        assert system_instruction == "Instruction 1.\n\nInstruction 2."
+        assert len(input_contents) == 1
+
+    def test_no_system_messages_returns_none(self):
+        """When there are no system messages, system_instruction should be None."""
+        from defog.llm.providers.gemini_provider import GeminiProvider
+
+        provider = GeminiProvider(api_key="test-key")
+        messages = [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi there"},
+        ]
+
+        system_instruction, input_contents = provider._messages_to_interactions_input(
+            messages
+        )
+
+        assert system_instruction is None
+        assert len(input_contents) == 2
+
+    def test_system_instruction_in_build_params(self):
+        """build_params should include system_instruction in request_params."""
+        from defog.llm.providers.gemini_provider import GeminiProvider
+
+        provider = GeminiProvider(api_key="test-key")
+        messages = [
+            {"role": "system", "content": "Be concise."},
+            {"role": "user", "content": "What is 2+2?"},
+        ]
+
+        request_params, _ = provider.build_params(
+            messages=messages,
+            model="gemini-2.5-flash",
+        )
+
+        assert request_params["system_instruction"] == "Be concise."
+        # Ensure no user turn was created for the system message
+        assert len(request_params["input"]) == 1
+        assert request_params["input"][0]["role"] == "user"
+
+    def test_no_system_instruction_when_no_system_messages(self):
+        """build_params should omit system_instruction when there are no system messages."""
+        from defog.llm.providers.gemini_provider import GeminiProvider
+
+        provider = GeminiProvider(api_key="test-key")
+        messages = [
+            {"role": "user", "content": "Hello"},
+        ]
+
+        request_params, _ = provider.build_params(
+            messages=messages,
+            model="gemini-2.5-flash",
+        )
+
+        assert "system_instruction" not in request_params
+
+    def test_no_consecutive_user_turns_with_system_message(self):
+        """System + user messages should not produce consecutive user turns."""
+        from defog.llm.providers.gemini_provider import GeminiProvider
+
+        provider = GeminiProvider(api_key="test-key")
+        messages = [
+            {"role": "system", "content": "System prompt"},
+            {"role": "user", "content": "User message"},
+        ]
+
+        _, input_contents = provider._messages_to_interactions_input(messages)
+
+        # Should have exactly 1 turn (the user message), not 2 consecutive user turns
+        assert len(input_contents) == 1
+        assert input_contents[0]["role"] == "user"
+
+    def test_system_message_with_list_content(self):
+        """System messages with list content should be handled correctly."""
+        from defog.llm.providers.gemini_provider import GeminiProvider
+
+        provider = GeminiProvider(api_key="test-key")
+        messages = [
+            {
+                "role": "system",
+                "content": [
+                    {"type": "text", "text": "First instruction."},
+                    {"type": "text", "text": "Second instruction."},
+                ],
+            },
+            {"role": "user", "content": "Hello"},
+        ]
+
+        system_instruction, input_contents = provider._messages_to_interactions_input(
+            messages
+        )
+
+        assert system_instruction == "First instruction.\n\nSecond instruction."
+        assert len(input_contents) == 1

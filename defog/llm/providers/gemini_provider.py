@@ -91,17 +91,43 @@ class GeminiProvider(BaseLLMProvider):
 
     def _messages_to_interactions_input(
         self, messages: List[Dict[str, Any]]
-    ) -> Union[str, List[Any]]:
+    ) -> Tuple[Optional[str], Union[str, List[Any]]]:
         """
         Convert standard messages to Interactions API input format.
-        Returns a list of Turn objects (as dicts).
+
+        Extracts system messages and returns them separately so they can be
+        passed via the ``system_instruction`` parameter of
+        ``interactions.create()``.  The Interactions API requires alternating
+        user/model turns and rejects consecutive same-role turns with a 400
+        error, so system messages must not be mapped to the ``"user"`` role.
+
+        Returns:
+            A tuple of (system_instruction, input_contents) where
+            system_instruction is the concatenated text of all system messages
+            (or None if there are none), and input_contents is the list of
+            Turn dicts for the ``input`` parameter.
         """
+        system_parts: List[str] = []
         input_contents = []
 
         for msg in messages:
             role = msg.get("role")
             content = msg.get("content")
             tool_calls = msg.get("tool_calls")
+
+            # Extract system messages for the system_instruction parameter
+            if role == "system":
+                if isinstance(content, str):
+                    system_parts.append(content)
+                elif isinstance(content, list):
+                    texts = [
+                        block.get("text", "")
+                        for block in content
+                        if isinstance(block, dict) and block.get("type") == "text"
+                    ]
+                    if texts:
+                        system_parts.append("\n\n".join(texts))
+                continue
 
             parts = []
 
@@ -185,7 +211,8 @@ class GeminiProvider(BaseLLMProvider):
             if parts:
                 input_contents.append({"role": gemini_role, "content": parts})
 
-        return input_contents
+        system_instruction = "\n\n".join(system_parts) if system_parts else None
+        return system_instruction, input_contents
 
     def build_params(
         self,
@@ -236,9 +263,10 @@ class GeminiProvider(BaseLLMProvider):
             new_messages = messages
 
         # 2. Convert messages to Interactions Input
-        interactions_input = self._messages_to_interactions_input(new_messages)
+        system_instruction, interactions_input = self._messages_to_interactions_input(
+            new_messages
+        )
 
-        # 3. Build Configuration
         # 3. Build Configuration
         generation_config_dict = {"temperature": temperature}
         if max_completion_tokens is not None:
@@ -248,6 +276,9 @@ class GeminiProvider(BaseLLMProvider):
             "model": model,
             "input": interactions_input,
         }
+
+        if system_instruction:
+            request_params["system_instruction"] = system_instruction
 
         if response_format:
             request_params["response_mime_type"] = "application/json"
@@ -495,6 +526,11 @@ class GeminiProvider(BaseLLMProvider):
                     if "generation_config" in request_params:
                         next_interaction_kwargs["generation_config"] = request_params[
                             "generation_config"
+                        ]
+
+                    if "system_instruction" in request_params:
+                        next_interaction_kwargs["system_instruction"] = request_params[
+                            "system_instruction"
                         ]
 
                     response = await client.aio.interactions.create(
