@@ -170,6 +170,8 @@ async def web_search_tool(
 
             # Add reasoning effort for claude-3-7 and claude-4 models
             if reasoning_effort and ("3-7" in model or "-4-" in model):
+                # "any" tool_choice conflicts with thinking, use "auto" instead
+                request_params["tool_choice"] = {"type": "auto"}
                 request_params["temperature"] = 1.0
                 budget_tokens_map = {
                     "low": 2048,
