@@ -234,19 +234,33 @@ async def citations_tool(
                 "max_tokens": max_tokens,
             }
             if reasoning_effort:
-                if reasoning_effort == "low":
-                    budget_tokens = 4096
-                elif reasoning_effort == "medium":
-                    budget_tokens = 8192
-                elif reasoning_effort == "high":
-                    budget_tokens = 16384
+                # Claude 4.6 models support adaptive thinking, which
+                # replaces the deprecated budget_tokens approach.
+                _is_adaptive = "opus-4-6" in model or "sonnet-4-6" in model
+                if _is_adaptive:
+                    payload["thinking"] = {"type": "adaptive"}
+                    payload["temperature"] = 1.0
+                    # Cap "max" effort to "high" for non-Opus models.
+                    effort = reasoning_effort
+                    if effort == "max" and "opus-4-6" not in model:
+                        effort = "high"
+                    payload["output_config"] = {"effort": effort}
                 else:
-                    raise ValueError(f"Invalid reasoning effort: {reasoning_effort}")
+                    if reasoning_effort == "low":
+                        budget_tokens = 4096
+                    elif reasoning_effort == "medium":
+                        budget_tokens = 8192
+                    elif reasoning_effort == "high":
+                        budget_tokens = 16384
+                    else:
+                        raise ValueError(
+                            f"Invalid reasoning effort: {reasoning_effort}"
+                        )
 
-                payload["thinking"] = {
-                    "type": "enabled",
-                    "budget_tokens": budget_tokens,
-                }
+                    payload["thinking"] = {
+                        "type": "enabled",
+                        "budget_tokens": budget_tokens,
+                    }
 
             response = await client.messages.create(**payload)
 

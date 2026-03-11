@@ -168,20 +168,33 @@ async def web_search_tool(
                     f"Output ONLY the JSON object, no other text."
                 )
 
-            # Add reasoning effort for claude-3-7 and claude-4 models
-            if reasoning_effort and ("3-7" in model or "-4-" in model):
+            # Add reasoning effort for claude-3-7 and claude-4 models.
+            # Use "-4" (not "-4-") so "claude-sonnet-4" (no date) is matched.
+            if reasoning_effort and ("3-7" in model or "-4" in model):
                 # "any" tool_choice conflicts with thinking, use "auto" instead
                 request_params["tool_choice"] = {"type": "auto"}
                 request_params["temperature"] = 1.0
-                budget_tokens_map = {
-                    "low": 2048,
-                    "medium": 4096,
-                    "high": 8192,
-                }
-                request_params["thinking"] = {
-                    "type": "enabled",
-                    "budget_tokens": budget_tokens_map.get(reasoning_effort, 4096),
-                }
+
+                # Claude 4.6 models support adaptive thinking, which
+                # replaces the deprecated budget_tokens approach.
+                _is_adaptive = "opus-4-6" in model or "sonnet-4-6" in model
+                if _is_adaptive:
+                    request_params["thinking"] = {"type": "adaptive"}
+                    # Cap "max" effort to "high" for non-Opus models.
+                    effort = reasoning_effort
+                    if effort == "max" and "opus-4-6" not in model:
+                        effort = "high"
+                    request_params["output_config"] = {"effort": effort}
+                else:
+                    budget_tokens_map = {
+                        "low": 2048,
+                        "medium": 4096,
+                        "high": 8192,
+                    }
+                    request_params["thinking"] = {
+                        "type": "enabled",
+                        "budget_tokens": budget_tokens_map.get(reasoning_effort, 4096),
+                    }
 
             response = await client.messages.create(**request_params)
 

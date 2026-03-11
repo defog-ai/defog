@@ -42,7 +42,7 @@ response = await chat_async(
     temperature=0.7,
     
     # Advanced parameters
-    reasoning_effort="high",          # For o1 models: low, medium, high
+    reasoning_effort="high",          # low, medium, high (max for Opus 4.6 only)
     response_format=MyPydanticModel,  # Structured output
     tools=[...],                      # Function calling
     tool_choice="auto",               # auto, none, required, or specific tool
