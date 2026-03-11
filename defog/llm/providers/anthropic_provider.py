@@ -186,16 +186,18 @@ class AnthropicProvider(BaseLLMProvider):
         # Claude 3.7 Sonnet. Using "-4" instead of "-4-" so that
         # "claude-sonnet-4" (no date suffix) is also matched.
         supports_thinking = "3-7" in model or "-4" in model
-        # Opus 4.6+ uses adaptive thinking (type: "adaptive") with effort
-        # via output_config, replacing the deprecated budget_tokens param.
-        # Update this tuple when new models add adaptive thinking support.
-        supports_adaptive = any(p in model for p in ("opus-4-6",))
+        # Claude 4.6 models use adaptive thinking (type: "adaptive") with
+        # effort via output_config, replacing the deprecated budget_tokens
+        # param. Update this tuple when new models add adaptive support.
+        supports_adaptive = any(p in model for p in ("opus-4-6", "sonnet-4-6"))
+        # effort: "max" is only available on Opus 4.6+. Sending it to
+        # Sonnet 4.6 returns an API error.
+        supports_max_effort = "opus-4-6" in model
 
         if supports_adaptive:
-            # Opus 4.6+ always uses adaptive thinking; it cannot be disabled.
-            # Without adaptive thinking, Opus 4.6 cannot reason about tool
-            # usage and will produce degenerate empty structured outputs.
-            # The effort level is optionally set via output_config below.
+            # Claude 4.6 models use adaptive thinking; the model decides
+            # how much to think based on query complexity. The effort
+            # level is optionally set via output_config below.
             thinking = {
                 "type": "adaptive",
             }
@@ -240,7 +242,11 @@ class AnthropicProvider(BaseLLMProvider):
         # structured output format (json_schema).
         output_config = {}
         if supports_adaptive and reasoning_effort is not None:
-            output_config["effort"] = reasoning_effort
+            # Cap effort to "high" for models that don't support "max".
+            if reasoning_effort == "max" and not supports_max_effort:
+                output_config["effort"] = "high"
+            else:
+                output_config["effort"] = reasoning_effort
         # Native structured outputs via constrained decoding.
         # The Anthropic API supports output_config.format alongside tools
         # with strict: true in the same request, so we always set it here.
