@@ -327,11 +327,11 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
         test_models = []
         if AVAILABLE_MODELS.get("openai") and "o4-mini" in AVAILABLE_MODELS["openai"]:
             test_models.append("o4-mini")
-        if (
-            AVAILABLE_MODELS.get("anthropic")
-            and "claude-haiku-4-5" in AVAILABLE_MODELS["anthropic"]
-        ):
-            test_models.append("claude-haiku-4-5")
+        if AVAILABLE_MODELS.get("anthropic"):
+            if "claude-haiku-4-5" in AVAILABLE_MODELS["anthropic"]:
+                test_models.append("claude-haiku-4-5")
+            if "claude-sonnet-4-6" in AVAILABLE_MODELS["anthropic"]:
+                test_models.append("claude-sonnet-4-6")
 
         if not test_models:
             self.skipTest("No models with reasoning effort support available")
