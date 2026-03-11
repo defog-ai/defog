@@ -233,7 +233,7 @@ class AnthropicProvider(BaseLLMProvider):
 
         # Anthropic does not allow `None` as a value for max_completion_tokens
         if max_completion_tokens is None:
-            max_completion_tokens = 32000
+            max_completion_tokens = 64000
 
         params = {
             "system": sys_msg,
