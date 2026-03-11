@@ -193,11 +193,18 @@ class AnthropicProvider(BaseLLMProvider):
         # effort: "max" is only available on Opus 4.6+. Sending it to
         # Sonnet 4.6 returns an API error.
         supports_max_effort = "opus-4-6" in model
+        # Opus 4.6 requires adaptive thinking always on. For other
+        # adaptive models (e.g. Sonnet 4.6), only enable it when
+        # reasoning_effort is explicitly requested.
+        requires_adaptive = "opus-4-6" in model
+        use_adaptive = requires_adaptive or (
+            supports_adaptive and reasoning_effort is not None
+        )
 
-        if supports_adaptive:
-            # Claude 4.6 models use adaptive thinking; the model decides
-            # how much to think based on query complexity. The effort
-            # level is optionally set via output_config below.
+        if use_adaptive:
+            # Adaptive thinking: the model decides how much to think
+            # based on query complexity. The effort level is optionally
+            # set via output_config below.
             thinking = {
                 "type": "adaptive",
             }
@@ -241,7 +248,7 @@ class AnthropicProvider(BaseLLMProvider):
         # Build output_config: may include adaptive thinking effort and/or
         # structured output format (json_schema).
         output_config = {}
-        if supports_adaptive and reasoning_effort is not None:
+        if use_adaptive and reasoning_effort is not None:
             # Cap effort to "high" for models that don't support "max".
             if reasoning_effort == "max" and not supports_max_effort:
                 output_config["effort"] = "high"
