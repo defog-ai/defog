@@ -412,7 +412,7 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
     async def test_chat_async_conversation_follow_up_with_tools_real(self):
         from defog.llm.memory import conversation_cache
 
-        conversation_cache.clear_cache()
+        await conversation_cache.clear_cache()
 
         async def multiply_numbers(x: float, y: float) -> float:
             """Multiply two numbers via tool call."""
@@ -454,7 +454,7 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
         assert tool_output["result"] in (261828, 261828.0)
         assert response1.response_id
 
-        cached_first = conversation_cache.load_messages(response1.response_id)
+        cached_first = await conversation_cache.load_messages(response1.response_id)
         assert cached_first is not None
         assert cached_first[-1]["role"] == "assistant"
 
@@ -486,18 +486,18 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
         assert tool_output["name"] == "multiply_numbers"
         assert tool_output["result"] in (21993552, 21993552.0)
 
-        cached_second = conversation_cache.load_messages(response2.response_id)
+        cached_second = await conversation_cache.load_messages(response2.response_id)
         assert cached_second is not None
         assert cached_second[-1]["role"] == "assistant"
         assert cached_second[-1]["content"] == response2.content
 
-        conversation_cache.clear_cache()
+        await conversation_cache.clear_cache()
 
     @skip_if_no_api_key("gemini")
     async def test_chat_async_gemini_follow_up_with_tools_real(self):
         from defog.llm.memory import conversation_cache
 
-        conversation_cache.clear_cache()
+        await conversation_cache.clear_cache()
 
         async def multiply_numbers(x: float, y: float) -> float:
             """Multiply two numbers via tool call."""
@@ -571,19 +571,19 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
         assert tool_output["name"] == "multiply_numbers"
         assert tool_output["result"] in (21993552, 21993552.0)
 
-        # cached_second = conversation_cache.load_messages(response2.response_id)
+        # cached_second = await conversation_cache.load_messages(response2.response_id)
         # assert cached_second is not None
         # assert cached_second[-1]["role"] == "assistant"
         # assert cached_second[-1]["content"] == response2.content
 
-        conversation_cache.clear_cache()
+        await conversation_cache.clear_cache()
 
     async def test_chat_async_conversation_follow_up_with_tools_real_grandparent_cache(
         self,
     ):
         from defog.llm.memory import conversation_cache
 
-        conversation_cache.clear_cache()
+        await conversation_cache.clear_cache()
 
         async def multiply_numbers(x: float, y: float) -> float:
             """Multiply two numbers via tool call."""
@@ -653,7 +653,7 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
         assert response3.tool_outputs[0]["name"] == "multiply_numbers"
         assert response3.tool_outputs[0]["result"] in (1832796, 1832796.0)
 
-        conversation_cache.clear_cache()
+        await conversation_cache.clear_cache()
 
 
 @pytest.mark.asyncio
@@ -661,7 +661,7 @@ async def test_anthropic_previous_response_uses_conversation_cache(monkeypatch):
     from defog.llm.providers.anthropic_provider import AnthropicProvider
     from defog.llm.memory import conversation_cache
 
-    conversation_cache.clear_cache()
+    await conversation_cache.clear_cache()
     provider = AnthropicProvider(api_key="api-key")
 
     captured_messages = []
@@ -719,7 +719,7 @@ async def test_anthropic_previous_response_uses_conversation_cache(monkeypatch):
         )
         assert response1.response_id is not None
 
-        cached_first = conversation_cache.load_messages(response1.response_id)
+        cached_first = await conversation_cache.load_messages(response1.response_id)
         assert cached_first == base_messages + [
             {"role": "assistant", "content": "First answer"}
         ]
@@ -739,12 +739,12 @@ async def test_anthropic_previous_response_uses_conversation_cache(monkeypatch):
         ]
         assert captured_messages[1] == expected_request_messages
 
-        cached_second = conversation_cache.load_messages(response2.response_id)
+        cached_second = await conversation_cache.load_messages(response2.response_id)
         assert cached_second == expected_request_messages + [
             {"role": "assistant", "content": "Second answer"}
         ]
     finally:
-        conversation_cache.clear_cache()
+        await conversation_cache.clear_cache()
 
 
 @pytest.mark.asyncio
@@ -752,7 +752,7 @@ async def test_gemini_previous_response_uses_conversation_cache(monkeypatch):
     from defog.llm.providers.gemini_provider import GeminiProvider
     from defog.llm.memory import conversation_cache
 
-    conversation_cache.clear_cache()
+    await conversation_cache.clear_cache()
     provider = GeminiProvider(api_key="api-key")
 
     captured_messages = []
@@ -814,7 +814,7 @@ async def test_gemini_previous_response_uses_conversation_cache(monkeypatch):
         )
         assert response1.response_id is not None
 
-        # cached_first = conversation_cache.load_messages(response1.response_id)
+        # cached_first = await conversation_cache.load_messages(response1.response_id)
         # assert cached_first == base_messages + [
         #     {"role": "assistant", "content": "Gemini first"}
         # ]
@@ -832,12 +832,12 @@ async def test_gemini_previous_response_uses_conversation_cache(monkeypatch):
         expected_request_messages = follow_up
         assert captured_messages[1] == expected_request_messages
 
-        # cached_second = conversation_cache.load_messages(response2.response_id)
+        # cached_second = await conversation_cache.load_messages(response2.response_id)
         # assert cached_second == expected_request_messages + [
         #     {"role": "assistant", "content": "Gemini second"}
         # ]
     finally:
-        conversation_cache.clear_cache()
+        await conversation_cache.clear_cache()
 
 
 class TestGeminiSystemInstruction:

@@ -373,14 +373,14 @@ class BaseLLMProvider(ABC):
 
         return tools, tool_handler.build_tool_dict(tools)
 
-    def _load_cached_conversation(
+    async def _load_cached_conversation(
         self, previous_response_id: Optional[str]
     ) -> Optional[List[Dict[str, Any]]]:
         """Fetch cached conversation for a response id."""
         if not previous_response_id:
             return None
         try:
-            return load_cached_messages(previous_response_id)
+            return await load_cached_messages(previous_response_id)
         except Exception as exc:
             self.logger.warning(
                 "Failed to load cached conversation for %s: %s",
@@ -412,28 +412,28 @@ class BaseLLMProvider(ABC):
         combined.extend(deepcopy(new_messages[overlap:]))
         return combined
 
-    def prepare_conversation_messages(
+    async def prepare_conversation_messages(
         self,
         messages: List[Dict[str, Any]],
         previous_response_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Return full conversation including any cached history."""
         base_messages = deepcopy(messages)
-        cached_messages = self._load_cached_conversation(previous_response_id)
+        cached_messages = await self._load_cached_conversation(previous_response_id)
         if cached_messages:
             base_messages = self._merge_cached_and_new_messages(
                 cached_messages, base_messages
             )
         return base_messages
 
-    def persist_conversation_history(
+    async def persist_conversation_history(
         self, response_id: Optional[str], messages: List[Dict[str, Any]]
     ) -> None:
         """Persist conversation history for later continuation."""
         if not response_id or not messages:
             return
         try:
-            store_cached_messages(response_id, messages)
+            await store_cached_messages(response_id, messages)
         except Exception as exc:
             self.logger.warning(
                 "Failed to store conversation history for %s: %s",

@@ -831,7 +831,7 @@ class AnthropicProvider(BaseLLMProvider):
         # Filter tools based on budget before building params
         tools = self.filter_tools_by_budget(tools, tool_handler)
 
-        conversation_messages = self.prepare_conversation_messages(
+        conversation_messages = await self.prepare_conversation_messages(
             messages, previous_response_id
         )
 
@@ -893,7 +893,9 @@ class AnthropicProvider(BaseLLMProvider):
             history_for_cache = self.append_assistant_message_to_history(
                 conversation_messages, content
             )
-            self.persist_conversation_history(cache_response_id, history_for_cache)
+            await self.persist_conversation_history(
+                cache_response_id, history_for_cache
+            )
             response_id = cache_response_id
 
         # Calculate cost

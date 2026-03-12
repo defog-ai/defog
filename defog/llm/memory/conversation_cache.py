@@ -1,16 +1,16 @@
-"""Disk-backed conversation cache for providers without stateful sessions."""
+"""Async file-backed conversation cache for providers without stateful sessions."""
 
+import os
+import pickle
+import re
+import time
 from copy import deepcopy
-import threading
 from pathlib import Path
 from typing import Any, Dict, Hashable, List, Optional, Set, Tuple
 
-from diskcache import Cache
+import aiofiles
 
 from defog import config as defog_config
-
-_CACHE: Optional[Cache] = None
-_CACHE_LOCK = threading.Lock()
 
 
 def _get_cache_directory() -> Path:
@@ -23,27 +23,39 @@ def _get_cache_directory() -> Path:
     return path
 
 
-def get_cache() -> Cache:
-    """Return global disk cache instance."""
-    global _CACHE
-    if _CACHE is None:
-        with _CACHE_LOCK:
-            if _CACHE is None:
-                _CACHE = Cache(str(_get_cache_directory()))
-    return _CACHE
+def _sanitize_filename(response_id: str) -> str:
+    """Replace non-alphanumeric characters (except _ and -) for safe filenames."""
+    return re.sub(r"[^a-zA-Z0-9_-]", "_", response_id)
 
 
-def load_messages(response_id: Optional[str]) -> Optional[List[Dict[str, Any]]]:
+def _get_pickle_path(response_id: str) -> Path:
+    return _get_cache_directory() / f"{_sanitize_filename(response_id)}.pkl"
+
+
+async def load_messages(
+    response_id: Optional[str],
+) -> Optional[List[Dict[str, Any]]]:
     """Load messages for a cached conversation."""
     if not response_id:
         return None
-    data = get_cache().get(response_id)
-    if not data:
+    path = _get_pickle_path(response_id)
+    if not path.exists():
         return None
-    messages = data.get("messages") if isinstance(data, dict) else data
-    if messages is None:
+    try:
+        async with aiofiles.open(path, "rb") as f:
+            raw = await f.read()
+        data = pickle.loads(raw)
+        # Check TTL
+        expire_at = data.get("expire_at") if isinstance(data, dict) else None
+        if expire_at is not None and time.time() > expire_at:
+            path.unlink(missing_ok=True)
+            return None
+        messages = data.get("messages") if isinstance(data, dict) else data
+        if messages is None:
+            return None
+        return deepcopy(messages)
+    except Exception:
         return None
-    return deepcopy(messages)
 
 
 def _message_signature(message: Dict[str, Any]) -> Tuple[str, Hashable]:
@@ -100,17 +112,26 @@ def _expand_messages_with_parents(
     return expanded
 
 
-def store_messages(
+async def store_messages(
     response_id: str, messages: List[Dict[str, Any]], expire: Optional[int] = None
 ) -> None:
     """Persist conversation messages under a response id."""
     if not response_id:
         return
     expanded_messages = _expand_messages_with_parents(messages)
-    payload = {"messages": deepcopy(expanded_messages)}
-    get_cache().set(response_id, payload, expire=expire)
+    payload: Dict[str, Any] = {"messages": deepcopy(expanded_messages)}
+    if expire is not None:
+        payload["expire_at"] = time.time() + expire
+    raw = pickle.dumps(payload, protocol=pickle.HIGHEST_PROTOCOL)
+    path = _get_pickle_path(response_id)
+    tmp_path = path.with_suffix(".pkl.tmp")
+    async with aiofiles.open(tmp_path, "wb") as f:
+        await f.write(raw)
+    os.replace(str(tmp_path), str(path))
 
 
-def clear_cache() -> None:
+async def clear_cache() -> None:
     """Clear all cached conversations (primarily for tests)."""
-    get_cache().clear()
+    cache_dir = _get_cache_directory()
+    for p in cache_dir.glob("*.pkl*"):
+        p.unlink(missing_ok=True)
