@@ -13,7 +13,7 @@ from google.genai import types
 from pydantic import BaseModel
 
 from .base import BaseLLMProvider, LLMResponse
-from ..exceptions import ProviderError, MaxTokensError
+from ..exceptions import ProviderError, MaxTokensError, ToolError
 from ..config import LLMConfig
 from ..cost import CostCalculator
 from ..utils_function_calling import get_function_specs, convert_tool_choice
@@ -691,6 +691,8 @@ class GeminiProvider(BaseLLMProvider):
                 tool_result_preview_max_tokens=preview_max_tokens,
                 tool_phase_complete_message=tool_phase_complete_message,
             )
+        except (ProviderError, ToolError):
+            raise
         except Exception as e:
             traceback.print_exc()
             raise ProviderError(self.get_provider_name(), f"API call failed: {e}", e)

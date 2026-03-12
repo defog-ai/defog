@@ -7,7 +7,7 @@ import logging
 import re
 import uuid
 from ..config.settings import LLMConfig
-from ..exceptions import ProviderError
+from ..exceptions import ToolError
 from ..memory.conversation_cache import (
     load_messages as load_cached_messages,
     store_messages as store_cached_messages,
@@ -245,9 +245,10 @@ class BaseLLMProvider(ABC):
         except Exception as e:
             consecutive_exceptions += 1
             if consecutive_exceptions >= tool_handler.max_consecutive_errors:
-                raise ProviderError(
-                    self.get_provider_name(),
+                raise ToolError(
+                    "batch",
                     f"Tool execution failed after {consecutive_exceptions} consecutive errors: {str(e)}",
+                    e,
                 )
 
             # Add error to messages for retry
