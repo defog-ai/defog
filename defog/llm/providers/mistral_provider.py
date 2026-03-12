@@ -325,11 +325,6 @@ class MistralProvider(BaseLLMProvider):
                             request_params,
                         )
 
-                        # Make next call
-                        response = await client.chat.complete_async(**request_params)
-                        total_input_tokens += response.usage.prompt_tokens
-                        total_output_tokens += response.usage.completion_tokens
-
                     except (ProviderError, ToolError):
                         # Re-raise provider/tool errors from base class
                         raise
@@ -351,7 +346,12 @@ class MistralProvider(BaseLLMProvider):
                         request_params["messages"].append(
                             {"role": "assistant", "content": str(e)}
                         )
-                        response = await client.chat.complete_async(**request_params)
+
+                    # Make next call (outside try-except so API errors
+                    # propagate to chat_async's retry loop)
+                    response = await client.chat.complete_async(**request_params)
+                    total_input_tokens += response.usage.prompt_tokens
+                    total_output_tokens += response.usage.completion_tokens
                 else:
                     # No more tool calls, extract final content
                     content = message.content
