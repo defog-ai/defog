@@ -7,7 +7,7 @@ from typing import Dict, List, Any, Optional, Callable, Tuple, Union
 from anthropic import transform_schema
 
 from .base import BaseLLMProvider, LLMResponse
-from ..exceptions import ProviderError, MaxTokensError
+from ..exceptions import ProviderError, MaxTokensError, ToolError
 from ..config import LLMConfig
 from ..cost import CostCalculator
 from ..utils_function_calling import get_function_specs, convert_tool_choice
@@ -689,8 +689,8 @@ class AnthropicProvider(BaseLLMProvider):
                             # For other stop reasons, extract content and break
                             content = "\n".join([block.text for block in text_blocks])
                             break
-                    except ProviderError:
-                        # Re-raise provider errors from base class
+                    except (ProviderError, ToolError):
+                        # Re-raise provider/tool errors from base class
                         raise
                     except Exception as e:
                         # For other exceptions, use the same retry logic
@@ -699,8 +699,8 @@ class AnthropicProvider(BaseLLMProvider):
                             consecutive_exceptions
                             >= tool_handler.max_consecutive_errors
                         ):
-                            raise ProviderError(
-                                self.get_provider_name(),
+                            raise ToolError(
+                                "batch",
                                 f"Consecutive errors during tool chaining: {e}",
                                 e,
                             )

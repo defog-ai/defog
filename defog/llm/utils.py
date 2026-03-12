@@ -14,7 +14,7 @@ from .providers import (
     GrokProvider,
 )
 from .providers.base import LLMResponse
-from .exceptions import LLMError, ConfigurationError
+from .exceptions import LLMError, ConfigurationError, ToolError
 from .config import LLMConfig
 from .llm_providers import LLMProvider
 from .citations import citations_tool
@@ -417,6 +417,11 @@ async def chat_async(
 
             return response
 
+        except ToolError:
+            # Tool execution errors should not trigger a retry of the entire
+            # agentic loop — only the erroneous step should be retried (which
+            # is already handled inside execute_tool_calls_with_retry).
+            raise
         except Exception as e:
             error_trace = traceback.format_exc()
             delay = base_delay * (2**attempt)  # Exponential backoff

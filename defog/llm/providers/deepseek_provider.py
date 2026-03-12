@@ -6,7 +6,7 @@ import logging
 from typing import Dict, List, Any, Optional, Callable, Tuple, Union
 
 from .base import BaseLLMProvider, LLMResponse
-from ..exceptions import ProviderError, MaxTokensError
+from ..exceptions import ProviderError, MaxTokensError, ToolError
 from ..config import LLMConfig
 from ..cost import CostCalculator
 from ..utils_function_calling import get_function_specs, convert_tool_choice
@@ -336,8 +336,8 @@ Respond with JSON only.
                         request_params["tool_choice"] = (
                             "auto" if request_params["tool_choice"] != "auto" else None
                         )
-                    except ProviderError:
-                        # Re-raise provider errors from base class
+                    except (ProviderError, ToolError):
+                        # Re-raise provider/tool errors from base class
                         raise
                     except Exception as e:
                         # For other exceptions, use the same retry logic
@@ -346,8 +346,8 @@ Respond with JSON only.
                             consecutive_exceptions
                             >= tool_handler.max_consecutive_errors
                         ):
-                            raise ProviderError(
-                                self.get_provider_name(),
+                            raise ToolError(
+                                "batch",
                                 f"Consecutive errors during tool chaining: {e}",
                                 e,
                             )
