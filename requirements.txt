@@ -34,5 +34,4 @@ pre-commit
 portalocker
 click
 httpx
-diskcache
 jsonref
