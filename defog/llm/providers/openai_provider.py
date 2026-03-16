@@ -17,6 +17,38 @@ from ..tools.handler import ToolHandler
 logger = logging.getLogger(__name__)
 
 
+def _dereference_schema(schema: dict) -> dict:
+    """Inline all $ref references in a JSON schema.
+
+    OpenAI's structured output rejects $ref with sibling keywords (e.g.
+    description).  Pydantic's model_json_schema() produces exactly that
+    pattern for fields like ``hero: MyModel = Field(description="...")``.
+
+    This function resolves every $ref by replacing it with the referenced
+    definition, preserving any sibling keywords, and removes $defs.
+    """
+    defs = schema.pop("$defs", {})
+    if not defs:
+        return schema
+
+    def _resolve(obj):
+        if isinstance(obj, dict):
+            if "$ref" in obj:
+                ref_name = obj["$ref"].split("/")[-1]
+                resolved = _resolve(dict(defs[ref_name]))
+                # Merge sibling keywords (e.g. description) into the resolved def
+                for k, v in obj.items():
+                    if k != "$ref":
+                        resolved[k] = v
+                return resolved
+            return {k: _resolve(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [_resolve(v) for v in obj]
+        return obj
+
+    return _resolve(schema)
+
+
 class OpenAIProvider(BaseLLMProvider):
     """OpenAI GPT provider implementation."""
 
@@ -635,8 +667,10 @@ class OpenAIProvider(BaseLLMProvider):
                         "format": {
                             "type": "json_schema",
                             "name": response_format.schema()["title"],
-                            "schema": response_format.model_json_schema()
-                            | {"additionalProperties": False},
+                            "schema": _dereference_schema(
+                                response_format.model_json_schema()
+                                | {"additionalProperties": False}
+                            ),
                         }
                     },
                 )
@@ -766,8 +800,10 @@ class OpenAIProvider(BaseLLMProvider):
                         "format": {
                             "type": "json_schema",
                             "name": response_format.schema()["title"],
-                            "schema": response_format.model_json_schema()
-                            | {"additionalProperties": False},
+                            "schema": _dereference_schema(
+                                response_format.model_json_schema()
+                                | {"additionalProperties": False}
+                            ),
                         }
                     },
                 )
