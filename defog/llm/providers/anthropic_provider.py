@@ -1,3 +1,4 @@
+import inspect
 import traceback
 from defog import config as defog_config
 import time
@@ -297,6 +298,44 @@ class AnthropicProvider(BaseLLMProvider):
 
         return params, messages
 
+    async def extract_reasoning_text(
+        self,
+        thinking_blocks: list,
+        post_tool_function: Optional[Callable] = None,
+    ) -> List[Dict[str, Any]]:
+        """Extract thinking/reasoning text from Anthropic thinking blocks and call post_tool_function."""
+        reasoning_summaries = []
+        for block in thinking_blocks:
+            thinking_text = getattr(block, "thinking", None)
+            if thinking_text:
+                reasoning_summaries.append(thinking_text)
+                if post_tool_function:
+                    if inspect.iscoroutinefunction(post_tool_function):
+                        await post_tool_function(
+                            function_name="reasoning",
+                            input_args={},
+                            tool_result=thinking_text,
+                            tool_id=None,
+                        )
+                    else:
+                        post_tool_function(
+                            function_name="reasoning",
+                            input_args={},
+                            tool_result=thinking_text,
+                            tool_id=None,
+                        )
+
+        return [
+            {
+                "tool_call_id": None,
+                "name": "reasoning",
+                "args": {},
+                "result": summary,
+                "text": None,
+            }
+            for summary in reasoning_summaries
+        ]
+
     async def process_response(
         self,
         client,
@@ -402,6 +441,12 @@ class AnthropicProvider(BaseLLMProvider):
                     response=response,
                     messages=request_params.get("messages", []),
                 )
+
+                # Extract reasoning text from thinking blocks and call post_tool_function
+                reasoning_outputs = await self.extract_reasoning_text(
+                    thinking_blocks, post_tool_function
+                )
+                tool_outputs.extend(reasoning_outputs)
 
                 if len(tool_call_blocks) > 0:
                     tool_calls_executed = True
