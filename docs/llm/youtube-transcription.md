@@ -36,10 +36,30 @@ transcript = await get_youtube_summary(
         "Highlight key quotes with quotation marks"
     ],
     
-    # Advanced options
-    include_auto_chapters=True,       # Use YouTube's chapter markers
-    language_preference="en",         # Preferred transcript language
-    fallback_to_auto_captions=True,   # Use auto-generated if needed
-    max_retries=3                     # Retry on failure
 )
 ```
+
+### Structured Output
+
+Use `response_format` with a Pydantic model to get structured data instead of plain text:
+
+```python
+from pydantic import BaseModel
+from defog.llm.youtube import get_youtube_summary
+
+class VideoSummary(BaseModel):
+    title: str
+    key_points: list[str]
+    overall_sentiment: str
+
+result = await get_youtube_summary(
+    video_url="https://www.youtube.com/watch?v=...",
+    task_description="Summarize this video with a title, key points, and overall sentiment.",
+    response_format=VideoSummary,
+)
+
+print(result.title)
+print(result.key_points)
+```
+
+When `response_format` is provided, the Gemini model is constrained to return valid JSON matching the schema, and the result is returned as a validated Pydantic model instance.

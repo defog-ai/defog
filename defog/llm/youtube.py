@@ -1,4 +1,8 @@
 # converts a youtube video to a detailed, ideally diarized transcript
+import json
+import re
+from typing import Any, Optional, Union
+
 from defog.llm.utils_logging import (
     ToolProgressTracker,
     SubTaskLogger,
@@ -19,7 +23,8 @@ async def get_youtube_summary(
         "If you find yourself repeating the same words, you should stop.",
     ],
     task_description: str = "Please provide a detailed, accurate transcript of the video.",
-) -> str:
+    response_format: Optional[Any] = None,
+) -> Union[str, Any]:
     """
     Get a detailed, diarized transcript of a YouTube video using streaming generation.
 
@@ -32,17 +37,28 @@ async def get_youtube_summary(
         verbose: Whether to display real-time transcript streaming and progress (default: True).
         system_instructions: List of system instructions for the AI model. Controls the style and format of output.
         task_description: Specific task description sent to the AI model. Defines what the model should produce.
+        response_format: Optional Pydantic model class for structured output. When provided,
+            the model is constrained to return JSON matching the schema, and the result is
+            returned as a validated Pydantic model instance instead of a plain string.
 
     Returns:
-        A detailed, ideally diarized transcript of the video. May be empty if
-        transcription fails or video has no audio.
+        If response_format is None: a string transcript of the video.
+        If response_format is provided: a validated instance of the given Pydantic model.
 
     Raises:
         ValueError: If GEMINI_API_KEY environment variable is not set or URL is invalid.
 
     Example:
-        >>> transcript = await get_transcript("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+        >>> transcript = await get_youtube_summary("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
         >>> print(f"Transcript length: {len(transcript)} characters")
+
+        >>> from pydantic import BaseModel
+        >>> class VideoSummary(BaseModel):
+        ...     title: str
+        ...     key_points: list[str]
+        ...     sentiment: str
+        >>> result = await get_youtube_summary(url, response_format=VideoSummary)
+        >>> print(result.key_points)
     """
     tracker_class = ToolProgressTracker if verbose else NoOpToolProgressTracker
     logger_class = SubTaskLogger if verbose else NoOpSubTaskLogger
@@ -83,6 +99,24 @@ async def get_youtube_summary(
 
         transcript_chunks = []
 
+        # Build config with optional structured output
+        gen_config_kwargs = {
+            "system_instruction": system_instructions,
+            "temperature": 0.1,
+        }
+        if response_format is not None:
+            from pydantic import BaseModel
+
+            gen_config_kwargs["response_mime_type"] = "application/json"
+            if isinstance(response_format, type) and issubclass(
+                response_format, BaseModel
+            ):
+                gen_config_kwargs["response_schema"] = (
+                    response_format.model_json_schema()
+                )
+            else:
+                gen_config_kwargs["response_schema"] = response_format
+
         async for chunk in await client.aio.models.generate_content_stream(
             model=model,
             contents=Content(
@@ -94,10 +128,7 @@ async def get_youtube_summary(
                     Part(text=task_description),
                 ]
             ),
-            config=GenerateContentConfig(
-                system_instruction=system_instructions,
-                temperature=0.1,
-            ),
+            config=GenerateContentConfig(**gen_config_kwargs),
         ):
             try:
                 if chunk and chunk.text:
@@ -132,7 +163,36 @@ async def get_youtube_summary(
             },
         )
 
+        if response_format is not None:
+            return _parse_structured_response(full_transcript, response_format)
+
         return full_transcript
+
+
+def _parse_structured_response(content: str, response_format: Any) -> Any:
+    """Parse JSON content and validate against a Pydantic model if applicable."""
+    if not content:
+        return content
+
+    # Remove markdown formatting if present
+    if "```json" in content:
+        content = content.split("```json")[1].split("```")[0].strip()
+    elif "```" in content:
+        content = content.split("```")[1].split("```")[0].strip()
+
+    try:
+        parsed = json.loads(content)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", content, re.DOTALL)
+        if match:
+            parsed = json.loads(match.group())
+        else:
+            raise ValueError(f"Could not parse JSON from response: {content[:200]}")
+
+    if hasattr(response_format, "model_validate"):
+        return response_format.model_validate(parsed)
+
+    return parsed
 
 
 def _is_valid_youtube_url(url: str) -> bool:
