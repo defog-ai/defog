@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 
 async def get_youtube_summary(
     video_url: str,
-    model: str = "gemini-2.5-pro",
+    model: str = "gemini-3-flash-preview",
     verbose: bool = True,
     system_instructions: list[str] = [
         "Please provide a detailed, accurate transcript of the video. Please include timestamps in the format HH:MM:SS and names (if available) for each speaker. Do not describe what you *see* in the video, just create a great transcript based on what you *hear*.",
