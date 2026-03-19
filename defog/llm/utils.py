@@ -124,6 +124,7 @@ async def chat_async(
     citations_provider: Optional[Union[LLMProvider, str]] = None,
     citations_excluded_tools: Optional[List[str]] = None,
     citations_reasoning_effort: Optional[str] = None,
+    strict_tools: bool = True,
     tool_phase_complete_message: str = "exploration done, generating answer",
 ) -> LLMResponse:
     """
@@ -165,6 +166,7 @@ async def chat_async(
         tool_output_max_tokens: Maximum tokens allowed in tool outputs (default: 10000). Set to -1 to disable the check.
         previous_response_id: Optional id of a previous response when continuing conversations (supported for OpenAI, Anthropic/Grok, Gemini).
         citations_reasoning_effort: Reasoning effort level for citations
+        strict_tools: When True (default), Anthropic uses constrained decoding to enforce tool parameter schemas. Set to False to skip constrained decoding for lower latency with tool-heavy agents.
     Returns:
         LLMResponse object containing the result
 
@@ -317,6 +319,7 @@ async def chat_async(
                 tool_sample_functions=tool_sample_functions,
                 previous_response_id=previous_response_id,
                 return_tool_outputs_only=insert_tool_citations,
+                strict_tools=strict_tools,
                 tool_phase_complete_message=tool_phase_complete_message,
             )
 

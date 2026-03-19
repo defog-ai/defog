@@ -123,6 +123,7 @@ class AnthropicProvider(BaseLLMProvider):
         timeout: int = 600,
         reasoning_effort: Optional[str] = None,
         parallel_tool_calls: bool = False,
+        strict_tools: bool = True,
         **kwargs,
     ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
         """Create the parameter dict for Anthropic's .messages.create()."""
@@ -276,7 +277,9 @@ class AnthropicProvider(BaseLLMProvider):
         params["cache_control"] = {"type": "ephemeral"}
 
         if tools:
-            function_specs = get_function_specs(tools, self.get_provider_name())
+            function_specs = get_function_specs(
+                tools, self.get_provider_name(), strict=strict_tools
+            )
             params["tools"] = function_specs
             if tool_choice:
                 tool_names_list = [func.__name__ for func in tools]
@@ -873,6 +876,9 @@ class AnthropicProvider(BaseLLMProvider):
 
         client = AsyncAnthropic(**client_kwargs)
 
+        # Store strict_tools setting for use in update_tools_with_budget
+        self._strict_tools = kwargs.get("strict_tools", True)
+
         # Filter tools based on budget before building params
         tools = self.filter_tools_by_budget(tools, tool_handler)
 
@@ -891,6 +897,7 @@ class AnthropicProvider(BaseLLMProvider):
             reasoning_effort=reasoning_effort,
             timeout=timeout,
             parallel_tool_calls=kwargs.get("parallel_tool_calls", True),
+            strict_tools=kwargs.get("strict_tools", True),
         )
 
         # Construct a tool dict if needed

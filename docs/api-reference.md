@@ -247,12 +247,14 @@ async def chat_async(
     tool_result_preview_max_tokens: Optional[int] = None,
     tool_sample_functions: Optional[Dict[str, Callable]] = None,
     previous_response_id: Optional[str] = None,
+    strict_tools: bool = True,
 ) -> LLMResponse
 ```
 
 - `base_url`: Custom base URL for the provider's API endpoint (e.g. for proxies or self-hosted models). Overrides the default URL for the primary provider. Can also be set via environment variables (`OPENAI_BASE_URL`, `ANTHROPIC_BASE_URL`, etc.) or through `LLMConfig`.
 - `tool_result_preview_max_tokens`: Optional token budget for the tool output preview that is sent back to the LLM. Full tool outputs are still stored on the response object.
 - `tool_sample_functions`: Optional mapping of tool name to a callable (or a single callable) that returns a sampled version of the tool output before it is passed back to the LLM.
+- `strict_tools`: When `True` (default), Anthropic uses constrained decoding to enforce tool parameter schemas (`strict: true`). Set to `False` to skip constrained decoding for lower latency with tool-heavy agents. Only affects the Anthropic provider.
 
 ### LLMResponse
 

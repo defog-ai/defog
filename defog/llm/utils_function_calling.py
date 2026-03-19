@@ -201,7 +201,9 @@ def cleanup_obj(obj: dict, provider: Union[LLMProvider, str]):
 
 
 def get_function_specs(
-    functions: List[Callable], provider: Union[LLMProvider, str]
+    functions: List[Callable],
+    provider: Union[LLMProvider, str],
+    strict: bool = True,
 ) -> List[Union[OpenAIFunctionSpecs, AnthropicFunctionSpecs]]:
     """Return a list of dictionaries describing each function's name, docstring, and input schema."""
     provider_str = _normalize_provider(provider)
@@ -275,7 +277,7 @@ def get_function_specs(
                 "description": docstring,
                 "input_schema": input_schema,
             }
-            if provider_str == "anthropic":
+            if provider_str == "anthropic" and strict:
                 tool_spec["strict"] = True
                 # strict mode requires additionalProperties: false
                 input_schema["additionalProperties"] = False
