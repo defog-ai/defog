@@ -317,7 +317,9 @@ class BaseLLMProvider(ABC):
             if available_tools:
                 # Rebuild tool specs with only available tools
                 function_specs = get_function_specs(
-                    available_tools, self.get_provider_name()
+                    available_tools,
+                    self.get_provider_name(),
+                    strict=getattr(self, "_strict_tools", True),
                 )
                 request_params["tools"] = function_specs
                 tool_dict = tool_handler.build_tool_dict(available_tools)
