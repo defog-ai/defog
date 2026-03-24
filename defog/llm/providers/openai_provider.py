@@ -17,38 +17,6 @@ from ..tools.handler import ToolHandler
 logger = logging.getLogger(__name__)
 
 
-def _dereference_schema(schema: dict) -> dict:
-    """Inline all $ref references in a JSON schema.
-
-    OpenAI's structured output rejects $ref with sibling keywords (e.g.
-    description).  Pydantic's model_json_schema() produces exactly that
-    pattern for fields like ``hero: MyModel = Field(description="...")``.
-
-    This function resolves every $ref by replacing it with the referenced
-    definition, preserving any sibling keywords, and removes $defs.
-    """
-    defs = schema.pop("$defs", {})
-    if not defs:
-        return schema
-
-    def _resolve(obj):
-        if isinstance(obj, dict):
-            if "$ref" in obj:
-                ref_name = obj["$ref"].split("/")[-1]
-                resolved = _resolve(dict(defs[ref_name]))
-                # Merge sibling keywords (e.g. description) into the resolved def
-                for k, v in obj.items():
-                    if k != "$ref":
-                        resolved[k] = v
-                return resolved
-            return {k: _resolve(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [_resolve(v) for v in obj]
-        return obj
-
-    return _resolve(schema)
-
-
 class OpenAIProvider(BaseLLMProvider):
     """OpenAI GPT provider implementation."""
 
@@ -661,23 +629,11 @@ class OpenAIProvider(BaseLLMProvider):
                     for k, v in request_params.items()
                     if k not in ("tools", "tool_choice", "parallel_tool_calls")
                 }
-                response = await client.responses.create(
+                response = await client.responses.parse(
                     **final_params,
-                    text={
-                        "format": {
-                            "type": "json_schema",
-                            "name": response_format.schema()["title"],
-                            "schema": _dereference_schema(
-                                response_format.model_json_schema()
-                                | {"additionalProperties": False}
-                            ),
-                        }
-                    },
+                    text_format=response_format,
                 )
-                content = self.parse_structured_response(
-                    getattr(response, "output_text", "") or "",
-                    response_format,
-                )
+                content = response.output_parsed
             else:
                 content = getattr(response, "output_text", "") or ""
         else:
@@ -689,10 +645,7 @@ class OpenAIProvider(BaseLLMProvider):
 
             # No tools provided or we have run out of tool budget
             if response_format:
-                content = self.parse_structured_response(
-                    response.output_text or "",
-                    response_format,
-                )
+                content = response.output_parsed
             else:
                 content = response.output_text or ""
 
@@ -794,18 +747,9 @@ class OpenAIProvider(BaseLLMProvider):
         try:
             # Use Responses API
             if response_format and not tools:
-                response = await client_openai.responses.create(
+                response = await client_openai.responses.parse(
                     **request_params,
-                    text={
-                        "format": {
-                            "type": "json_schema",
-                            "name": response_format.schema()["title"],
-                            "schema": _dereference_schema(
-                                response_format.model_json_schema()
-                                | {"additionalProperties": False}
-                            ),
-                        }
-                    },
+                    text_format=response_format,
                 )
             else:
                 response = await client_openai.responses.create(**request_params)
