@@ -260,11 +260,7 @@ class OpenAIProvider(BaseLLMProvider):
                 request_params["parallel_tool_calls"] = parallel_tool_calls
 
         # Temperature not supported by reasoning models; keep for others
-        if (
-            model.startswith("o")
-            or model.startswith("gpt-5")
-            or model == "deepseek-reasoner"
-        ):
+        if model.startswith("o") or model.startswith("gpt-5"):
             pass
         else:
             request_params["temperature"] = temperature

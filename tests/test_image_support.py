@@ -401,17 +401,6 @@ class TestProviderImageMessageValidation:
 
         assert "Cannot create image message" in str(exc_info.value)
 
-    def test_deepseek_provider_handles_invalid_image(self):
-        """Test DeepSeek provider gracefully handles invalid images."""
-        from defog.llm.providers.deepseek_provider import DeepSeekProvider
-
-        provider = DeepSeekProvider(api_key="test")
-
-        # DeepSeek should handle invalid images gracefully (just log warnings)
-        msg = provider.create_image_message("invalid_base64!", "Test")
-        assert msg["role"] == "user"
-        assert "Test" in msg["content"]
-
     def test_provider_partial_validation_success(self):
         """Test provider behavior with mixed valid/invalid images."""
         from defog.llm.providers.anthropic_provider import AnthropicProvider

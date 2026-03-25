@@ -54,18 +54,6 @@ class TestLLMResponse(unittest.TestCase):
                 "output_tokens": 1000,
             },
             {
-                "model_name": "deepseek-chat",
-                "input_tokens": 1000,
-                "cached_input_tokens": 500,
-                "output_tokens": 1000,
-            },
-            {
-                "model_name": "deepseek-reasoner",
-                "input_tokens": 1000,
-                "cached_input_tokens": 500,
-                "output_tokens": 1000,
-            },
-            {
                 "model_name": "claude-haiku-4-5",
                 "input_tokens": 1000,
                 "cached_input_tokens": 0,

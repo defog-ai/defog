@@ -153,8 +153,6 @@ print(response.content)
 export OPENAI_API_KEY="your-openai-key"
 export ANTHROPIC_API_KEY="your-anthropic-key"
 export GEMINI_API_KEY="your-gemini-key"
-export TOGETHER_API_KEY="your-together-key"
-export XAI_API_KEY="your-grok-xai-key"   # or GROK_API_KEY
 ```
 
 ## Advanced Use Cases
