@@ -1,4 +1,5 @@
 from defog import config as defog_config
+import re
 import time
 import json
 import logging
@@ -132,6 +133,229 @@ class OpenRouterProvider(BaseLLMProvider):
             }
         return None
 
+    @staticmethod
+    def _deterministic_json_repair(content: str) -> str:
+        """Apply deterministic fixes for common JSON issues from open models.
+
+        Handles: markdown fences, Python literals (True/False/None),
+        JS constants (NaN/Infinity/undefined), trailing commas, comments,
+        single-quoted strings, and unbalanced brackets.
+        """
+        s = content.strip()
+
+        # Strip markdown code fences
+        if s.startswith("```"):
+            first_nl = s.find("\n")
+            s = s[first_nl + 1 :] if first_nl != -1 else s[3:]
+            if s.endswith("```"):
+                s = s[:-3]
+            s = s.strip()
+
+        # Remove single-line JS/Python comments (but not inside strings)
+        # Simplified: remove lines that start with // after optional whitespace
+        s = re.sub(r"(?m)^\s*//[^\n]*$", "", s)
+        # Remove trailing // comments after values (best effort — won't match
+        # comments inside strings, but covers the common case)
+        s = re.sub(r"//[^\n]*", "", s)
+        # Remove multi-line comments
+        s = re.sub(r"/\*.*?\*/", "", s, flags=re.DOTALL)
+
+        # Replace Python/JS literals with JSON equivalents
+        s = re.sub(r"\bTrue\b", "true", s)
+        s = re.sub(r"\bFalse\b", "false", s)
+        s = re.sub(r"\bNone\b", "null", s)
+        s = re.sub(r"\bNaN\b", "null", s)
+        s = re.sub(r"\bundefined\b", "null", s)
+        s = re.sub(r"\bInfinity\b", "null", s)
+        s = re.sub(r"-\s*null\b", "null", s)  # fix -Infinity → -null → null
+
+        # Remove trailing commas before } or ]
+        s = re.sub(r",(\s*[}\]])", r"\1", s)
+
+        # Try single-quote → double-quote conversion if no double quotes present
+        # in the structural positions (keys/values). This is a best-effort heuristic.
+        if "'" in s and not re.search(r'(?<=[{\[,:])\s*"', s):
+            # Likely single-quoted JSON — swap quotes
+            candidate = s.replace("'", '"')
+            try:
+                json.loads(candidate)
+                s = candidate
+            except json.JSONDecodeError:
+                pass  # didn't help, keep original
+
+        # Balance unclosed brackets using a proper character-level scan
+        open_braces = 0
+        open_brackets = 0
+        in_string = False
+        escape_next = False
+        for ch in s:
+            if escape_next:
+                escape_next = False
+                continue
+            if ch == "\\" and in_string:
+                escape_next = True
+                continue
+            if ch == '"':
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if ch == "{":
+                open_braces += 1
+            elif ch == "}":
+                open_braces -= 1
+            elif ch == "[":
+                open_brackets += 1
+            elif ch == "]":
+                open_brackets -= 1
+
+        # If we ended inside a string, close it
+        if in_string:
+            s += '"'
+
+        # If last non-whitespace is a colon, append null (truncated value)
+        stripped_tail = s.rstrip()
+        if stripped_tail and stripped_tail[-1] == ":":
+            s = stripped_tail + " null"
+        # If last non-whitespace is a comma, just strip it
+        # (a trailing comma before the closing bracket we're about to add)
+        elif stripped_tail and stripped_tail[-1] == ",":
+            s = stripped_tail[:-1]
+
+        # Append missing closing brackets
+        if open_brackets > 0:
+            s += "]" * open_brackets
+        if open_braces > 0:
+            s += "}" * open_braces
+
+        # Final pass: remove any remaining trailing commas before closers
+        # (can appear after bracket-balancing adds closers)
+        s = re.sub(r",(\s*[}\]])", r"\1", s)
+
+        return s
+
+    async def _llm_json_repair(
+        self,
+        broken_content: str,
+        response_format,
+        client,
+        model: str,
+        request_params: Dict[str, Any],
+    ) -> Any:
+        """Use a follow-on LLM call to fix broken JSON.
+
+        Appends the model's broken response as an assistant turn and adds a
+        user follow-up asking it to return valid JSON. This keeps the full
+        conversation context so the model understands what was originally
+        asked for.
+        """
+        schema = None
+        if hasattr(response_format, "model_json_schema"):
+            schema = response_format.model_json_schema()
+
+        schema_text = json.dumps(schema, indent=2) if schema else "Not available"
+
+        follow_up = (
+            "Your previous response was not valid JSON or did not match the "
+            "expected schema. Please return ONLY the corrected JSON — no "
+            "markdown fences, no explanations, no extra text.\n\n"
+            f"Expected JSON schema:\n{schema_text}"
+        )
+
+        logger.info(
+            "Attempting LLM-based JSON repair for model=%s",
+            model,
+        )
+
+        # Build the follow-up conversation: original messages + broken assistant
+        # turn + user correction request
+        messages = list(request_params.get("messages", []))
+        messages.append({"role": "assistant", "content": broken_content})
+        messages.append({"role": "user", "content": follow_up})
+
+        repair_params = {
+            "model": model,
+            "messages": messages,
+            "temperature": 0.0,
+            "max_tokens": 4096,
+        }
+        # Ask for structured output if we can build a response_format
+        rf = self._build_response_format(response_format)
+        if rf:
+            repair_params["response_format"] = rf
+
+        response = await client.chat.completions.create(**repair_params)
+        fixed_content = response.choices[0].message.content or ""
+        return self.parse_structured_response(fixed_content, response_format)
+
+    async def _parse_with_repair(
+        self,
+        raw_content: str,
+        response_format,
+        client,
+        model: str,
+        request_params: Optional[Dict[str, Any]] = None,
+    ) -> Any:
+        """Parse structured response with deterministic repair and LLM fallback.
+
+        Sequence:
+        1. Try base parse_structured_response (markdown strip + json.loads + regex)
+        2. Apply deterministic fixes and re-parse
+        3. Make a follow-on LLM call to repair the JSON
+        4. Return original content if everything fails
+        """
+        if not response_format or not raw_content:
+            return raw_content
+
+        has_pydantic = hasattr(response_format, "model_validate")
+
+        def _is_parsed(result):
+            """True when the result is a successfully parsed object, not raw text."""
+            if has_pydantic:
+                return not isinstance(result, str)
+            # Without Pydantic, a parsed dict/list is success
+            return isinstance(result, (dict, list))
+
+        # --- Step 1: standard parsing ---
+        try:
+            result = self.parse_structured_response(raw_content, response_format)
+            if _is_parsed(result):
+                return result
+        except Exception:
+            pass
+
+        # --- Step 2: deterministic repair ---
+        try:
+            repaired = self._deterministic_json_repair(raw_content)
+            result = self.parse_structured_response(repaired, response_format)
+            if _is_parsed(result):
+                logger.info("Deterministic JSON repair succeeded")
+                return result
+        except Exception:
+            pass
+
+        # --- Step 3: LLM-based repair ---
+        try:
+            result = await self._llm_json_repair(
+                raw_content,
+                response_format,
+                client,
+                model,
+                request_params or {},
+            )
+            if _is_parsed(result):
+                logger.info("LLM-based JSON repair succeeded")
+                return result
+        except Exception as e:
+            logger.warning("LLM-based JSON repair failed: %s", e)
+
+        # --- All repair attempts exhausted ---
+        logger.warning(
+            "All JSON repair attempts failed for structured output; "
+            "returning raw content"
+        )
+        return raw_content
+
     def build_params(
         self,
         messages: List[Dict[str, Any]],
@@ -251,7 +475,9 @@ class OpenRouterProvider(BaseLLMProvider):
                 total_output_tokens += output_tokens
 
                 # Accumulate OpenRouter-reported cost
-                _cost = getattr(response.usage, "cost", None) if response.usage else None
+                _cost = (
+                    getattr(response.usage, "cost", None) if response.usage else None
+                )
                 if _cost is not None:
                     total_openrouter_cost = (total_openrouter_cost or 0) + _cost
 
@@ -439,11 +665,15 @@ class OpenRouterProvider(BaseLLMProvider):
                 if extra_body:
                     final_params["extra_body"] = extra_body
                 response = await client.chat.completions.create(**final_params)
-                _cost = getattr(response.usage, "cost", None) if response.usage else None
+                _cost = (
+                    getattr(response.usage, "cost", None) if response.usage else None
+                )
                 if _cost is not None:
                     total_openrouter_cost = (total_openrouter_cost or 0) + _cost
                 raw_content = response.choices[0].message.content or ""
-                content = self.parse_structured_response(raw_content, response_format)
+                content = await self._parse_with_repair(
+                    raw_content, response_format, client, model, request_params
+                )
             else:
                 content = response.choices[0].message.content or ""
         else:
@@ -457,7 +687,9 @@ class OpenRouterProvider(BaseLLMProvider):
             if response_format:
                 # Already called with response_format in build_params
                 raw_content = response.choices[0].message.content or ""
-                content = self.parse_structured_response(raw_content, response_format)
+                content = await self._parse_with_repair(
+                    raw_content, response_format, client, model, request_params
+                )
             else:
                 content = response.choices[0].message.content or ""
 
