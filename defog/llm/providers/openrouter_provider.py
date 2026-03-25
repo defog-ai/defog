@@ -201,6 +201,7 @@ class OpenRouterProvider(BaseLLMProvider):
         total_input_tokens = 0
         total_cached_input_tokens = 0
         total_output_tokens = 0
+        total_openrouter_cost = None
         tool_calls_executed = False
 
         if tools:
@@ -214,6 +215,11 @@ class OpenRouterProvider(BaseLLMProvider):
                 total_input_tokens += input_tokens
                 total_cached_input_tokens += cached_tokens
                 total_output_tokens += output_tokens
+
+                # Accumulate OpenRouter-reported cost
+                _cost = getattr(response.usage, "cost", None) if response.usage else None
+                if _cost is not None:
+                    total_openrouter_cost = (total_openrouter_cost or 0) + _cost
 
                 # Post-response hook
                 await self.call_post_response_hook(
@@ -399,6 +405,9 @@ class OpenRouterProvider(BaseLLMProvider):
                 if extra_body:
                     final_params["extra_body"] = extra_body
                 response = await client.chat.completions.create(**final_params)
+                _cost = getattr(response.usage, "cost", None) if response.usage else None
+                if _cost is not None:
+                    total_openrouter_cost = (total_openrouter_cost or 0) + _cost
                 raw_content = response.choices[0].message.content or ""
                 content = self.parse_structured_response(raw_content, response_format)
             else:
@@ -427,6 +436,9 @@ class OpenRouterProvider(BaseLLMProvider):
             total_input_tokens += input_tokens
             total_cached_input_tokens += cached_tokens
             total_output_tokens += output_tokens
+            _cost = getattr(response.usage, "cost", None)
+            if _cost is not None:
+                total_openrouter_cost = (total_openrouter_cost or 0) + _cost
 
         return (
             content,
@@ -436,6 +448,7 @@ class OpenRouterProvider(BaseLLMProvider):
             total_output_tokens,
             output_tokens_details,
             response.id or "",
+            total_openrouter_cost,
         )
 
     async def execute_chat(
@@ -542,6 +555,7 @@ class OpenRouterProvider(BaseLLMProvider):
                 output_tokens,
                 output_tokens_details,
                 response_id,
+                openrouter_cost,
             ) = await self.process_response(
                 client=client,
                 response=response,
@@ -572,10 +586,13 @@ class OpenRouterProvider(BaseLLMProvider):
         history = self.append_assistant_message_to_history(messages, content)
         await self.persist_conversation_history(gen_response_id, history)
 
-        # Calculate cost (uses partial matching on model name)
-        cost = CostCalculator.calculate_cost(
-            model, input_tokens, output_tokens, cached_input_tokens
-        )
+        # Use OpenRouter-reported cost if available, fall back to local price table
+        if openrouter_cost is not None:
+            cost = round(openrouter_cost * 100, 6)  # Convert USD to cents
+        else:
+            cost = CostCalculator.calculate_cost(
+                model, input_tokens, output_tokens, cached_input_tokens
+            )
 
         return LLMResponse(
             model=model,
