@@ -83,54 +83,13 @@ class OpenRouterProvider(BaseLLMProvider):
         return "claude" in model_lower or model_lower.startswith("anthropic/")
 
     @staticmethod
-    def _ensure_strict_schema(schema: dict) -> dict:
-        """Recursively add ``additionalProperties: false`` to every object
-        type in *schema* so that OpenAI-compatible strict mode works correctly.
-
-        Pydantic's ``model_json_schema()`` omits this flag by default, but
-        OpenAI's structured-output API requires it on every object for
-        ``strict: true`` to actually enforce the schema.
-        """
-        if not isinstance(schema, dict):
-            return schema
-
-        if schema.get("type") == "object" and "properties" in schema:
-            schema.setdefault("additionalProperties", False)
-            if "required" not in schema:
-                schema["required"] = list(schema["properties"].keys())
-
-        for prop in schema.get("properties", {}).values():
-            OpenRouterProvider._ensure_strict_schema(prop)
-
-        if "items" in schema:
-            OpenRouterProvider._ensure_strict_schema(schema["items"])
-
-        if "$defs" in schema:
-            for def_schema in schema["$defs"].values():
-                OpenRouterProvider._ensure_strict_schema(def_schema)
-
-        for key in ("anyOf", "oneOf", "allOf"):
-            for item in schema.get(key, []):
-                OpenRouterProvider._ensure_strict_schema(item)
-
-        return schema
-
-    def _build_response_format(self, response_format) -> Optional[Dict[str, Any]]:
-        """Convert a Pydantic model class to an OpenRouter response_format dict."""
-        if response_format is None:
-            return None
-        if hasattr(response_format, "model_json_schema"):
-            schema = response_format.model_json_schema()
-            self._ensure_strict_schema(schema)
-            return {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": response_format.__name__,
-                    "strict": True,
-                    "schema": schema,
-                },
-            }
-        return None
+    def _is_pydantic_model(response_format) -> bool:
+        """Check if response_format is a Pydantic model class."""
+        return (
+            response_format is not None
+            and isinstance(response_format, type)
+            and hasattr(response_format, "model_validate")
+        )
 
     def build_params(
         self,
@@ -177,12 +136,8 @@ class OpenRouterProvider(BaseLLMProvider):
 
             request_params["parallel_tool_calls"] = parallel_tool_calls
 
-        # Structured output (only when not using tools — after tool chaining
-        # we make a separate structured-output call)
-        if response_format and not tools:
-            rf = self._build_response_format(response_format)
-            if rf:
-                request_params["response_format"] = rf
+        # Structured output is handled via client.beta.chat.completions.parse()
+        # in process_response / execute_chat, not via request_params.
 
         # Extra body for OpenRouter-specific features
         extra_body: Dict[str, Any] = {}
@@ -433,17 +388,22 @@ class OpenRouterProvider(BaseLLMProvider):
                         "extra_body",
                     )
                 }
-                rf = self._build_response_format(response_format)
-                if rf:
-                    final_params["response_format"] = rf
                 if extra_body:
                     final_params["extra_body"] = extra_body
-                response = await client.chat.completions.create(**final_params)
+                if self._is_pydantic_model(response_format):
+                    response = await client.beta.chat.completions.parse(
+                        **final_params, response_format=response_format
+                    )
+                    content = response.choices[0].message.parsed
+                else:
+                    response = await client.chat.completions.create(**final_params)
+                    raw_content = response.choices[0].message.content or ""
+                    content = self.parse_structured_response(
+                        raw_content, response_format
+                    )
                 _cost = getattr(response.usage, "cost", None) if response.usage else None
                 if _cost is not None:
                     total_openrouter_cost = (total_openrouter_cost or 0) + _cost
-                raw_content = response.choices[0].message.content or ""
-                content = self.parse_structured_response(raw_content, response_format)
             else:
                 content = response.choices[0].message.content or ""
         else:
@@ -455,9 +415,14 @@ class OpenRouterProvider(BaseLLMProvider):
             )
 
             if response_format:
-                # Already called with response_format in build_params
-                raw_content = response.choices[0].message.content or ""
-                content = self.parse_structured_response(raw_content, response_format)
+                # .parse() was used in execute_chat; read the parsed result
+                if self._is_pydantic_model(response_format):
+                    content = response.choices[0].message.parsed
+                else:
+                    raw_content = response.choices[0].message.content or ""
+                    content = self.parse_structured_response(
+                        raw_content, response_format
+                    )
             else:
                 content = response.choices[0].message.content or ""
 
@@ -579,7 +544,15 @@ class OpenRouterProvider(BaseLLMProvider):
             if extra_body:
                 create_kwargs["extra_body"] = extra_body
 
-            response = await client.chat.completions.create(**create_kwargs)
+            # Use .parse() for structured output (no tools path) — the SDK
+            # handles schema transformation, $ref resolution, and
+            # additionalProperties automatically.
+            if self._is_pydantic_model(response_format) and not tools:
+                response = await client.beta.chat.completions.parse(
+                    **create_kwargs, response_format=response_format
+                )
+            else:
+                response = await client.chat.completions.create(**create_kwargs)
 
             (
                 content,
