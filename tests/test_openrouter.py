@@ -109,8 +109,8 @@ class TestOpenRouterProvider(unittest.IsolatedAsyncioTestCase):
     """Integration tests for the OpenRouter provider."""
 
     def _check_sql(self, sql: str):
-        sql = sql.replace("```sql", "").replace("```", "").strip(";\n").lower()
-        sql = re.sub(r"(\s+)", " ", sql)
+        sql = sql.replace("```sql", "").replace("```", "").strip(";\n ").lower()
+        sql = re.sub(r"(\s+)", " ", sql).strip()
         self.assertIn(sql, acceptable_sql)
 
     # -- Basic chat ----------------------------------------------------------
@@ -354,3 +354,84 @@ class TestOpenRouterProvider(unittest.IsolatedAsyncioTestCase):
         )
         self.assertGreater(response.input_tokens, 0)
         self.assertGreater(response.output_tokens, 0)
+
+    # -- Kimi K2.5 (moonshotai/kimi-k2.5) -----------------------------------
+
+    @skip_if_no_api_key("openrouter")
+    async def test_kimi_k25_simple_chat(self):
+        """Simple chat with Kimi K2.5 via OpenRouter."""
+        messages = [
+            {"role": "user", "content": "Return a greeting in not more than 2 words\n"}
+        ]
+
+        response = await chat_async(
+            provider=LLMProvider.OPENROUTER,
+            model="moonshotai/kimi-k2.5",
+            messages=messages,
+            temperature=0.0,
+            max_retries=1,
+        )
+        self.assertIsInstance(response.content, str)
+        self.assertTrue(len(response.content) > 0)
+        self.assertIsInstance(response.time, float)
+
+    @skip_if_no_api_key("openrouter")
+    async def test_kimi_k25_sql_generation(self):
+        """SQL generation with Kimi K2.5."""
+        response = await chat_async(
+            provider=LLMProvider.OPENROUTER,
+            model="moonshotai/kimi-k2.5",
+            messages=messages_sql,
+            temperature=0.0,
+            max_retries=1,
+        )
+        self._check_sql(response.content)
+
+    @skip_if_no_api_key("openrouter")
+    async def test_kimi_k25_structured_output(self):
+        """Structured output with Kimi K2.5."""
+        response = await chat_async(
+            provider=LLMProvider.OPENROUTER,
+            model="moonshotai/kimi-k2.5",
+            messages=messages_sql_structured,
+            temperature=0.0,
+            response_format=ResponseFormat,
+            max_retries=1,
+        )
+        self.assertIsInstance(response.content, ResponseFormat)
+        self.assertIsInstance(response.content.sql, str)
+        self.assertTrue(len(response.content.sql) > 0)
+        self.assertIsInstance(response.content.reasoning, str)
+
+    @skip_if_no_api_key("openrouter")
+    async def test_kimi_k25_tool_calls(self):
+        """Tool calling with Kimi K2.5."""
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You have access to numsum and numprod tools. "
+                    "Use them to answer math questions."
+                ),
+            },
+            {
+                "role": "user",
+                "content": "What is 3 + 5? Use the numsum tool.",
+            },
+        ]
+
+        response = await chat_async(
+            provider=LLMProvider.OPENROUTER,
+            model="moonshotai/kimi-k2.5",
+            messages=messages,
+            tools=[numsum, numprod],
+            temperature=0.0,
+            max_retries=1,
+        )
+
+        self.assertIsNotNone(response.tool_outputs)
+        tool_names = [o["name"] for o in response.tool_outputs if o.get("tool_call_id")]
+        self.assertIn("numsum", tool_names)
+        for o in response.tool_outputs:
+            if o.get("name") == "numsum":
+                self.assertEqual(o["result"], 8)
