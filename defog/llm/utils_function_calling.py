@@ -259,7 +259,7 @@ def get_function_specs(
         if "required" not in input_schema:
             input_schema["required"] = list(input_schema["properties"].keys())
 
-        if provider_str == "openai":
+        if provider_str in ("openai", "openrouter"):
             function_specs.append(
                 {
                     "type": "function",
@@ -309,6 +309,15 @@ def convert_tool_choice(
 
     provider_map = {
         "openai": {
+            "choices": {
+                "auto": "auto",
+                "required": "required",
+                "any": "required",
+                "none": "none",
+            },
+            "custom": {"type": "function", "function": {"name": tool_choice}},
+        },
+        "openrouter": {
             "choices": {
                 "auto": "auto",
                 "required": "required",
