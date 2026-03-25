@@ -4,9 +4,7 @@ from .constants import (
     DEFAULT_TIMEOUT,
     MAX_RETRIES,
     DEFAULT_TEMPERATURE,
-    DEEPSEEK_BASE_URL,
     OPENAI_BASE_URL,
-    ALIBABA_BASE_URL,
 )
 from defog import config
 
@@ -42,23 +40,12 @@ class LLMConfig:
             "openai": "OPENAI_API_KEY",
             "anthropic": "ANTHROPIC_API_KEY",
             "gemini": "GEMINI_API_KEY",
-            "deepseek": "DEEPSEEK_API_KEY",
-            "together": "TOGETHER_API_KEY",
-            "mistral": "MISTRAL_API_KEY",
-            "alibaba": "ALIBABA_API_KEY",
-            "grok": "XAI_API_KEY",
         }
 
         for provider, env_var in key_mappings.items():
             if provider not in self.api_keys:
                 # Try environment variable first, then fall back to config file
                 self.api_keys[provider] = os.getenv(env_var) or config.get(env_var)
-
-        # Support legacy GROK_API_KEY environment variable name
-        if not self.api_keys.get("grok"):
-            self.api_keys["grok"] = os.getenv("GROK_API_KEY") or config.get(
-                "GROK_API_KEY"
-            )
 
     def _setup_base_urls(self):
         """Setup base URLs with environment variable overrides and defaults.
@@ -73,18 +60,10 @@ class LLMConfig:
             "openai": "OPENAI_BASE_URL",
             "anthropic": "ANTHROPIC_BASE_URL",
             "gemini": "GEMINI_BASE_URL",
-            "deepseek": "DEEPSEEK_BASE_URL",
-            "together": "TOGETHER_BASE_URL",
-            "mistral": "MISTRAL_BASE_URL",
-            "alibaba": "ALIBABA_BASE_URL",
-            "grok": "GROK_BASE_URL",
         }
 
         default_urls = {
             "openai": OPENAI_BASE_URL,
-            "deepseek": DEEPSEEK_BASE_URL,
-            "alibaba": ALIBABA_BASE_URL,
-            "grok": "https://api.x.ai",
         }
 
         for provider, env_var in env_var_mappings.items():

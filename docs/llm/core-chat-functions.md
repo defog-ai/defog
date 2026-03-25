@@ -83,7 +83,7 @@ response = await chat_async(
 Alternatively, set the corresponding environment variable and it will be picked up automatically:
 - `OPENAI_BASE_URL`
 - `ANTHROPIC_BASE_URL`
-- `GEMINI_BASE_URL`, `DEEPSEEK_BASE_URL`, `TOGETHER_BASE_URL`, `MISTRAL_BASE_URL`, `GROK_BASE_URL`, `ALIBABA_BASE_URL`
+- `GEMINI_BASE_URL`
 
 Or use the `LLMConfig` object for multi-provider configuration:
 
@@ -130,18 +130,4 @@ response = await chat_async(
     messages=messages
 )
 
-# Together AI
-response = await chat_async(
-    provider=LLMProvider.TOGETHER,
-    model="mixtral-8x7b",
-    messages=messages
-)
-
-# Grok (xAI)
-response = await chat_async(
-    provider=LLMProvider.GROK,
-    model="grok-4",
-    messages=messages,
-    tools=[my_function],          # Function calling supported
-)
 ```

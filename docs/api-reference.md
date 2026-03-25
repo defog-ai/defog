@@ -744,7 +744,6 @@ class LLMProvider(Enum):
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     GEMINI = "gemini"
-    TOGETHER = "together"
 
 DBType = Literal[
     "postgres", "mysql", "bigquery", "snowflake",

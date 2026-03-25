@@ -90,7 +90,6 @@ class TestGetFunctionSpecs(unittest.TestCase):
     def setUp(self):
         self.openai_provider = "openai"
         self.anthropic_provider = "anthropic"
-        self.grok_provider = "grok"
         self.tools = [get_weather, numsum, numprod]
         self.maxDiff = None
         self.openai_specs = [
@@ -196,59 +195,12 @@ class TestGetFunctionSpecs(unittest.TestCase):
                 "strict": True,
             },
         ]
-        self.grok_specs = [
-            {
-                "name": "get_weather",
-                "description": "This function returns the current temperature (in celsius) for the given latitude and longitude.",
-                "input_schema": {
-                    "properties": {
-                        "latitude": {
-                            "description": "The latitude of the location",
-                            "type": "number",
-                        },
-                        "longitude": {
-                            "description": "The longitude of the location",
-                            "type": "number",
-                        },
-                    },
-                    "type": "object",
-                    "required": ["latitude", "longitude"],
-                },
-            },
-            {
-                "name": "numsum",
-                "description": "This function returns the sum of two numbers",
-                "input_schema": {
-                    "properties": {
-                        "a": {"type": "integer"},
-                        "b": {"type": "integer"},
-                    },
-                    "type": "object",
-                    "required": ["a", "b"],
-                },
-            },
-            {
-                "name": "numprod",
-                "description": "This function returns the product of two numbers",
-                "input_schema": {
-                    "properties": {
-                        "a": {"type": "integer"},
-                        "b": {"type": "integer"},
-                    },
-                    "type": "object",
-                    "required": ["a", "b"],
-                },
-            },
-        ]
-
     def test_get_function_specs(self):
         openai_specs = get_function_specs(self.tools, self.openai_provider)
         anthropic_specs = get_function_specs(self.tools, self.anthropic_provider)
-        grok_specs = get_function_specs(self.tools, self.grok_provider)
 
         self.assertEqual(openai_specs, self.openai_specs)
         self.assertEqual(anthropic_specs, self.anthropic_specs)
-        self.assertEqual(grok_specs, self.grok_specs)
 
 
 class TestToolUseFeatures(unittest.IsolatedAsyncioTestCase):
@@ -319,36 +271,6 @@ class TestToolUseFeatures(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(float(tool_outputs[0]["result"]), 21)
         self.assertLessEqual(float(tool_outputs[0]["result"]), 38)
 
-    # =============================
-    # Grok structured outputs
-    # =============================
-    class GrokStructuredMath(BaseModel):
-        reasoning: str
-        total: int
-
-    @pytest.mark.asyncio
-    @skip_if_no_api_key("grok")
-    async def test_grok_structured_output_simple(self):
-        messages = [
-            {
-                "role": "user",
-                "content": "Add 19 and 23. Return the result in JSON with fields 'reasoning' and integer 'total'.",
-            }
-        ]
-
-        result = await chat_async(
-            provider="grok",
-            model="grok-4-fast-non-reasoning-latest",
-            messages=messages,
-            response_format=TestToolUseFeatures.GrokStructuredMath,
-            max_retries=1,
-        )
-
-        # Should parse into the pydantic model
-        self.assertIsInstance(result.content, TestToolUseFeatures.GrokStructuredMath)
-        # Basic sanity check on computation
-        self.assertEqual(result.content.total, 42)
-
     @pytest.mark.asyncio
     @skip_if_no_api_key("anthropic")
     async def test_tool_use_arithmetic_async_anthropic(self):
@@ -378,48 +300,6 @@ class TestToolUseFeatures(unittest.IsolatedAsyncioTestCase):
                 {
                     "role": "user",
                     "content": self.weather_qn,
-                },
-            ],
-            tools=self.tools,
-            max_retries=1,
-        )
-        print(result)
-        tools_used = [output["name"] for output in result.tool_outputs]
-        self.assertSetEqual(set(tools_used), {"get_weather"})
-        self.assertEqual(result.tool_outputs[0]["name"], "get_weather")
-        self.assertGreaterEqual(float(result.content), 21)
-        self.assertLessEqual(float(result.content), 38)
-
-    @pytest.mark.asyncio
-    @skip_if_no_api_key("grok")
-    async def test_tool_use_arithmetic_async_grok(self):
-        result = await chat_async(
-            provider="grok",
-            model="grok-4-fast-non-reasoning-latest",
-            messages=[
-                {
-                    "role": "user",
-                    "content": self.arithmetic_qn,
-                },
-            ],
-            tools=self.tools,
-            max_retries=1,
-        )
-        print(result)
-        self.assertEqual(result.content, self.arithmetic_answer)
-        tools_used = [output["name"] for output in result.tool_outputs]
-        self.assertSetEqual(set(tools_used), {"numsum", "numprod"})
-
-    @pytest.mark.asyncio
-    @skip_if_no_api_key("grok")
-    async def test_tool_use_weather_async_grok(self):
-        result = await chat_async(
-            provider="grok",
-            model="grok-4-fast-non-reasoning-latest",
-            messages=[
-                {
-                    "role": "user",
-                    "content": self.weather_qn_specific,
                 },
             ],
             tools=self.tools,

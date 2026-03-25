@@ -291,11 +291,7 @@ class AnthropicProvider(BaseLLMProvider):
                 params["tool_choice"] = {"type": "auto"}
 
             # Add parallel tool calls configuration
-            if (
-                "tool_choice" in params
-                and isinstance(params["tool_choice"], dict)
-                and not model.startswith("grok")
-            ):
+            if "tool_choice" in params and isinstance(params["tool_choice"], dict):
                 if not parallel_tool_calls:
                     params["tool_choice"]["disable_parallel_tool_use"] = True
 

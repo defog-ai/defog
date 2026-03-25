@@ -116,10 +116,10 @@ class TestWebSearchTool(unittest.IsolatedAsyncioTestCase):
             await web_search_tool(
                 question=self.test_question,
                 model="test-model",
-                provider=LLMProvider.GROK,
+                provider="unsupported_provider",
             )
 
-        self.assertIn("Provider LLMProvider.GROK not supported", str(context.exception))
+        self.assertIn("not supported", str(context.exception))
 
     @pytest.mark.asyncio
     async def test_web_search_different_questions(self):
