@@ -85,6 +85,15 @@ else:
     AVAILABLE_PROVIDERS["gemini"] = False
     AVAILABLE_MODELS["gemini"] = []
 
+if os.getenv("OPENROUTER_API_KEY"):
+    AVAILABLE_PROVIDERS["openrouter"] = True
+    AVAILABLE_MODELS["openrouter"] = [
+        "anthropic/claude-sonnet-4.6",
+        "openai/gpt-4.1-mini",
+    ]
+else:
+    AVAILABLE_PROVIDERS["openrouter"] = False
+    AVAILABLE_MODELS["openrouter"] = []
 
 
 def get_available_models():

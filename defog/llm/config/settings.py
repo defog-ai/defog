@@ -40,6 +40,7 @@ class LLMConfig:
             "openai": "OPENAI_API_KEY",
             "anthropic": "ANTHROPIC_API_KEY",
             "gemini": "GEMINI_API_KEY",
+            "openrouter": "OPENROUTER_API_KEY",
         }
 
         for provider, env_var in key_mappings.items():
@@ -60,6 +61,7 @@ class LLMConfig:
             "openai": "OPENAI_BASE_URL",
             "anthropic": "ANTHROPIC_BASE_URL",
             "gemini": "GEMINI_BASE_URL",
+            "openrouter": "OPENROUTER_BASE_URL",
         }
 
         default_urls = {

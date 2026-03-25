@@ -8,6 +8,7 @@ from .providers import (
     AnthropicProvider,
     OpenAIProvider,
     GeminiProvider,
+    OpenRouterProvider,
 )
 from .providers.base import LLMResponse
 from .exceptions import LLMError, ConfigurationError, ToolError
@@ -61,6 +62,7 @@ def get_provider_instance(
         "anthropic": AnthropicProvider,
         "openai": OpenAIProvider,
         "gemini": GeminiProvider,
+        "openrouter": OpenRouterProvider,
     }
 
     if provider_name not in provider_classes:
