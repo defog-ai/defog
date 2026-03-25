@@ -90,6 +90,7 @@ if os.getenv("OPENROUTER_API_KEY"):
     AVAILABLE_MODELS["openrouter"] = [
         "anthropic/claude-sonnet-4.6",
         "openai/gpt-4.1-mini",
+        "moonshotai/kimi-k2.5",
     ]
 else:
     AVAILABLE_PROVIDERS["openrouter"] = False
