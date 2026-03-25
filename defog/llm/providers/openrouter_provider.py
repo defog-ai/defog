@@ -82,12 +82,46 @@ class OpenRouterProvider(BaseLLMProvider):
         model_lower = model.lower()
         return "claude" in model_lower or model_lower.startswith("anthropic/")
 
+    @staticmethod
+    def _ensure_strict_schema(schema: dict) -> dict:
+        """Recursively add ``additionalProperties: false`` to every object
+        type in *schema* so that OpenAI-compatible strict mode works correctly.
+
+        Pydantic's ``model_json_schema()`` omits this flag by default, but
+        OpenAI's structured-output API requires it on every object for
+        ``strict: true`` to actually enforce the schema.
+        """
+        if not isinstance(schema, dict):
+            return schema
+
+        if schema.get("type") == "object" and "properties" in schema:
+            schema.setdefault("additionalProperties", False)
+            if "required" not in schema:
+                schema["required"] = list(schema["properties"].keys())
+
+        for prop in schema.get("properties", {}).values():
+            OpenRouterProvider._ensure_strict_schema(prop)
+
+        if "items" in schema:
+            OpenRouterProvider._ensure_strict_schema(schema["items"])
+
+        if "$defs" in schema:
+            for def_schema in schema["$defs"].values():
+                OpenRouterProvider._ensure_strict_schema(def_schema)
+
+        for key in ("anyOf", "oneOf", "allOf"):
+            for item in schema.get(key, []):
+                OpenRouterProvider._ensure_strict_schema(item)
+
+        return schema
+
     def _build_response_format(self, response_format) -> Optional[Dict[str, Any]]:
         """Convert a Pydantic model class to an OpenRouter response_format dict."""
         if response_format is None:
             return None
         if hasattr(response_format, "model_json_schema"):
             schema = response_format.model_json_schema()
+            self._ensure_strict_schema(schema)
             return {
                 "type": "json_schema",
                 "json_schema": {
