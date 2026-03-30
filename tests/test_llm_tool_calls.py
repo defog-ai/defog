@@ -195,6 +195,7 @@ class TestGetFunctionSpecs(unittest.TestCase):
                 "strict": True,
             },
         ]
+
     def test_get_function_specs(self):
         openai_specs = get_function_specs(self.tools, self.openai_provider)
         anthropic_specs = get_function_specs(self.tools, self.anthropic_provider)
@@ -350,6 +351,25 @@ class TestToolUseFeatures(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.content, self.arithmetic_answer)
         tools_used = [output["name"] for output in result.tool_outputs]
         self.assertSetEqual(set(tools_used), {"numsum", "numprod"})
+
+    @pytest.mark.asyncio
+    @skip_if_no_api_key("gemini")
+    async def test_tool_use_arithmetic_async_gemini_reasoning_effort(self):
+        result = await chat_async(
+            provider="gemini",
+            model="gemini-3-flash-preview",
+            messages=[
+                {
+                    "role": "user",
+                    "content": self.arithmetic_qn,
+                },
+            ],
+            tools=self.tools,
+            reasoning_effort="low",
+            max_retries=1,
+        )
+        print(result)
+        self.assertEqual(result.content, self.arithmetic_answer)
 
     @pytest.mark.asyncio
     @skip_if_no_api_key("gemini")
@@ -1146,3 +1166,132 @@ class TestStructuredOutputWithTools(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(result.content, CalculationResult)
         self.assertEqual(result.content.result, 1200)  # (150 + 250) * 3
         self.assertIsInstance(result.content.explanation, str)
+
+
+class TestGeminiExtractReasoningText(unittest.IsolatedAsyncioTestCase):
+    """Unit tests for Gemini provider extract_reasoning_text method."""
+
+    def setUp(self):
+        from defog.llm.providers.gemini_provider import GeminiProvider
+
+        self.provider = GeminiProvider(api_key="fake-key")
+
+    def _make_response(self, outputs):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(outputs=outputs)
+
+    def _make_thought_block(self, summaries):
+        from types import SimpleNamespace
+
+        summary_objects = []
+        for s in summaries:
+            summary_objects.append(SimpleNamespace(type="text", text=s))
+        return SimpleNamespace(type="thought", summary=summary_objects)
+
+    @pytest.mark.asyncio
+    async def test_extract_reasoning_no_thoughts(self):
+        """Empty outputs should return empty list."""
+        response = self._make_response([])
+        result = await self.provider.extract_reasoning_text(response)
+        self.assertEqual(result, [])
+
+    @pytest.mark.asyncio
+    async def test_extract_reasoning_none_outputs(self):
+        """None outputs should return empty list."""
+        response = self._make_response(None)
+        result = await self.provider.extract_reasoning_text(response)
+        self.assertEqual(result, [])
+
+    @pytest.mark.asyncio
+    async def test_extract_reasoning_single_thought(self):
+        thought = self._make_thought_block(["The user wants to add two numbers."])
+        response = self._make_response([thought])
+        result = await self.provider.extract_reasoning_text(response)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["name"], "reasoning")
+        self.assertEqual(result[0]["result"], "The user wants to add two numbers.")
+        self.assertIsNone(result[0]["tool_call_id"])
+        self.assertEqual(result[0]["args"], {})
+        self.assertIsNone(result[0]["text"])
+
+    @pytest.mark.asyncio
+    async def test_extract_reasoning_multiple_thoughts(self):
+        thought1 = self._make_thought_block(["First thought."])
+        thought2 = self._make_thought_block(["Second thought."])
+        response = self._make_response([thought1, thought2])
+        result = await self.provider.extract_reasoning_text(response)
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]["result"], "First thought.")
+        self.assertEqual(result[1]["result"], "Second thought.")
+
+    @pytest.mark.asyncio
+    async def test_extract_reasoning_mixed_outputs(self):
+        """Thought blocks mixed with text and function_call blocks."""
+        from types import SimpleNamespace
+
+        thought = self._make_thought_block(["Reasoning here."])
+        text_block = SimpleNamespace(type="text", text="Hello world")
+        fc_block = SimpleNamespace(
+            type="function_call", name="foo", id="1", arguments="{}"
+        )
+        response = self._make_response([thought, text_block, fc_block])
+        result = await self.provider.extract_reasoning_text(response)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["result"], "Reasoning here.")
+
+    @pytest.mark.asyncio
+    async def test_extract_reasoning_calls_post_tool_function(self):
+        """post_tool_function should be called for each thought summary."""
+        calls = []
+
+        async def mock_post_tool(function_name, input_args, tool_result, tool_id):
+            calls.append(
+                {
+                    "function_name": function_name,
+                    "input_args": input_args,
+                    "tool_result": tool_result,
+                    "tool_id": tool_id,
+                }
+            )
+
+        thought = self._make_thought_block(["Thought A.", "Thought B."])
+        response = self._make_response([thought])
+        result = await self.provider.extract_reasoning_text(response, mock_post_tool)
+        self.assertEqual(len(result), 2)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0]["function_name"], "reasoning")
+        self.assertEqual(calls[0]["tool_result"], "Thought A.")
+        self.assertIsNone(calls[0]["tool_id"])
+        self.assertEqual(calls[1]["tool_result"], "Thought B.")
+
+    @pytest.mark.asyncio
+    async def test_extract_reasoning_calls_sync_post_tool_function(self):
+        """Sync post_tool_function should also work."""
+        calls = []
+
+        def sync_post_tool(function_name, input_args, tool_result, tool_id):
+            calls.append(tool_result)
+
+        thought = self._make_thought_block(["Sync thought."])
+        response = self._make_response([thought])
+        await self.provider.extract_reasoning_text(response, sync_post_tool)
+        self.assertEqual(calls, ["Sync thought."])
+
+    @pytest.mark.asyncio
+    async def test_extract_reasoning_skips_empty_text(self):
+        """Thought summary blocks with empty text should be skipped."""
+        from types import SimpleNamespace
+
+        thought = SimpleNamespace(
+            type="thought",
+            summary=[
+                SimpleNamespace(type="text", text=""),
+                SimpleNamespace(type="text", text=None),
+                SimpleNamespace(type="text", text="Valid thought."),
+            ],
+        )
+        response = self._make_response([thought])
+        result = await self.provider.extract_reasoning_text(response)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["result"], "Valid thought.")
