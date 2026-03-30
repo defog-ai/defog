@@ -149,4 +149,14 @@ MODEL_COSTS = {
         "output_cost_per1k": 0.012,
         "cached_input_cost_per1k": 0.0002,
     },
+    "gemini-3.1-flash-lite": {
+        "input_cost_per1k": 0.00025,
+        "output_cost_per1k": 0.0015,
+        "cached_input_cost_per1k": 0.000025,
+    },
+    "gemini-3.1-pro": {
+        "input_cost_per1k": 0.002,
+        "output_cost_per1k": 0.012,
+        "cached_input_cost_per1k": 0.0002,
+    },
 }
