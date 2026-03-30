@@ -1,3 +1,4 @@
+import inspect
 import json
 import traceback
 import time
@@ -330,6 +331,50 @@ class GeminiProvider(BaseLLMProvider):
 
         return request_params, new_messages
 
+    async def extract_reasoning_text(
+        self,
+        response: Any,
+        post_tool_function: Optional[Callable] = None,
+    ) -> List[Dict[str, Any]]:
+        """Extract thinking/reasoning text from Gemini thought blocks and call post_tool_function."""
+        reasoning_summaries = []
+        if not response.outputs:
+            return []
+        for part in response.outputs:
+            if getattr(part, "type", None) == "thought" and part.summary:
+                for summary_block in part.summary:
+                    if (
+                        getattr(summary_block, "type", None) == "text"
+                        and summary_block.text
+                    ):
+                        reasoning_summaries.append(summary_block.text)
+                        if post_tool_function:
+                            if inspect.iscoroutinefunction(post_tool_function):
+                                await post_tool_function(
+                                    function_name="reasoning",
+                                    input_args={},
+                                    tool_result=summary_block.text,
+                                    tool_id=None,
+                                )
+                            else:
+                                post_tool_function(
+                                    function_name="reasoning",
+                                    input_args={},
+                                    tool_result=summary_block.text,
+                                    tool_id=None,
+                                )
+
+        return [
+            {
+                "tool_call_id": None,
+                "name": "reasoning",
+                "args": {},
+                "result": summary,
+                "text": None,
+            }
+            for summary in reasoning_summaries
+        ]
+
     async def process_response(
         self,
         client: genai.Client,
@@ -406,6 +451,12 @@ class GeminiProvider(BaseLLMProvider):
                 response=response,
                 messages=messages,
             )
+
+            # Extract reasoning text from thought blocks
+            reasoning_blocks = await self.extract_reasoning_text(
+                response, post_tool_function
+            )
+            tool_outputs.extend(reasoning_blocks)
 
             if function_calls:
                 tool_calls_executed = True
