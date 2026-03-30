@@ -109,6 +109,8 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
                     "gemini-2.5-pro",
                     "gemini-3-flash-preview",
                     "gemini-3-pro-preview",
+                    "gemini-3.1-flash-lite-preview",
+                    "gemini-3.1-pro-preview",
                 ]
             )
         models = [m for m in test_models if m in sum(AVAILABLE_MODELS.values(), [])]
@@ -151,6 +153,8 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
                     "gemini-2.5-pro",
                     "gemini-3-flash-preview",
                     "gemini-3-pro-preview",
+                    "gemini-3.1-flash-lite-preview",
+                    "gemini-3.1-pro-preview",
                 ]
             )
 
@@ -234,6 +238,8 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
                     "gemini-2.5-pro",
                     "gemini-3-flash-preview",
                     "gemini-3-pro-preview",
+                    "gemini-3.1-flash-lite-preview",
+                    "gemini-3.1-pro-preview",
                 ]
             )
         if AVAILABLE_MODELS.get("anthropic"):
