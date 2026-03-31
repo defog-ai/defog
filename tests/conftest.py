@@ -80,53 +80,23 @@ if os.getenv("GEMINI_API_KEY"):
         "gemini-2.0-flash",
         "gemini-2.5-flash",
         "gemini-2.5-pro",
+        "gemini-3.1-flash-lite-preview",
+        "gemini-3.1-pro-preview",
     ]
 else:
     AVAILABLE_PROVIDERS["gemini"] = False
     AVAILABLE_MODELS["gemini"] = []
 
-if os.getenv("DEEPSEEK_API_KEY"):
-    AVAILABLE_PROVIDERS["deepseek"] = True
-    AVAILABLE_MODELS["deepseek"] = ["deepseek-chat", "deepseek-reasoner"]
-else:
-    AVAILABLE_PROVIDERS["deepseek"] = False
-    AVAILABLE_MODELS["deepseek"] = []
-
-if os.getenv("MISTRAL_API_KEY"):
-    AVAILABLE_PROVIDERS["mistral"] = True
-    AVAILABLE_MODELS["mistral"] = [
-        "mistral-small-latest",
-        "mistral-medium-latest",
-        "mistral-large-latest",
+if os.getenv("OPENROUTER_API_KEY"):
+    AVAILABLE_PROVIDERS["openrouter"] = True
+    AVAILABLE_MODELS["openrouter"] = [
+        "anthropic/claude-sonnet-4.6",
+        "openai/gpt-4.1-mini",
+        "moonshotai/kimi-k2.5",
     ]
 else:
-    AVAILABLE_PROVIDERS["mistral"] = False
-    AVAILABLE_MODELS["mistral"] = []
-
-if os.getenv("TOGETHER_API_KEY"):
-    AVAILABLE_PROVIDERS["together"] = True
-    AVAILABLE_MODELS["together"] = []
-else:
-    AVAILABLE_PROVIDERS["together"] = False
-    AVAILABLE_MODELS["together"] = []
-
-if os.getenv("ALIBABA_API_KEY"):
-    AVAILABLE_PROVIDERS["alibaba"] = True
-    AVAILABLE_MODELS["alibaba"] = ["qwen-max", "qwen-plus", "qwen-turbo"]
-else:
-    AVAILABLE_PROVIDERS["alibaba"] = False
-    AVAILABLE_MODELS["alibaba"] = []
-
-if os.getenv("XAI_API_KEY") or os.getenv("GROK_API_KEY"):
-    AVAILABLE_PROVIDERS["grok"] = True
-    AVAILABLE_MODELS["grok"] = [
-        "grok-4",
-        "grok-4-fast-non-reasoning-latest",
-        "grok-4-fast-reasoning-latest",
-    ]
-else:
-    AVAILABLE_PROVIDERS["grok"] = False
-    AVAILABLE_MODELS["grok"] = []
+    AVAILABLE_PROVIDERS["openrouter"] = False
+    AVAILABLE_MODELS["openrouter"] = []
 
 
 def get_available_models():

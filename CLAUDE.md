@@ -22,4 +22,5 @@
 # Testing
 - Remember to run all tests with `python -m pytest ...`. This is to ensure you are using the correct version of python and pytest
 - Add `PYTHONPATH=.` when running tests, so that the tests/examples use the version of defog in this repo - instead of the machine installed version
+- Use the `--envfile .env` argument to load environment variables (API keys etc.) when running tests
 - Try to run scoped tests that directly affect changed code instead of running all tests at once

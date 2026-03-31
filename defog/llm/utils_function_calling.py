@@ -201,7 +201,9 @@ def cleanup_obj(obj: dict, provider: Union[LLMProvider, str]):
 
 
 def get_function_specs(
-    functions: List[Callable], provider: Union[LLMProvider, str]
+    functions: List[Callable],
+    provider: Union[LLMProvider, str],
+    strict: bool = True,
 ) -> List[Union[OpenAIFunctionSpecs, AnthropicFunctionSpecs]]:
     """Return a list of dictionaries describing each function's name, docstring, and input schema."""
     provider_str = _normalize_provider(provider)
@@ -257,7 +259,7 @@ def get_function_specs(
         if "required" not in input_schema:
             input_schema["required"] = list(input_schema["properties"].keys())
 
-        if provider_str in ("openai", "deepseek", "together", "alibaba"):
+        if provider_str in ("openai", "openrouter"):
             function_specs.append(
                 {
                     "type": "function",
@@ -268,14 +270,14 @@ def get_function_specs(
                     },
                 }
             )
-        elif provider_str in ("anthropic", "grok"):
+        elif provider_str == "anthropic":
             input_schema["type"] = "object"
             tool_spec = {
                 "name": func.__name__,
                 "description": docstring,
                 "input_schema": input_schema,
             }
-            if provider_str == "anthropic":
+            if strict:
                 tool_spec["strict"] = True
                 # strict mode requires additionalProperties: false
                 input_schema["additionalProperties"] = False
@@ -287,17 +289,6 @@ def get_function_specs(
                     "name": func.__name__,
                     "description": docstring,
                     "parameters": input_schema,
-                }
-            )
-        elif provider_str == "mistral":
-            function_specs.append(
-                {
-                    "type": "function",
-                    "function": {
-                        "name": func.__name__,
-                        "description": docstring,
-                        "parameters": input_schema,
-                    },
                 }
             )
         else:
@@ -326,25 +317,7 @@ def convert_tool_choice(
             },
             "custom": {"type": "function", "function": {"name": tool_choice}},
         },
-        "deepseek": {
-            "choices": {
-                "auto": "auto",
-                "required": "required",
-                "any": "required",
-                "none": "none",
-            },
-            "custom": {"type": "function", "function": {"name": tool_choice}},
-        },
-        "together": {
-            "choices": {
-                "auto": "auto",
-                "required": "required",
-                "any": "required",
-                "none": "none",
-            },
-            "custom": {"type": "function", "function": {"name": tool_choice}},
-        },
-        "alibaba": {
+        "openrouter": {
             "choices": {
                 "auto": "auto",
                 "required": "required",
@@ -354,14 +327,6 @@ def convert_tool_choice(
             "custom": {"type": "function", "function": {"name": tool_choice}},
         },
         "anthropic": {
-            "choices": {
-                "auto": {"type": "auto"},
-                "required": {"type": "any"},
-                "any": {"type": "any"},
-            },
-            "custom": {"type": "tool", "name": tool_choice},
-        },
-        "grok": {
             "choices": {
                 "auto": {"type": "auto"},
                 "required": {"type": "any"},
@@ -382,15 +347,6 @@ def convert_tool_choice(
                     "tools": [tool_choice],
                 }
             },
-        },
-        "mistral": {
-            "choices": {
-                "auto": "auto",
-                "required": "any",
-                "any": "any",
-                "none": "none",
-            },
-            "custom": tool_choice,
         },
     }
 

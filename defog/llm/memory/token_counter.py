@@ -137,22 +137,6 @@ class TokenCounter:
             # Fallback to OpenAI tokenizer
             return self.count_openai_tokens(content, "gpt-4")
 
-    def count_together_tokens(
-        self, messages: Union[str, List[Dict[str, Any]]], model: str
-    ) -> int:
-        """
-        Count tokens for Together models using OpenAI tokenizer as approximation.
-
-        Args:
-            messages: Text or message list
-            model: Together model name
-
-        Returns:
-            Estimated token count
-        """
-        # Use OpenAI tokenizer as approximation
-        return self.count_openai_tokens(messages, "gpt-4")
-
     def count_tokens(
         self,
         messages: Union[str, List[Dict[str, Any]]],
@@ -166,7 +150,7 @@ class TokenCounter:
         Args:
             messages: Text or message list
             model: Model name
-            provider: Provider name (openai, anthropic, gemini, together)
+            provider: Provider name (openai, anthropic, gemini)
             client: Optional provider client for API-based counting
 
         Returns:
@@ -188,8 +172,6 @@ class TokenCounter:
             return self.count_openai_tokens(messages, "gpt-4")
         elif provider_lower == "gemini":
             return self.count_gemini_tokens(messages, model, client)
-        elif provider_lower == "together":
-            return self.count_together_tokens(messages, model)
         else:
             # Default to OpenAI tokenizer
             return self.count_openai_tokens(messages, "gpt-4")

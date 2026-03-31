@@ -2,7 +2,7 @@
 
 The library provides a unified interface for working with multiple LLM providers.
 
-Supported providers: OpenAI, Anthropic, Gemini, Grok (xAI), Together.
+Supported providers: OpenAI, Anthropic, Gemini, OpenRouter.
 
 ## Basic Usage
 
@@ -83,7 +83,8 @@ response = await chat_async(
 Alternatively, set the corresponding environment variable and it will be picked up automatically:
 - `OPENAI_BASE_URL`
 - `ANTHROPIC_BASE_URL`
-- `GEMINI_BASE_URL`, `DEEPSEEK_BASE_URL`, `TOGETHER_BASE_URL`, `MISTRAL_BASE_URL`, `GROK_BASE_URL`, `ALIBABA_BASE_URL`
+- `GEMINI_BASE_URL`
+- `OPENROUTER_BASE_URL`
 
 Or use the `LLMConfig` object for multi-provider configuration:
 
@@ -130,18 +131,21 @@ response = await chat_async(
     messages=messages
 )
 
-# Together AI
+# OpenRouter (access any model via a single API key)
 response = await chat_async(
-    provider=LLMProvider.TOGETHER,
-    model="mixtral-8x7b",
-    messages=messages
+    provider=LLMProvider.OPENROUTER,
+    model="anthropic/claude-sonnet-4.6",  # provider/model format
+    messages=messages,
+    tools=[my_function],
+    tool_choice="auto"
 )
 
-# Grok (xAI)
+# OpenRouter with an OpenAI model
 response = await chat_async(
-    provider=LLMProvider.GROK,
-    model="grok-4",
+    provider="openrouter",
+    model="openai/gpt-4.1-mini",
     messages=messages,
-    tools=[my_function],          # Function calling supported
+    response_format=MyPydanticModel
 )
+
 ```

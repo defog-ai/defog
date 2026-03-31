@@ -8,10 +8,7 @@ from .providers import (
     AnthropicProvider,
     OpenAIProvider,
     GeminiProvider,
-    TogetherProvider,
-    DeepSeekProvider,
-    MistralProvider,
-    GrokProvider,
+    OpenRouterProvider,
 )
 from .providers.base import LLMResponse
 from .exceptions import LLMError, ConfigurationError, ToolError
@@ -65,11 +62,7 @@ def get_provider_instance(
         "anthropic": AnthropicProvider,
         "openai": OpenAIProvider,
         "gemini": GeminiProvider,
-        "together": TogetherProvider,
-        "deepseek": DeepSeekProvider,
-        "mistral": MistralProvider,
-        "grok": GrokProvider,
-        "alibaba": OpenAIProvider,  # Alibaba uses OpenAI-compatible API
+        "openrouter": OpenRouterProvider,
     }
 
     if provider_name not in provider_classes:
@@ -77,16 +70,8 @@ def get_provider_instance(
 
     provider_class = provider_classes[provider_name]
 
-    # Handle special cases for providers that need custom configuration
-    if provider_name == "alibaba":
-        return provider_class(
-            api_key=config.get_api_key("alibaba"),
-            base_url=config.get_base_url("alibaba"),
-            config=config,
-        )
-    else:
-        # Use the provider's from_config method for consistent initialization
-        return provider_class.from_config(config)
+    # Use the provider's from_config method for consistent initialization
+    return provider_class.from_config(config)
 
 
 async def chat_async(
@@ -125,6 +110,7 @@ async def chat_async(
     citations_provider: Optional[Union[LLMProvider, str]] = None,
     citations_excluded_tools: Optional[List[str]] = None,
     citations_reasoning_effort: Optional[str] = None,
+    strict_tools: bool = True,
     tool_phase_complete_message: str = "exploration done, generating answer",
 ) -> LLMResponse:
     """
@@ -165,8 +151,9 @@ async def chat_async(
         citations_excluded_tools: Optional list of tool names to exclude from the documents sent for citation generation.
         parallel_tool_calls: Enable parallel tool calls when set to True (default: False)
         tool_output_max_tokens: Maximum tokens allowed in tool outputs (default: 10000). Set to -1 to disable the check.
-        previous_response_id: Optional id of a previous response when continuing conversations (supported for OpenAI, Anthropic/Grok, Gemini).
+        previous_response_id: Optional id of a previous response when continuing conversations (supported for OpenAI, Anthropic, Gemini).
         citations_reasoning_effort: Reasoning effort level for citations
+        strict_tools: When True (default), Anthropic uses constrained decoding to enforce tool parameter schemas. Set to False to skip constrained decoding for lower latency with tool-heavy agents.
     Returns:
         LLMResponse object containing the result
 
@@ -322,6 +309,7 @@ async def chat_async(
                 tool_sample_functions=tool_sample_functions,
                 previous_response_id=previous_response_id,
                 return_tool_outputs_only=insert_tool_citations,
+                strict_tools=strict_tools,
                 tool_phase_complete_message=tool_phase_complete_message,
             )
 
@@ -471,8 +459,6 @@ def map_model_to_provider(model: str) -> LLMProvider:
         return LLMProvider.ANTHROPIC
     elif model.startswith("gemini"):
         return LLMProvider.GEMINI
-    elif model.startswith("grok"):
-        return LLMProvider.GROK
     elif (
         model.startswith("gpt")
         or model.startswith("o1")
@@ -481,18 +467,6 @@ def map_model_to_provider(model: str) -> LLMProvider:
         or model.startswith("o4")
     ):
         return LLMProvider.OPENAI
-    elif model.startswith("deepseek"):
-        return LLMProvider.DEEPSEEK
-    elif model.startswith("mistral"):
-        return LLMProvider.MISTRAL
-    elif (
-        model.startswith("meta-llama")
-        or model.startswith("mistralai")
-        or model.startswith("Qwen")
-    ):
-        return LLMProvider.TOGETHER
-    elif model.startswith("qwen"):  # lowercase qwen for Alibaba Cloud
-        return LLMProvider.ALIBABA
     else:
         raise ConfigurationError(f"Unknown model: {model}")
 

@@ -90,125 +90,8 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(map_model_to_provider("gpt-4o-mini"), LLMProvider.OPENAI)
 
-        self.assertEqual(map_model_to_provider("deepseek-chat"), LLMProvider.DEEPSEEK)
-        self.assertEqual(
-            map_model_to_provider("deepseek-reasoner"), LLMProvider.DEEPSEEK
-        )
-
-        self.assertEqual(
-            map_model_to_provider("meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"),
-            LLMProvider.TOGETHER,
-        )
-
-        self.assertEqual(
-            map_model_to_provider("mistral-small-latest"), LLMProvider.MISTRAL
-        )
-        self.assertEqual(
-            map_model_to_provider("mistral-medium-latest"), LLMProvider.MISTRAL
-        )
-        self.assertEqual(
-            map_model_to_provider("grok-4-fast-non-reasoning-latest"), LLMProvider.GROK
-        )
-
         with self.assertRaises(Exception):
             map_model_to_provider("unknown-model")
-
-    def test_deepseek_provider_capabilities(self):
-        """Test DeepSeek provider instantiation and capabilities"""
-        from defog.llm.utils import get_provider_instance
-        from defog.llm.providers.deepseek_provider import DeepSeekProvider
-        from defog.llm.config import LLMConfig
-
-        # Test provider instantiation
-        config = LLMConfig(api_keys={"deepseek": "test-api-key"})
-        provider = get_provider_instance("deepseek", config)
-        self.assertIsInstance(provider, DeepSeekProvider)
-        self.assertEqual(provider.get_provider_name(), "deepseek")
-
-    def test_mistral_provider_capabilities(self):
-        """Test Mistral provider instantiation and capabilities"""
-        from defog.llm.utils import get_provider_instance
-        from defog.llm.providers.mistral_provider import MistralProvider
-        from defog.llm.config import LLMConfig
-
-        # Test provider instantiation
-        config = LLMConfig(api_keys={"mistral": "test-api-key"})
-        provider = get_provider_instance("mistral", config)
-        self.assertIsInstance(provider, MistralProvider)
-        self.assertEqual(provider.get_provider_name(), "mistral")
-
-    def test_grok_provider_capabilities(self):
-        """Test Grok provider instantiation and capabilities"""
-        from defog.llm.utils import get_provider_instance
-        from defog.llm.providers.grok_provider import GrokProvider
-        from defog.llm.config import LLMConfig
-
-        config = LLMConfig(api_keys={"grok": "test-api-key"})
-        provider = get_provider_instance("grok", config)
-        self.assertIsInstance(provider, GrokProvider)
-        self.assertEqual(provider.get_provider_name(), "grok")
-        self.assertEqual(provider.api_key, "test-api-key")
-        self.assertEqual(provider.base_url, "https://api.x.ai")
-
-    def test_deepseek_structured_output_build_params(self):
-        """Test DeepSeek provider's structured output parameter building for both models"""
-        from defog.llm.providers.deepseek_provider import DeepSeekProvider
-        from defog.llm.config import LLMConfig
-
-        config = LLMConfig()
-        provider = DeepSeekProvider(config=config)
-
-        # Test with Pydantic model for both DeepSeek models
-        messages = [{"role": "user", "content": "Generate SQL for counting orders"}]
-        deepseek_models = ["deepseek-chat", "deepseek-reasoner"]
-
-        for model in deepseek_models:
-            with self.subTest(model=model):
-                # Test that Pydantic models get converted to JSON mode
-                params, modified_messages = provider.build_params(
-                    messages=messages, model=model, response_format=ResponseFormat
-                )
-
-                # Should set response_format to JSON mode
-                self.assertEqual(params["response_format"], {"type": "json_object"})
-
-                # Should modify the user message to include schema instructions
-                self.assertIn("JSON schema", modified_messages[0]["content"])
-                self.assertIn(
-                    "reasoning", modified_messages[0]["content"]
-                )  # From ResponseFormat schema
-                self.assertIn(
-                    "sql", modified_messages[0]["content"]
-                )  # From ResponseFormat schema
-
-                # Test temperature handling - deepseek-reasoner shouldn't have temperature
-                if model == "deepseek-reasoner":
-                    self.assertNotIn("temperature", params)
-                else:
-                    self.assertIn("temperature", params)
-
-    @pytest.mark.asyncio(loop_scope="session")
-    @skip_if_no_api_key("deepseek")
-    async def test_deepseek_structured_output_integration(self):
-        """Test DeepSeek provider's structured output integration end-to-end for both models"""
-        # This test would require an actual API key, so we'll just test the parameter building
-        # In a real environment with DEEPSEEK_API_KEY, this would make an actual API call
-
-        messages = [{"role": "user", "content": "Generate SQL to count orders"}]
-        deepseek_models = ["deepseek-chat", "deepseek-reasoner"]
-
-        for model in deepseek_models:
-            with self.subTest(model=model):
-                # Test that we can call chat_async with DeepSeek and structured output
-                response = await chat_async(
-                    provider=LLMProvider.DEEPSEEK,
-                    model=model,
-                    messages=messages,
-                    response_format=ResponseFormat,
-                    max_retries=1,
-                )
-                # If we get here, the API call succeeded
-                self.assertIsInstance(response.content, ResponseFormat)
 
     @pytest.mark.asyncio(loop_scope="session")
     @skip_if_no_models()
@@ -226,13 +109,10 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
                     "gemini-2.5-pro",
                     "gemini-3-flash-preview",
                     "gemini-3-pro-preview",
+                    "gemini-3.1-flash-lite-preview",
+                    "gemini-3.1-pro-preview",
                 ]
             )
-        if AVAILABLE_MODELS.get("mistral"):
-            test_models.append("mistral-small-latest")
-        if AVAILABLE_MODELS.get("grok"):
-            test_models.extend(AVAILABLE_MODELS["grok"])
-
         models = [m for m in test_models if m in sum(AVAILABLE_MODELS.values(), [])]
         messages = [
             {"role": "user", "content": "Return a greeting in not more than 2 words\n"}
@@ -258,27 +138,6 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(results), len(models))
 
     @pytest.mark.asyncio(loop_scope="session")
-    @skip_if_no_api_key("grok")
-    async def test_grok_simple_chat_async(self):
-        messages = [
-            {
-                "role": "user",
-                "content": "Reply with a single-word greeting.",
-            }
-        ]
-
-        response = await chat_async(
-            provider=LLMProvider.GROK,
-            model="grok-4-fast-non-reasoning-latest",
-            messages=messages,
-            temperature=0.0,
-            max_retries=1,
-        )
-
-        self.assertIsInstance(response.content, str)
-        self.assertLessEqual(len(response.content.split()), 3)
-
-    @pytest.mark.asyncio(loop_scope="session")
     @skip_if_no_models()
     async def test_sql_chat_async(self):
         # Use a subset of available models for SQL test
@@ -294,10 +153,10 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
                     "gemini-2.5-pro",
                     "gemini-3-flash-preview",
                     "gemini-3-pro-preview",
+                    "gemini-3.1-flash-lite-preview",
+                    "gemini-3.1-pro-preview",
                 ]
             )
-        if AVAILABLE_MODELS.get("mistral"):
-            test_models.append("mistral-small-latest")
 
         models = [m for m in test_models if m in sum(AVAILABLE_MODELS.values(), [])]
 
@@ -379,12 +238,12 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
                     "gemini-2.5-pro",
                     "gemini-3-flash-preview",
                     "gemini-3-pro-preview",
+                    "gemini-3.1-flash-lite-preview",
+                    "gemini-3.1-pro-preview",
                 ]
             )
         if AVAILABLE_MODELS.get("anthropic"):
             test_models.append("claude-haiku-4-5")
-        if AVAILABLE_MODELS.get("mistral"):
-            test_models.append("mistral-small-latest")
 
         models = [m for m in test_models if m in sum(AVAILABLE_MODELS.values(), [])]
 

@@ -1,3 +1,4 @@
+import inspect
 import traceback
 from defog import config as defog_config
 import time
@@ -155,6 +156,7 @@ class AnthropicProvider(BaseLLMProvider):
         timeout: int = 600,
         reasoning_effort: Optional[str] = None,
         parallel_tool_calls: bool = False,
+        strict_tools: bool = True,
         **kwargs,
     ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
         """Create the parameter dict for Anthropic's .messages.create()."""
@@ -308,7 +310,9 @@ class AnthropicProvider(BaseLLMProvider):
         params["cache_control"] = {"type": "ephemeral"}
 
         if tools:
-            function_specs = get_function_specs(tools, self.get_provider_name())
+            function_specs = get_function_specs(
+                tools, self.get_provider_name(), strict=strict_tools
+            )
             params["tools"] = function_specs
             if tool_choice:
                 tool_names_list = [func.__name__ for func in tools]
@@ -320,15 +324,49 @@ class AnthropicProvider(BaseLLMProvider):
                 params["tool_choice"] = {"type": "auto"}
 
             # Add parallel tool calls configuration
-            if (
-                "tool_choice" in params
-                and isinstance(params["tool_choice"], dict)
-                and not model.startswith("grok")
-            ):
+            if "tool_choice" in params and isinstance(params["tool_choice"], dict):
                 if not parallel_tool_calls:
                     params["tool_choice"]["disable_parallel_tool_use"] = True
 
         return params, messages
+
+    async def extract_reasoning_text(
+        self,
+        thinking_blocks: list,
+        post_tool_function: Optional[Callable] = None,
+    ) -> List[Dict[str, Any]]:
+        """Extract thinking/reasoning text from Anthropic thinking blocks and call post_tool_function."""
+        reasoning_summaries = []
+        for block in thinking_blocks:
+            thinking_text = getattr(block, "thinking", None)
+            if thinking_text:
+                reasoning_summaries.append(thinking_text)
+                if post_tool_function:
+                    if inspect.iscoroutinefunction(post_tool_function):
+                        await post_tool_function(
+                            function_name="reasoning",
+                            input_args={},
+                            tool_result=thinking_text,
+                            tool_id=None,
+                        )
+                    else:
+                        post_tool_function(
+                            function_name="reasoning",
+                            input_args={},
+                            tool_result=thinking_text,
+                            tool_id=None,
+                        )
+
+        return [
+            {
+                "tool_call_id": None,
+                "name": "reasoning",
+                "args": {},
+                "result": summary,
+                "text": None,
+            }
+            for summary in reasoning_summaries
+        ]
 
     async def process_response(
         self,
@@ -436,6 +474,12 @@ class AnthropicProvider(BaseLLMProvider):
                     response=response,
                     messages=request_params.get("messages", []),
                 )
+
+                # Extract reasoning text from thinking blocks and call post_tool_function
+                reasoning_outputs = await self.extract_reasoning_text(
+                    thinking_blocks, post_tool_function
+                )
+                tool_outputs.extend(reasoning_outputs)
 
                 if len(tool_call_blocks) > 0:
                     tool_calls_executed = True
@@ -871,6 +915,9 @@ class AnthropicProvider(BaseLLMProvider):
 
         client = AsyncAnthropic(**client_kwargs)
 
+        # Store strict_tools setting for use in update_tools_with_budget
+        self._strict_tools = kwargs.get("strict_tools", True)
+
         # Filter tools based on budget before building params
         tools = self.filter_tools_by_budget(tools, tool_handler)
 
@@ -889,6 +936,7 @@ class AnthropicProvider(BaseLLMProvider):
             reasoning_effort=reasoning_effort,
             timeout=timeout,
             parallel_tool_calls=kwargs.get("parallel_tool_calls", True),
+            strict_tools=kwargs.get("strict_tools", True),
         )
 
         # Construct a tool dict if needed
