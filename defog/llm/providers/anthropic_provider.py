@@ -49,6 +49,39 @@ class AnthropicProvider(BaseLLMProvider):
         """Convert message content to Anthropic format."""
         return convert_to_anthropic_format(content)
 
+    async def _apply_pre_model_call_hook(
+        self,
+        request_params: Dict[str, Any],
+        model: str,
+        pre_model_call_hook: Optional[Callable],
+        *,
+        checkpoint_kind: str,
+    ) -> None:
+        injected_messages = await self.call_pre_model_call_hook(
+            pre_model_call_hook,
+            checkpoint_kind=checkpoint_kind,
+            model=model,
+        )
+        if not injected_messages:
+            return
+
+        request_params.setdefault("messages", [])
+        for message in injected_messages:
+            role = message.get("role")
+            if role == "system":
+                raise ValueError(
+                    "pre_model_call_hook may not inject system messages into "
+                    "Anthropic conversations."
+                )
+            request_params["messages"].append(
+                {
+                    "role": role,
+                    "content": self.convert_content_to_anthropic(
+                        message.get("content")
+                    ),
+                }
+            )
+
     def create_image_message(
         self,
         image_base64: Union[str, List[str]],
@@ -307,6 +340,7 @@ class AnthropicProvider(BaseLLMProvider):
         response_format=None,
         post_tool_function: Optional[Callable] = None,
         post_response_hook: Optional[Callable] = None,
+        pre_model_call_hook: Optional[Callable] = None,
         tool_handler: Optional[ToolHandler] = None,
         return_tool_outputs_only: bool = False,
         tool_sample_functions: Optional[Dict[str, Callable]] = None,
@@ -716,6 +750,12 @@ class AnthropicProvider(BaseLLMProvider):
                         tools, tool_handler, request_params
                     )
 
+                    await self._apply_pre_model_call_hook(
+                        request_params,
+                        request_params.get("model") or model_for_tokens,
+                        pre_model_call_hook,
+                        checkpoint_kind="post_tool_batch",
+                    )
                     response = await client.messages.create(**request_params)
                 else:
                     # Break out of loop when tool calls are finished
@@ -780,6 +820,7 @@ class AnthropicProvider(BaseLLMProvider):
         reasoning_effort: Optional[str] = None,
         post_tool_function: Optional[Callable] = None,
         post_response_hook: Optional[Callable] = None,
+        pre_model_call_hook: Optional[Callable] = None,
         image_result_keys: Optional[List[str]] = None,
         tool_budget: Optional[Dict[str, int]] = None,
         tool_sample_functions: Optional[Dict[str, Callable]] = None,
@@ -809,6 +850,8 @@ class AnthropicProvider(BaseLLMProvider):
 
         if post_tool_function:
             tool_handler.validate_post_tool_function(post_tool_function)
+        if pre_model_call_hook:
+            self.validate_pre_model_call_hook(pre_model_call_hook)
 
         t = time.time()
 
@@ -856,6 +899,12 @@ class AnthropicProvider(BaseLLMProvider):
         func_to_call = client.messages.create
 
         try:
+            await self._apply_pre_model_call_hook(
+                params,
+                model,
+                pre_model_call_hook,
+                checkpoint_kind="initial_request",
+            )
             response = await func_to_call(**params)
 
             (
@@ -875,6 +924,7 @@ class AnthropicProvider(BaseLLMProvider):
                 response_format=response_format,
                 post_tool_function=post_tool_function,
                 post_response_hook=post_response_hook,
+                pre_model_call_hook=pre_model_call_hook,
                 tool_handler=tool_handler,
                 return_tool_outputs_only=return_tool_outputs_only,
                 tool_sample_functions=sample_functions,
