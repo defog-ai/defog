@@ -285,6 +285,11 @@ class OpenRouterProvider(BaseLLMProvider):
             repair_params["response_format"] = rf
 
         response = await client.chat.completions.create(**repair_params)
+        if not hasattr(response, "choices") or not response.choices:
+            raise ProviderError(
+                self.get_provider_name(),
+                "No response from OpenRouter",
+            )
         fixed_content = response.choices[0].message.content or ""
         return self.parse_structured_response(fixed_content, response_format)
 
@@ -630,6 +635,11 @@ class OpenRouterProvider(BaseLLMProvider):
                     if extra_body:
                         call_params["extra_body"] = extra_body
                     response = await client.chat.completions.create(**call_params)
+                    if not hasattr(response, "choices") or not response.choices:
+                        raise ProviderError(
+                            self.get_provider_name(),
+                            "No response from OpenRouter",
+                        )
 
                 else:
                     # No more tool calls
@@ -665,6 +675,11 @@ class OpenRouterProvider(BaseLLMProvider):
                 if extra_body:
                     final_params["extra_body"] = extra_body
                 response = await client.chat.completions.create(**final_params)
+                if not hasattr(response, "choices") or not response.choices:
+                    raise ProviderError(
+                        self.get_provider_name(),
+                        "No response from OpenRouter",
+                    )
                 _cost = (
                     getattr(response.usage, "cost", None) if response.usage else None
                 )
