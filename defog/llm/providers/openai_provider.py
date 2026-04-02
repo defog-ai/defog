@@ -41,6 +41,42 @@ class OpenAIProvider(BaseLLMProvider):
     def get_provider_name(self) -> str:
         return "openai"
 
+    async def _apply_pre_model_call_hook(
+        self,
+        request_params: Dict[str, Any],
+        model: str,
+        pre_model_call_hook: Optional[Callable],
+        *,
+        checkpoint_kind: str,
+    ) -> None:
+        injected_messages = await self.call_pre_model_call_hook(
+            pre_model_call_hook,
+            checkpoint_kind=checkpoint_kind,
+            model=model,
+        )
+        if not injected_messages:
+            return
+
+        normalized_messages = self.preprocess_messages(injected_messages, model)
+        instructions, input_items = self._messages_to_responses_input(
+            normalized_messages
+        )
+        if instructions:
+            raise ValueError(
+                "pre_model_call_hook may not inject system/developer instructions "
+                "for OpenAI Responses API requests."
+            )
+        if not input_items:
+            return
+
+        current_input = request_params.get("input")
+        if current_input in (None, ""):
+            request_params["input"] = []
+        elif not isinstance(current_input, list):
+            request_params["input"] = [current_input]
+
+        request_params["input"].extend(input_items)
+
     def create_image_message(
         self,
         image_base64: Union[str, List[str]],
@@ -374,6 +410,7 @@ class OpenAIProvider(BaseLLMProvider):
         model: str = "",
         post_tool_function: Optional[Callable] = None,
         post_response_hook: Optional[Callable] = None,
+        pre_model_call_hook: Optional[Callable] = None,
         tool_handler: Optional[ToolHandler] = None,
         parallel_tool_calls: bool = False,
         return_tool_outputs_only: bool = False,
@@ -596,6 +633,12 @@ class OpenAIProvider(BaseLLMProvider):
                         )
 
                     # Make next call
+                    await self._apply_pre_model_call_hook(
+                        request_params,
+                        model,
+                        pre_model_call_hook,
+                        checkpoint_kind="post_tool_batch",
+                    )
                     response = await client.responses.create(**request_params)
                     request_params["input"] = []
                     request_params["previous_response_id"] = response.id
@@ -625,6 +668,12 @@ class OpenAIProvider(BaseLLMProvider):
                     for k, v in request_params.items()
                     if k not in ("tools", "tool_choice", "parallel_tool_calls")
                 }
+                await self._apply_pre_model_call_hook(
+                    final_params,
+                    model,
+                    pre_model_call_hook,
+                    checkpoint_kind="post_tool_batch",
+                )
                 response = await client.responses.parse(
                     **final_params,
                     text_format=response_format,
@@ -682,6 +731,7 @@ class OpenAIProvider(BaseLLMProvider):
         reasoning_effort: Optional[str] = None,
         post_tool_function: Optional[Callable] = None,
         post_response_hook: Optional[Callable] = None,
+        pre_model_call_hook: Optional[Callable] = None,
         image_result_keys: Optional[List[str]] = None,
         tool_budget: Optional[Dict[str, int]] = None,
         parallel_tool_calls: bool = False,
@@ -712,6 +762,8 @@ class OpenAIProvider(BaseLLMProvider):
 
         if post_tool_function:
             tool_handler.validate_post_tool_function(post_tool_function)
+        if pre_model_call_hook:
+            self.validate_pre_model_call_hook(pre_model_call_hook)
 
         t = time.time()
         client_openai = AsyncOpenAI(base_url=self.base_url, api_key=self.api_key)
@@ -742,6 +794,12 @@ class OpenAIProvider(BaseLLMProvider):
 
         try:
             # Use Responses API
+            await self._apply_pre_model_call_hook(
+                request_params,
+                model,
+                pre_model_call_hook,
+                checkpoint_kind="initial_request",
+            )
             if response_format and not tools:
                 response = await client_openai.responses.parse(
                     **request_params,
@@ -771,6 +829,7 @@ class OpenAIProvider(BaseLLMProvider):
                 model=model,
                 post_tool_function=post_tool_function,
                 post_response_hook=post_response_hook,
+                pre_model_call_hook=pre_model_call_hook,
                 tool_handler=tool_handler,
                 parallel_tool_calls=parallel_tool_calls,
                 return_tool_outputs_only=return_tool_outputs_only,

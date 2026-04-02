@@ -84,6 +84,7 @@ class BaseLLMProvider(ABC):
         response_format=None,
         post_tool_function: Optional[Callable] = None,
         post_response_hook: Optional[Callable] = None,
+        pre_model_call_hook: Optional[Callable] = None,
         tool_sample_functions: Optional[Dict[str, Callable]] = None,
         tool_result_preview_max_tokens: Optional[int] = None,
         tool_phase_complete_message: str = "exploration done, generating answer",
@@ -110,6 +111,7 @@ class BaseLLMProvider(ABC):
         reasoning_effort: Optional[str] = None,
         post_tool_function: Optional[Callable] = None,
         post_response_hook: Optional[Callable] = None,
+        pre_model_call_hook: Optional[Callable] = None,
         tool_budget: Optional[Dict[str, int]] = None,
         tool_sample_functions: Optional[Dict[str, Callable]] = None,
         tool_result_preview_max_tokens: Optional[int] = None,
@@ -501,6 +503,64 @@ class BaseLLMProvider(ABC):
                 )
 
         return post_response_hook
+
+    def validate_pre_model_call_hook(
+        self, pre_model_call_hook: Optional[Callable]
+    ) -> None:
+        """
+        Verify that the pre_model_call_hook function has the required parameters.
+        """
+        sig = inspect.signature(pre_model_call_hook)
+        required_params = ["checkpoint_kind", "provider_name", "model"]
+        has_var_keyword = any(
+            param.kind == inspect.Parameter.VAR_KEYWORD
+            for param in sig.parameters.values()
+        )
+
+        for param in required_params:
+            if sig.parameters.get(param) is None and not has_var_keyword:
+                raise ValueError(
+                    "pre_model_call_hook must accept `checkpoint_kind`, "
+                    "`provider_name`, and `model`."
+                )
+
+        return pre_model_call_hook
+
+    async def call_pre_model_call_hook(
+        self,
+        pre_model_call_hook: Optional[Callable],
+        *,
+        checkpoint_kind: str,
+        model: str,
+    ) -> List[Dict[str, Any]]:
+        """Call the pre-model hook and normalize the returned messages."""
+        try:
+            if pre_model_call_hook is None:
+                return []
+
+            kwargs = {
+                "checkpoint_kind": checkpoint_kind,
+                "provider_name": self.get_provider_name(),
+                "model": model,
+            }
+            if inspect.iscoroutinefunction(pre_model_call_hook):
+                injected_messages = await pre_model_call_hook(**kwargs)
+            else:
+                injected_messages = pre_model_call_hook(**kwargs)
+
+            if injected_messages is None:
+                return []
+            if isinstance(injected_messages, dict):
+                injected_messages = [injected_messages]
+            if not isinstance(injected_messages, list) or any(
+                not isinstance(message, dict) for message in injected_messages
+            ):
+                raise ValueError(
+                    "pre_model_call_hook must return a dict, a list of dicts, or None."
+                )
+            return injected_messages
+        except Exception as e:
+            raise Exception(f"Error executing pre_model_call_hook: {e}", e)
 
     async def call_post_response_hook(
         self, post_response_hook: Callable, response, messages

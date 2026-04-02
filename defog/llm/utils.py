@@ -93,6 +93,7 @@ async def chat_async(
     max_retries: Optional[int] = None,
     post_tool_function: Optional[Callable] = None,
     post_response_hook: Optional[Callable] = None,
+    pre_model_call_hook: Optional[Callable] = None,
     config: Optional[LLMConfig] = None,
     base_url: Optional[str] = None,
     mcp_servers: Optional[List[str]] = None,
@@ -133,6 +134,7 @@ async def chat_async(
         max_retries: Maximum number of retry attempts
         post_tool_function: Function to call after each tool execution. Must have parameters: function_name, input_args, tool_result, tool_id
         post_response_hook: Function to call after each response is received from the model. Must have parameters: response, messages
+        pre_model_call_hook: Function to call before each model request. Must accept checkpoint_kind, provider_name, and model, and may return message dicts to inject.
         config: LLM configuration object
         base_url: Custom base URL for the provider's API endpoint. Overrides the default URL
             for the primary provider (e.g., for proxies or self-hosted endpoints).
@@ -279,6 +281,8 @@ async def chat_async(
 
             if post_response_hook:
                 provider_instance.validate_post_response_hook(post_response_hook)
+            if pre_model_call_hook:
+                provider_instance.validate_pre_model_call_hook(pre_model_call_hook)
 
             # Execute the chat completion
             response = await provider_instance.execute_chat(
@@ -296,6 +300,7 @@ async def chat_async(
                 reasoning_effort=reasoning_effort,
                 post_tool_function=post_tool_function,
                 post_response_hook=post_response_hook,
+                pre_model_call_hook=pre_model_call_hook,
                 image_result_keys=image_result_keys,
                 tool_budget=tool_budget,
                 parallel_tool_calls=parallel_tool_calls,
