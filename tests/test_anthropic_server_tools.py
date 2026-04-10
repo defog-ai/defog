@@ -226,6 +226,20 @@ class TestBuildParams:
         # User tool first, then both server tools
         assert names == ["my_tool", "web_search", "code_execution"]
 
+    def test_build_params_server_tools_no_disable_parallel(self):
+        """Server tools must not set disable_parallel_tool_use (API rejects it)."""
+        provider = AnthropicProvider(api_key="sk-test")
+        web = build_web_search_tool()
+        params, _ = provider.build_params(
+            messages=[{"role": "user", "content": "hi"}],
+            model="claude-opus-4-6",
+            tools=[my_tool],
+            server_tools=[web],
+            parallel_tool_calls=False,
+        )
+        tc = params.get("tool_choice", {})
+        assert tc.get("disable_parallel_tool_use") is not True
+
     def test_build_params_server_tools_only_no_user_tools(self):
         provider = AnthropicProvider(api_key="sk-test")
         web = build_web_search_tool()

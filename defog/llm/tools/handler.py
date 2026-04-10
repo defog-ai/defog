@@ -288,7 +288,7 @@ class ToolHandler:
         self,
         tool_calls: List[Dict[str, Any]],
         tool_dict: Dict[str, Callable],
-        parallel_tool_calls: bool = False,
+        parallel_tool_calls: bool = True,
         post_tool_function: Optional[Callable] = None,
     ) -> List[Any]:
         """Execute multiple tool calls either in parallel or sequentially."""
