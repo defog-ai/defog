@@ -134,6 +134,55 @@ response = await chat_async(
 print(response.content)
 ```
 
+### 6. Anthropic Server-Side Tools and Programmatic Tool Calling
+
+`chat_async` exposes Anthropic's first-party server-side tools (`web_search`,
+`web_fetch`, `code_execution`, `advisor`) and the new programmatic tool
+calling flow, where Claude writes Python in the code execution sandbox that
+calls your local tools as `await my_tool(...)` — keeping intermediate
+results in the sandbox so they never re-enter the model context.
+
+```python
+from pydantic import BaseModel
+from defog.llm.utils import chat_async
+
+
+# Server-side web_search
+response = await chat_async(
+    provider="anthropic",
+    model="claude-opus-4-6",
+    messages=[{"role": "user", "content": "What's the latest defog-python release?"}],
+    server_tools=["web_search"],
+)
+print(response.content)
+print(response.server_tool_outputs)   # raw web_search_tool_result blocks
+print(response.server_tool_usage)     # {"web_search_requests": 1, ...}
+
+
+# Programmatic tool calling: Claude calls your tool from inside code execution
+class QueryArgs(BaseModel):
+    sql: str
+
+async def query_database(input: QueryArgs) -> list:
+    """Run a SQL query and return rows as JSON."""
+    return [{"customer": "Acme", "revenue": 50_000}]
+
+response = await chat_async(
+    provider="anthropic",
+    model="claude-opus-4-6",
+    messages=[{"role": "user", "content": "Who is the top customer by revenue?"}],
+    tools=[query_database],
+    server_tools=["code_execution"],
+    programmatic_tool_calling=True,
+)
+print(response.content)
+print(response.container_id)   # reuse via `container_id=` on a follow-up call
+```
+
+See [docs/llm/anthropic-server-tools.md](docs/llm/anthropic-server-tools.md)
+for the full reference, including version overrides for Bedrock/Vertex,
+container reuse, and the `LLMResponse` shape additions.
+
 ## Documentation
 
 📚 **[Full Documentation](docs/README.md)** - Comprehensive guides and API reference

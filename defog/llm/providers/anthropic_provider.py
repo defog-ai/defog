@@ -5,7 +5,7 @@ import time
 import logging
 from typing import Dict, List, Any, Optional, Callable, Tuple, Union
 
-from anthropic import transform_schema
+from anthropic import AsyncAnthropic, transform_schema
 
 from .base import BaseLLMProvider, LLMResponse
 from ..exceptions import ProviderError, MaxTokensError, ToolError
@@ -157,6 +157,9 @@ class AnthropicProvider(BaseLLMProvider):
         reasoning_effort: Optional[str] = None,
         parallel_tool_calls: bool = False,
         strict_tools: bool = True,
+        server_tools: Optional[List[Dict[str, Any]]] = None,
+        programmatic_tool_calling: bool = False,
+        container_id: Optional[str] = None,
         **kwargs,
     ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
         """Create the parameter dict for Anthropic's .messages.create()."""
@@ -309,10 +312,46 @@ class AnthropicProvider(BaseLLMProvider):
         # to the last cacheable block and moves it forward as conversations grow.
         params["cache_control"] = {"type": "ephemeral"}
 
+        # Programmatic tool calling constraint validation. We do these before
+        # building tool specs so callers get clear errors instead of silent
+        # downstream API failures.
+        if programmatic_tool_calling:
+            if response_format is not None:
+                raise ValueError(
+                    "programmatic_tool_calling=True is incompatible with "
+                    "response_format / structured outputs."
+                )
+            if tool_choice is not None and tool_choice not in ("auto",):
+                raise ValueError(
+                    "programmatic_tool_calling=True only supports tool_choice='auto' "
+                    f"(or None); got {tool_choice!r}."
+                )
+            if not parallel_tool_calls:
+                raise ValueError(
+                    "programmatic_tool_calling=True is incompatible with "
+                    "parallel_tool_calls=False (Anthropic disallows "
+                    "disable_parallel_tool_use with programmatic tool calling)."
+                )
+            if strict_tools:
+                logger.warning(
+                    "programmatic_tool_calling=True forces strict_tools=False; "
+                    "ignoring strict_tools=True."
+                )
+                strict_tools = False
+
         if tools:
             function_specs = get_function_specs(
                 tools, self.get_provider_name(), strict=strict_tools
             )
+
+            # When programmatic tool calling is enabled, every user-supplied
+            # callable becomes invokable from the code execution sandbox via
+            # ``await my_tool(...)``. We mark each spec with the allowed_callers
+            # field so the API knows it can be called from code execution.
+            if programmatic_tool_calling:
+                for spec in function_specs:
+                    spec["allowed_callers"] = ["code_execution_20260120"]
+
             params["tools"] = function_specs
             if tool_choice:
                 tool_names_list = [func.__name__ for func in tools]
@@ -323,10 +362,30 @@ class AnthropicProvider(BaseLLMProvider):
             else:
                 params["tool_choice"] = {"type": "auto"}
 
-            # Add parallel tool calls configuration
-            if "tool_choice" in params and isinstance(params["tool_choice"], dict):
+            # Add parallel tool calls configuration. Skip when programmatic
+            # tool calling is on because Anthropic forbids
+            # disable_parallel_tool_use in that mode.
+            if (
+                "tool_choice" in params
+                and isinstance(params["tool_choice"], dict)
+                and not programmatic_tool_calling
+            ):
                 if not parallel_tool_calls:
                     params["tool_choice"]["disable_parallel_tool_use"] = True
+
+        # Append Anthropic server-side tool specs (web_search, web_fetch,
+        # code_execution, advisor) to the same tools array. They can coexist
+        # with user callables and MCP tools.
+        if server_tools:
+            params.setdefault("tools", []).extend(server_tools)
+            # If we only have server tools (no user callables), still set a
+            # default tool_choice so the model knows it can use them.
+            if "tool_choice" not in params:
+                params["tool_choice"] = {"type": "auto"}
+
+        # Continue an existing code-execution / programmatic-calling container.
+        if container_id:
+            params["container"] = container_id
 
         return params, messages
 
@@ -384,6 +443,8 @@ class AnthropicProvider(BaseLLMProvider):
         tool_sample_functions: Optional[Dict[str, Callable]] = None,
         tool_result_preview_max_tokens: Optional[int] = None,
         tool_phase_complete_message: str = "exploration done, generating answer",
+        server_tools: Optional[List[Dict[str, Any]]] = None,
+        programmatic_tool_calling: bool = False,
         **kwargs,
     ) -> Tuple[
         Any,
@@ -393,10 +454,27 @@ class AnthropicProvider(BaseLLMProvider):
         Optional[int],
         Optional[int],
         Optional[Dict[str, int]],
+        Optional[List[Dict[str, Any]]],
+        Optional[Dict[str, int]],
+        Optional[str],
+        Optional[str],
     ]:
         """
         Extract content (including any tool calls) and usage info from Anthropic response.
         Handles chaining of tool calls and structured output parsing.
+
+        Returns a tuple of:
+            content,
+            tool_outputs,
+            input_tokens,
+            output_tokens,
+            cached_input_tokens,
+            cache_creation_input_tokens,
+            output_tokens_details,
+            server_tool_outputs,
+            server_tool_usage,
+            container_id,
+            container_expires_at,
         """
         # Use provided tool_handler or fall back to self.tool_handler
         if tool_handler is None:
@@ -420,6 +498,109 @@ class AnthropicProvider(BaseLLMProvider):
         model_for_tokens = request_params.get("model") or "gpt-4.1"
         tool_calls_executed = False
 
+        # Anthropic server-side tool state.
+        server_tool_outputs: List[Dict[str, Any]] = []
+        server_tool_usage: Dict[str, int] = {}
+        container_id: Optional[str] = None
+        container_expires_at: Optional[str] = None
+
+        # Block types that come from Anthropic's server-side tool execution.
+        # The model emits server_tool_use as the "call", and the API streams
+        # back result blocks with one of these types.
+        SERVER_TOOL_RESULT_TYPES = {
+            "web_search_tool_result",
+            "web_fetch_tool_result",
+            "code_execution_tool_result",
+            "bash_code_execution_tool_result",
+            "text_editor_code_execution_tool_result",
+            "advisor_tool_result",
+        }
+
+        def _block_to_dict(block: Any) -> Any:
+            """Best-effort serialize an Anthropic SDK block to a plain dict.
+
+            We use this only for the user-visible ``server_tool_outputs`` list,
+            so it's OK if some nested values fall back to ``str(...)``.
+            """
+            if block is None or isinstance(block, (str, int, float, bool)):
+                return block
+            if isinstance(block, dict):
+                return {k: _block_to_dict(v) for k, v in block.items()}
+            if isinstance(block, (list, tuple)):
+                return [_block_to_dict(v) for v in block]
+            if hasattr(block, "model_dump"):
+                try:
+                    return block.model_dump()
+                except Exception:
+                    pass
+            if hasattr(block, "__dict__"):
+                return {k: _block_to_dict(v) for k, v in vars(block).items()}
+            return str(block)
+
+        def collect_server_tool_blocks(resp) -> None:
+            """Pull server-side tool result blocks out of a response."""
+            for block in getattr(resp, "content", []) or []:
+                btype = getattr(block, "type", None)
+                if btype in SERVER_TOOL_RESULT_TYPES:
+                    server_tool_outputs.append(
+                        {
+                            "type": btype,
+                            "tool_use_id": getattr(block, "tool_use_id", None),
+                            "result": _block_to_dict(getattr(block, "content", None)),
+                        }
+                    )
+
+        def collect_server_tool_usage(resp) -> None:
+            """Pull cumulative server tool usage counters off response.usage."""
+            usage = getattr(resp, "usage", None)
+            if usage is None:
+                return
+            stu = getattr(usage, "server_tool_use", None)
+            if stu is None:
+                return
+            mapping: Optional[Dict[str, Any]] = None
+            if isinstance(stu, dict):
+                mapping = stu
+            elif hasattr(stu, "model_dump"):
+                try:
+                    mapping = stu.model_dump()
+                except Exception:
+                    mapping = None
+            if mapping is None and hasattr(stu, "__dict__"):
+                mapping = vars(stu)
+            if not isinstance(mapping, dict):
+                return
+            for key, value in mapping.items():
+                if isinstance(value, int):
+                    # Anthropic reports cumulative counters per response, so
+                    # we replace rather than sum within a single response and
+                    # take the max across loop iterations (since each new
+                    # response usually reports the new total).
+                    server_tool_usage[key] = max(server_tool_usage.get(key, 0), value)
+
+        def collect_container(resp) -> None:
+            """Capture container id/expiry off the response, if any."""
+            nonlocal container_id, container_expires_at
+            container = getattr(resp, "container", None)
+            if container is None:
+                return
+            cid = getattr(container, "id", None)
+            cexp = getattr(container, "expires_at", None)
+            if cid:
+                container_id = cid
+            if cexp:
+                container_expires_at = cexp
+
+        def is_programmatic_tool_use(block: Any) -> bool:
+            """Return True iff a tool_use block was emitted from code exec."""
+            caller = getattr(block, "caller", None)
+            if caller is None:
+                return False
+            ctype = getattr(caller, "type", None)
+            if ctype is None and isinstance(caller, dict):
+                ctype = caller.get("type")
+            return bool(ctype and ctype.startswith("code_execution_"))
+
         def has_tool_call_outputs() -> bool:
             return any(output.get("tool_call_id") for output in tool_outputs)
 
@@ -429,18 +610,50 @@ class AnthropicProvider(BaseLLMProvider):
                 total_output_tokens, \
                 cached_input_tokens, \
                 cache_creation_input_tokens
-            total_input_tokens += getattr(usage_obj, "input_tokens", 0)
-            total_output_tokens += getattr(usage_obj, "output_tokens", 0)
-            cached_input_tokens += getattr(usage_obj, "cache_read_input_tokens", 0)
-            cache_creation_input_tokens += getattr(
-                usage_obj, "cache_creation_input_tokens", 0
+            # Anthropic sometimes returns ``None`` for cache fields (e.g. when
+            # the response did not interact with the cache), so we coerce.
+            total_input_tokens += getattr(usage_obj, "input_tokens", 0) or 0
+            total_output_tokens += getattr(usage_obj, "output_tokens", 0) or 0
+            cached_input_tokens += (
+                getattr(usage_obj, "cache_read_input_tokens", 0) or 0
+            )
+            cache_creation_input_tokens += (
+                getattr(usage_obj, "cache_creation_input_tokens", 0) or 0
             )
 
-        # Handle tool processing for both local tools and MCP server tools
-        if tools and len(tools) > 0:
+        # Handle tool processing for both local tools and MCP server tools.
+        # We also enter this branch when ``server_tools`` are present (so we
+        # can handle pause_turn iterations and collect server tool outputs)
+        # or when programmatic_tool_calling is enabled.
+        if (tools and len(tools) > 0) or server_tools or programmatic_tool_calling:
             consecutive_exceptions = 0
             while True:
                 add_usage(response.usage)
+                collect_server_tool_blocks(response)
+                collect_server_tool_usage(response)
+                collect_container(response)
+
+                # Handle pause_turn (long-running code execution): echo the
+                # assistant content verbatim with no user reply, then re-call
+                # the API with the same container.
+                if response.stop_reason == "pause_turn":
+                    request_params["messages"].append(
+                        {
+                            "role": "assistant",
+                            "content": list(response.content),
+                        }
+                    )
+                    if container_id:
+                        request_params["container"] = container_id
+                    await self._apply_pre_model_call_hook(
+                        request_params,
+                        request_params.get("model") or model_for_tokens,
+                        pre_model_call_hook,
+                        checkpoint_kind="pause_turn",
+                    )
+                    response = await client.messages.create(**request_params)
+                    continue
+
                 # Check if the response contains a tool call
                 # Collect all blocks by type - check type property instead of isinstance
                 # Handle both regular tool_use and MCP mcp_tool_use blocks
@@ -480,6 +693,15 @@ class AnthropicProvider(BaseLLMProvider):
                     thinking_blocks, post_tool_function
                 )
                 tool_outputs.extend(reasoning_outputs)
+
+                # Detect whether any tool_use blocks were emitted from the
+                # code execution sandbox (programmatic tool calling). When at
+                # least one is, the user reply we send back must contain ONLY
+                # tool_result blocks — no text, no thinking, no extras — and
+                # the assistant echo must include every block verbatim.
+                programmatic_call_present = any(
+                    is_programmatic_tool_use(block) for block in tool_call_blocks
+                )
 
                 if len(tool_call_blocks) > 0:
                     tool_calls_executed = True
@@ -643,13 +865,22 @@ class AnthropicProvider(BaseLLMProvider):
                             if (
                                 regular_tool_calls
                             ):  # Only continue if we have regular tools to execute
-                                # Build assistant content with all tool calls
-                                assistant_content = []
-                                if len(thinking_blocks) > 0:
-                                    assistant_content += thinking_blocks
-
-                                for tool_call_block in tool_call_blocks:
-                                    assistant_content.append(tool_call_block)
+                                # Build assistant content. For programmatic
+                                # tool calling, Anthropic requires the full
+                                # transcript verbatim (text, thinking,
+                                # server_tool_use, server tool results, and
+                                # tool_use). For the legacy direct path we
+                                # echo just thinking + tool_use blocks, which
+                                # is what Anthropic accepts and matches the
+                                # existing tests.
+                                if programmatic_call_present:
+                                    assistant_content = list(response.content)
+                                else:
+                                    assistant_content = []
+                                    if len(thinking_blocks) > 0:
+                                        assistant_content += thinking_blocks
+                                    for tool_call_block in tool_call_blocks:
+                                        assistant_content.append(tool_call_block)
 
                                 request_params["messages"].append(
                                     {
@@ -657,6 +888,56 @@ class AnthropicProvider(BaseLLMProvider):
                                         "content": assistant_content,
                                     }
                                 )
+
+                                # Build user response. For programmatic tool
+                                # calls, the user message must contain ONLY
+                                # tool_result blocks (no text, thinking, or
+                                # images) — this is required by Anthropic
+                                # when responding to a code-execution-issued
+                                # tool_use.
+                                if programmatic_call_present:
+                                    tool_results_content = []
+                                    for tool_call_block, preview_text in zip(
+                                        tool_call_blocks, text_previews
+                                    ):
+                                        tool_results_content.append(
+                                            {
+                                                "type": "tool_result",
+                                                "tool_use_id": tool_call_block.id,
+                                                "content": preview_text,
+                                            }
+                                        )
+                                    request_params["messages"].append(
+                                        {
+                                            "role": "user",
+                                            "content": tool_results_content,
+                                        }
+                                    )
+                                    # Programmatic path: skip image handling
+                                    # and the legacy tool_results_data branch
+                                    # entirely.
+                                    request_params["tool_choice"] = (
+                                        {"type": "auto"}
+                                        if request_params.get("tool_choice") != "auto"
+                                        else None
+                                    )
+                                    if container_id:
+                                        request_params["container"] = container_id
+                                    tools, tool_dict = self.update_tools_with_budget(
+                                        tools,
+                                        tool_handler,
+                                        request_params,
+                                    )
+                                    await self._apply_pre_model_call_hook(
+                                        request_params,
+                                        request_params.get("model") or model_for_tokens,
+                                        pre_model_call_hook,
+                                        checkpoint_kind="post_tool_batch",
+                                    )
+                                    response = await client.messages.create(
+                                        **request_params
+                                    )
+                                    continue
 
                                 # Build user response with all tool results and handle images
                                 tool_results_data = process_tool_results_with_images(
@@ -830,6 +1111,9 @@ class AnthropicProvider(BaseLLMProvider):
                     break
             if response.usage:
                 add_usage(response.usage)
+            collect_server_tool_blocks(response)
+            collect_server_tool_usage(response)
+            collect_container(response)
 
         if return_tool_outputs_only and has_tool_call_outputs():
             content = ""
@@ -847,6 +1131,10 @@ class AnthropicProvider(BaseLLMProvider):
             cached_input_tokens,
             cache_creation_input_tokens,
             None,
+            server_tool_outputs if server_tool_outputs else None,
+            server_tool_usage if server_tool_usage else None,
+            container_id,
+            container_expires_at,
         )
 
     async def execute_chat(
@@ -871,10 +1159,15 @@ class AnthropicProvider(BaseLLMProvider):
         tool_result_preview_max_tokens: Optional[int] = None,
         previous_response_id: Optional[str] = None,
         tool_phase_complete_message: str = "exploration done, generating answer",
+        server_tools: Optional[
+            Union[List[str], List[Dict[str, Any]], Dict[str, Dict[str, Any]]]
+        ] = None,
+        programmatic_tool_calling: bool = False,
+        container_id: Optional[str] = None,
         **kwargs,
     ) -> LLMResponse:
         """Execute a chat completion with Anthropic."""
-        from anthropic import AsyncAnthropic
+        from .anthropic_server_tools import normalize_server_tools
 
         # Create a ToolHandler instance with tool_budget and image_result_keys if provided
         sample_functions = tool_sample_functions or kwargs.get("tool_sample_functions")
@@ -897,13 +1190,35 @@ class AnthropicProvider(BaseLLMProvider):
         if pre_model_call_hook:
             self.validate_pre_model_call_hook(pre_model_call_hook)
 
+        # Normalize server tools first so version validation errors surface
+        # before any API call.
+        normalized_server_tools: List[Dict[str, Any]] = []
+        beta_headers_needed: set = set()
+        if server_tools is not None or programmatic_tool_calling:
+            normalized_server_tools, beta_headers_needed = normalize_server_tools(
+                server_tools or [],
+                model=model,
+                programmatic_tool_calling=programmatic_tool_calling,
+            )
+
+        # Programmatic tool calling silently flips strict_tools off (with a
+        # warning emitted in build_params) and forces parallel tool use to
+        # ON. Override the kwargs we pass to build_params accordingly.
+        if programmatic_tool_calling:
+            kwargs.setdefault("parallel_tool_calls", True)
+            # If the caller explicitly passed False at the chat_async level,
+            # we still want to surface the conflict via build_params.
+
         t = time.time()
 
         # Interleaved thinking beta header: required for Claude 4/4.5 models,
         # automatic for Opus 4.6+ (adaptive thinking enables it implicitly).
         # Safe to always include — the API ignores it for unsupported models.
-        headers = {}
-        headers["anthropic-beta"] = "interleaved-thinking-2025-05-14"
+        beta_header_values = ["interleaved-thinking-2025-05-14"]
+        for extra in sorted(beta_headers_needed):
+            if extra not in beta_header_values:
+                beta_header_values.append(extra)
+        headers = {"anthropic-beta": ",".join(beta_header_values)}
 
         client_kwargs = {
             "api_key": self.api_key,
@@ -917,6 +1232,8 @@ class AnthropicProvider(BaseLLMProvider):
 
         # Store strict_tools setting for use in update_tools_with_budget
         self._strict_tools = kwargs.get("strict_tools", True)
+        if programmatic_tool_calling:
+            self._strict_tools = False
 
         # Filter tools based on budget before building params
         tools = self.filter_tools_by_budget(tools, tool_handler)
@@ -937,6 +1254,9 @@ class AnthropicProvider(BaseLLMProvider):
             timeout=timeout,
             parallel_tool_calls=kwargs.get("parallel_tool_calls", True),
             strict_tools=kwargs.get("strict_tools", True),
+            server_tools=normalized_server_tools or None,
+            programmatic_tool_calling=programmatic_tool_calling,
+            container_id=container_id,
         )
 
         # Construct a tool dict if needed
@@ -963,6 +1283,10 @@ class AnthropicProvider(BaseLLMProvider):
                 cached_toks,
                 cache_creation_toks,
                 output_details,
+                server_tool_outputs_resp,
+                server_tool_usage_resp,
+                response_container_id,
+                response_container_expires_at,
             ) = await self.process_response(
                 client=client,
                 response=response,
@@ -978,6 +1302,8 @@ class AnthropicProvider(BaseLLMProvider):
                 tool_sample_functions=sample_functions,
                 tool_result_preview_max_tokens=preview_max_tokens,
                 tool_phase_complete_message=tool_phase_complete_message,
+                server_tools=normalized_server_tools or None,
+                programmatic_tool_calling=programmatic_tool_calling,
                 **kwargs,
             )
         except Exception as e:
@@ -1013,4 +1339,8 @@ class AnthropicProvider(BaseLLMProvider):
             cost_in_cents=cost,
             tool_outputs=tool_outputs,
             response_id=response_id,
+            server_tool_outputs=server_tool_outputs_resp,
+            server_tool_usage=server_tool_usage_resp,
+            container_id=response_container_id,
+            container_expires_at=response_container_expires_at,
         )

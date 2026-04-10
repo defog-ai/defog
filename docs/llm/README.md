@@ -19,6 +19,7 @@ This directory contains detailed documentation for all LLM-related functionality
 
 - [Code Interpreter](code-interpreter.md) - Execute Python code in sandboxed environments
 - [Web Search](web-search.md) - AI-powered web search integration
+- [Anthropic Server-Side Tools](anthropic-server-tools.md) - First-party Anthropic web_search/web_fetch/code_execution/advisor and programmatic tool calling via `chat_async`
 - [YouTube Transcription](youtube-transcription.md) - Video summarization and transcription
 - [Citations Tool](citations-tool.md) - Generate cited answers from documents
 - [MCP Integration](mcp-integration.md) - Model Context Protocol server integration
