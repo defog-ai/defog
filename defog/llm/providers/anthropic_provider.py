@@ -615,9 +615,7 @@ class AnthropicProvider(BaseLLMProvider):
             # the response did not interact with the cache), so we coerce.
             total_input_tokens += getattr(usage_obj, "input_tokens", 0) or 0
             total_output_tokens += getattr(usage_obj, "output_tokens", 0) or 0
-            cached_input_tokens += (
-                getattr(usage_obj, "cache_read_input_tokens", 0) or 0
-            )
+            cached_input_tokens += getattr(usage_obj, "cache_read_input_tokens", 0) or 0
             cache_creation_input_tokens += (
                 getattr(usage_obj, "cache_creation_input_tokens", 0) or 0
             )
@@ -875,8 +873,9 @@ class AnthropicProvider(BaseLLMProvider):
                                 # is what Anthropic accepts and matches the
                                 # existing tests.
                                 has_server_blocks = any(
-                                    getattr(b, "type", "") in ("server_tool_use",) or
-                                    getattr(b, "type", "") in SERVER_TOOL_RESULT_TYPES
+                                    getattr(b, "type", "") in ("server_tool_use",)
+                                    or getattr(b, "type", "")
+                                    in SERVER_TOOL_RESULT_TYPES
                                     for b in response.content
                                 )
                                 if programmatic_call_present or has_server_blocks:
@@ -1080,6 +1079,9 @@ class AnthropicProvider(BaseLLMProvider):
                     tools, tool_dict = self.update_tools_with_budget(
                         tools, tool_handler, request_params
                     )
+
+                    if container_id:
+                        request_params["container"] = container_id
 
                     await self._apply_pre_model_call_hook(
                         request_params,
