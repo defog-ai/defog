@@ -30,6 +30,12 @@ class LLMResponse:
     tool_outputs: Optional[List[Dict[str, Any]]] = None
     citations: Optional[List[Dict[str, Any]]] = None
     response_id: Optional[str] = None
+    # Anthropic server-side tool fields. Default to None so other providers
+    # and existing call sites are unaffected.
+    server_tool_outputs: Optional[List[Dict[str, Any]]] = None
+    server_tool_usage: Optional[Dict[str, int]] = None
+    container_id: Optional[str] = None
+    container_expires_at: Optional[str] = None
 
 
 class BaseLLMProvider(ABC):

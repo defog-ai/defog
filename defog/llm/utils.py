@@ -112,6 +112,11 @@ async def chat_async(
     citations_reasoning_effort: Optional[str] = None,
     strict_tools: bool = True,
     tool_phase_complete_message: str = "exploration done, generating answer",
+    server_tools: Optional[
+        Union[List[str], List[Dict[str, Any]], Dict[str, Dict[str, Any]]]
+    ] = None,
+    programmatic_tool_calling: bool = False,
+    container_id: Optional[str] = None,
 ) -> LLMResponse:
     """
     Execute a chat completion with explicit provider parameter.
@@ -154,6 +159,13 @@ async def chat_async(
         previous_response_id: Optional id of a previous response when continuing conversations (supported for OpenAI, Anthropic, Gemini).
         citations_reasoning_effort: Reasoning effort level for citations
         strict_tools: When True (default), Anthropic uses constrained decoding to enforce tool parameter schemas. Set to False to skip constrained decoding for lower latency with tool-heavy agents.
+        server_tools: Anthropic only. Enable Anthropic's first-party server-side tools (web_search, web_fetch, code_execution, advisor). Accepts:
+            - List of names: ``["web_search", "web_fetch", "code_execution"]`` — defaults applied
+            - Dict of name -> per-tool config: ``{"web_search": {"max_uses": 5}, "advisor": {"model": "claude-opus-4-6"}}``
+            - Raw list of dicts (escape hatch): ``[{"type": "web_search_20260209", "name": "web_search"}]``
+            Combinable with user ``tools`` and ``mcp_servers``.
+        programmatic_tool_calling: Anthropic only. When True, user-supplied ``tools`` are exposed to the code execution sandbox so Claude can write Python that calls them as ``await my_tool(...)``. Requires ``code_execution`` in ``server_tools``. Forces ``strict_tools=False`` and rejects ``parallel_tool_calls=False`` and forced ``tool_choice``.
+        container_id: Anthropic only. Continue a code-execution / programmatic-calling session by passing the ``container_id`` returned on a previous ``LLMResponse``.
     Returns:
         LLMResponse object containing the result
 
@@ -189,6 +201,30 @@ async def chat_async(
         for mcp_server in mcp_servers:
             if not isinstance(mcp_server, str):
                 raise ValueError("mcp_servers must be a list of strings")
+
+    # Validate that Anthropic-only kwargs are only used with the anthropic provider.
+    _anthropic_only_set = (
+        server_tools is not None
+        or programmatic_tool_calling
+        or container_id is not None
+    )
+    if _anthropic_only_set:
+        if isinstance(provider, LLMProvider):
+            _provider_value = provider.value
+        else:
+            _provider_value = str(provider).lower()
+        if _provider_value != "anthropic":
+            raise ValueError(
+                "server_tools, programmatic_tool_calling, and container_id are "
+                "currently only supported for the anthropic provider."
+            )
+
+    # Programmatic tool calling forbids ``disable_parallel_tool_use``. The
+    # default value of ``parallel_tool_calls`` in this function is False, so
+    # silently flip it on for programmatic mode — otherwise every caller
+    # would have to remember to pass parallel_tool_calls=True.
+    if programmatic_tool_calling and not parallel_tool_calls:
+        parallel_tool_calls = True
 
     if mcp_servers:
         mcp_tools = []
@@ -311,6 +347,9 @@ async def chat_async(
                 return_tool_outputs_only=insert_tool_citations,
                 strict_tools=strict_tools,
                 tool_phase_complete_message=tool_phase_complete_message,
+                server_tools=server_tools,
+                programmatic_tool_calling=programmatic_tool_calling,
+                container_id=container_id,
             )
 
             # Process citations if requested and we have tool outputs

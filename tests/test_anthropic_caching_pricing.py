@@ -94,6 +94,10 @@ async def test_anthropic_process_response_cache_tokens():
         cached_toks,
         cache_creation_toks,
         output_details,
+        _server_tool_outputs,
+        _server_tool_usage,
+        _container_id,
+        _container_expires_at,
     ) = await provider.process_response(
         client=client,
         response=mock_response,
