@@ -81,6 +81,7 @@ async def test_tool_budget_with_anthropic():
         tool_choice="auto",
         tool_budget=tool_budget,
         temperature=0.0,
+        parallel_tool_calls=False,
         config=config,
     )
 
@@ -142,6 +143,7 @@ async def test_tool_budget_with_openai():
         tool_choice="auto",
         tool_budget=tool_budget,
         temperature=0.0,
+        parallel_tool_calls=False,
         config=config,
     )
 
@@ -194,6 +196,7 @@ async def test_tool_budget_with_gemini():
         tool_choice="auto",
         tool_budget=tool_budget,
         temperature=0.0,
+        parallel_tool_calls=False,
         config=config,
     )
 
@@ -257,6 +260,7 @@ async def test_tool_budget_exhaustion():
         tool_choice="auto",
         tool_budget=tool_budget,
         temperature=0.0,
+        parallel_tool_calls=False,
         config=config,
     )
 
@@ -317,6 +321,7 @@ async def test_unlimited_tools_with_budget():
         tool_choice="auto",
         tool_budget=tool_budget,
         temperature=0.0,
+        parallel_tool_calls=False,
         config=config,
     )
 
@@ -354,6 +359,7 @@ async def test_zero_budget():
         tool_choice="auto",
         tool_budget=tool_budget,
         temperature=0.0,
+        parallel_tool_calls=False,
         config=config,
     )
 

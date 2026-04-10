@@ -101,7 +101,7 @@ async def chat_async(
     tool_budget: Optional[Dict[str, int]] = None,
     insert_tool_citations: bool = False,
     citations_instructions: Optional[str] = None,
-    parallel_tool_calls: bool = False,
+    parallel_tool_calls: bool = True,
     tool_output_max_tokens: int = 10000,
     tool_result_preview_max_tokens: Optional[int] = None,
     tool_sample_functions: Optional[Dict[str, Callable]] = None,

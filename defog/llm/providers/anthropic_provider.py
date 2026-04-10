@@ -155,7 +155,7 @@ class AnthropicProvider(BaseLLMProvider):
         metadata: Optional[Dict[str, str]] = None,
         timeout: int = 600,
         reasoning_effort: Optional[str] = None,
-        parallel_tool_calls: bool = False,
+        parallel_tool_calls: bool = True,
         strict_tools: bool = True,
         server_tools: Optional[List[Dict[str, Any]]] = None,
         programmatic_tool_calling: bool = False,
@@ -363,12 +363,13 @@ class AnthropicProvider(BaseLLMProvider):
                 params["tool_choice"] = {"type": "auto"}
 
             # Add parallel tool calls configuration. Skip when programmatic
-            # tool calling is on because Anthropic forbids
-            # disable_parallel_tool_use in that mode.
+            # tool calling is on or when server tools are present because
+            # Anthropic forbids disable_parallel_tool_use in those modes.
             if (
                 "tool_choice" in params
                 and isinstance(params["tool_choice"], dict)
                 and not programmatic_tool_calling
+                and not server_tools
             ):
                 if not parallel_tool_calls:
                     params["tool_choice"]["disable_parallel_tool_use"] = True

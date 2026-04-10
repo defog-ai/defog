@@ -228,7 +228,7 @@ class GeminiProvider(BaseLLMProvider):
         metadata: Optional[Dict[str, str]] = None,
         timeout: int = 600,
         reasoning_effort: Optional[str] = None,
-        parallel_tool_calls: bool = False,
+        parallel_tool_calls: bool = True,
         previous_response_id: Optional[str] = None,
         **kwargs,
     ) -> Tuple[Dict[str, Any], Any]:
