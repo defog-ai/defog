@@ -874,7 +874,12 @@ class AnthropicProvider(BaseLLMProvider):
                                 # echo just thinking + tool_use blocks, which
                                 # is what Anthropic accepts and matches the
                                 # existing tests.
-                                if programmatic_call_present:
+                                has_server_blocks = any(
+                                    getattr(b, "type", "") in ("server_tool_use",) or
+                                    getattr(b, "type", "") in SERVER_TOOL_RESULT_TYPES
+                                    for b in response.content
+                                )
+                                if programmatic_call_present or has_server_blocks:
                                     assistant_content = list(response.content)
                                 else:
                                     assistant_content = []
