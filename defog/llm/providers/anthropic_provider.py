@@ -538,18 +538,53 @@ class AnthropicProvider(BaseLLMProvider):
                 return {k: _block_to_dict(v) for k, v in vars(block).items()}
             return str(block)
 
-        def collect_server_tool_blocks(resp) -> None:
-            """Pull server-side tool result blocks out of a response."""
+        async def collect_server_tool_blocks(resp) -> None:
+            """Pull server-side tool result blocks out of a response and
+            call ``post_tool_function`` for each one so callers can observe
+            server-tool activity the same way they observe user-tool activity.
+            """
+            # Build a lookup from tool_use_id → (name, input) so we can
+            # report meaningful names/args to post_tool_function.
+            server_use_map: Dict[str, tuple] = {}
+            for block in getattr(resp, "content", []) or []:
+                if getattr(block, "type", None) == "server_tool_use":
+                    use_id = getattr(block, "id", None)
+                    if use_id:
+                        server_use_map[use_id] = (
+                            getattr(block, "name", "server_tool"),
+                            _block_to_dict(getattr(block, "input", {})),
+                        )
+
             for block in getattr(resp, "content", []) or []:
                 btype = getattr(block, "type", None)
                 if btype in SERVER_TOOL_RESULT_TYPES:
+                    tool_use_id = getattr(block, "tool_use_id", None)
+                    result = _block_to_dict(getattr(block, "content", None))
                     server_tool_outputs.append(
                         {
                             "type": btype,
-                            "tool_use_id": getattr(block, "tool_use_id", None),
-                            "result": _block_to_dict(getattr(block, "content", None)),
+                            "tool_use_id": tool_use_id,
+                            "result": result,
                         }
                     )
+                    if post_tool_function:
+                        tool_name, input_args = server_use_map.get(
+                            tool_use_id, (btype, {})
+                        )
+                        if inspect.iscoroutinefunction(post_tool_function):
+                            await post_tool_function(
+                                function_name=tool_name,
+                                input_args=input_args,
+                                tool_result=result,
+                                tool_id=tool_use_id,
+                            )
+                        else:
+                            post_tool_function(
+                                function_name=tool_name,
+                                input_args=input_args,
+                                tool_result=result,
+                                tool_id=tool_use_id,
+                            )
 
         def collect_server_tool_usage(resp) -> None:
             """Pull cumulative server tool usage counters off response.usage."""
@@ -628,7 +663,7 @@ class AnthropicProvider(BaseLLMProvider):
             consecutive_exceptions = 0
             while True:
                 add_usage(response.usage)
-                collect_server_tool_blocks(response)
+                await collect_server_tool_blocks(response)
                 collect_server_tool_usage(response)
                 collect_container(response)
 
@@ -1119,7 +1154,7 @@ class AnthropicProvider(BaseLLMProvider):
                     break
             if response.usage:
                 add_usage(response.usage)
-            collect_server_tool_blocks(response)
+            await collect_server_tool_blocks(response)
             collect_server_tool_usage(response)
             collect_container(response)
 
