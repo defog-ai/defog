@@ -712,6 +712,255 @@ class TestProcessResponse:
         assert tool_outputs[0]["name"] == "my_tool"
 
     @pytest.mark.asyncio
+    async def test_post_tool_function_called_for_server_tool_results(self):
+        """post_tool_function should be invoked for every server tool result
+        block so callers can observe server-tool activity."""
+        provider = AnthropicProvider(api_key="sk-test")
+        srv_use = make_block(
+            "server_tool_use",
+            id="srvtoolu_ws01",
+            name="web_search",
+            input={"query": "test query"},
+        )
+        ws_result = make_block(
+            "web_search_tool_result",
+            tool_use_id="srvtoolu_ws01",
+            content=[{"title": "Result", "url": "https://example.com"}],
+        )
+        text = make_block("text", text="Found it.")
+        response = make_response([srv_use, ws_result, text])
+
+        client = SimpleNamespace(messages=SimpleNamespace(create=AsyncMock()))
+
+        post_tool_calls = []
+
+        async def mock_post_tool(function_name, input_args, tool_result, tool_id):
+            post_tool_calls.append(
+                {
+                    "function_name": function_name,
+                    "input_args": input_args,
+                    "tool_result": tool_result,
+                    "tool_id": tool_id,
+                }
+            )
+
+        await provider.process_response(
+            client=client,
+            response=response,
+            request_params={"messages": [], "model": "claude-opus-4-6"},
+            tools=None,
+            tool_dict={},
+            server_tools=[build_web_search_tool()],
+            post_tool_function=mock_post_tool,
+        )
+
+        assert len(post_tool_calls) == 1
+        call = post_tool_calls[0]
+        assert call["function_name"] == "web_search"
+        assert call["input_args"] == {"query": "test query"}
+        assert call["tool_id"] == "srvtoolu_ws01"
+        assert isinstance(call["tool_result"], list)
+
+    @pytest.mark.asyncio
+    async def test_post_tool_function_called_for_code_execution_results(self):
+        """post_tool_function should fire for code_execution results when the
+        server_tool_use and result are in the same response."""
+        provider = AnthropicProvider(api_key="sk-test")
+        srv_use = make_block(
+            "server_tool_use",
+            id="srvtoolu_ce01",
+            name="code_execution",
+            input={"code": "print('hi')"},
+        )
+        ce_result = make_block(
+            "code_execution_tool_result",
+            tool_use_id="srvtoolu_ce01",
+            content={"stdout": "hi\n"},
+        )
+        text = make_block("text", text="done")
+        response = make_response([srv_use, ce_result, text])
+
+        client = SimpleNamespace(messages=SimpleNamespace(create=AsyncMock()))
+
+        post_tool_calls = []
+
+        async def mock_post_tool(function_name, input_args, tool_result, tool_id):
+            post_tool_calls.append(
+                {
+                    "function_name": function_name,
+                    "input_args": input_args,
+                    "tool_result": tool_result,
+                    "tool_id": tool_id,
+                }
+            )
+
+        await provider.process_response(
+            client=client,
+            response=response,
+            request_params={
+                "messages": [{"role": "user", "content": "run code"}],
+                "model": "claude-opus-4-6",
+            },
+            tools=None,
+            tool_dict={},
+            server_tools=[build_code_execution_tool()],
+            post_tool_function=mock_post_tool,
+        )
+
+        assert len(post_tool_calls) == 1
+        call = post_tool_calls[0]
+        assert call["function_name"] == "code_execution"
+        assert call["input_args"] == {"code": "print('hi')"}
+        assert call["tool_id"] == "srvtoolu_ce01"
+        assert call["tool_result"] == {"stdout": "hi\n"}
+
+    @pytest.mark.asyncio
+    async def test_post_tool_function_called_across_pause_turn(self):
+        """When pause_turn splits server_tool_use and its result across two
+        responses, post_tool_function should still be called (with the block
+        type as fallback name since the use block is in a prior response)."""
+        provider = AnthropicProvider(api_key="sk-test")
+        # First response: pause_turn with server_tool_use only
+        srv_use = make_block(
+            "server_tool_use",
+            id="srvtoolu_ce01",
+            name="code_execution",
+            input={"code": "print('hi')"},
+        )
+        first = make_response(
+            [srv_use],
+            stop_reason="pause_turn",
+            container=SimpleNamespace(
+                id="container_pt", expires_at="2026-01-01T00:00:00Z"
+            ),
+        )
+        # Second response: result block only (use block was in prior response)
+        ce_result = make_block(
+            "code_execution_tool_result",
+            tool_use_id="srvtoolu_ce01",
+            content={"stdout": "hi\n"},
+        )
+        text = make_block("text", text="done")
+        second = make_response(
+            [ce_result, text],
+            stop_reason="end_turn",
+            container=SimpleNamespace(
+                id="container_pt", expires_at="2026-01-01T00:00:00Z"
+            ),
+        )
+
+        client = SimpleNamespace(
+            messages=SimpleNamespace(create=AsyncMock(return_value=second))
+        )
+
+        post_tool_calls = []
+
+        async def mock_post_tool(function_name, input_args, tool_result, tool_id):
+            post_tool_calls.append(
+                {
+                    "function_name": function_name,
+                    "tool_result": tool_result,
+                    "tool_id": tool_id,
+                }
+            )
+
+        await provider.process_response(
+            client=client,
+            response=first,
+            request_params={
+                "messages": [{"role": "user", "content": "run code"}],
+                "model": "claude-opus-4-6",
+            },
+            tools=None,
+            tool_dict={},
+            server_tools=[build_code_execution_tool()],
+            post_tool_function=mock_post_tool,
+        )
+
+        # post_tool_function should have been called for the result block
+        assert len(post_tool_calls) == 1
+        call = post_tool_calls[0]
+        assert call["tool_id"] == "srvtoolu_ce01"
+        assert call["tool_result"] == {"stdout": "hi\n"}
+
+    @pytest.mark.asyncio
+    async def test_post_tool_function_sync_works_for_server_tools(self):
+        """A synchronous post_tool_function should also be called for server
+        tool results."""
+        provider = AnthropicProvider(api_key="sk-test")
+        srv_use = make_block(
+            "server_tool_use",
+            id="srvtoolu_s01",
+            name="web_search",
+            input={"query": "sync test"},
+        )
+        ws_result = make_block(
+            "web_search_tool_result",
+            tool_use_id="srvtoolu_s01",
+            content=[{"title": "Sync"}],
+        )
+        text = make_block("text", text="ok")
+        response = make_response([srv_use, ws_result, text])
+
+        client = SimpleNamespace(messages=SimpleNamespace(create=AsyncMock()))
+
+        post_tool_calls = []
+
+        def sync_post_tool(function_name, input_args, tool_result, tool_id):
+            post_tool_calls.append(function_name)
+
+        await provider.process_response(
+            client=client,
+            response=response,
+            request_params={"messages": [], "model": "claude-opus-4-6"},
+            tools=None,
+            tool_dict={},
+            server_tools=[build_web_search_tool()],
+            post_tool_function=sync_post_tool,
+        )
+
+        assert post_tool_calls == ["web_search"]
+
+    @pytest.mark.asyncio
+    async def test_post_tool_function_fallback_when_no_server_tool_use_block(self):
+        """When a server tool result block has no matching server_tool_use block
+        (e.g. the use block was in a previous response), the fallback should
+        use the result block type as function_name."""
+        provider = AnthropicProvider(api_key="sk-test")
+        # Only result block, no corresponding server_tool_use in this response
+        ws_result = make_block(
+            "web_search_tool_result",
+            tool_use_id="srvtoolu_orphan",
+            content=[{"title": "Orphan"}],
+        )
+        text = make_block("text", text="here")
+        response = make_response([ws_result, text])
+
+        client = SimpleNamespace(messages=SimpleNamespace(create=AsyncMock()))
+
+        post_tool_calls = []
+
+        async def mock_post_tool(function_name, input_args, tool_result, tool_id):
+            post_tool_calls.append(
+                {"function_name": function_name, "input_args": input_args}
+            )
+
+        await provider.process_response(
+            client=client,
+            response=response,
+            request_params={"messages": [], "model": "claude-opus-4-6"},
+            tools=None,
+            tool_dict={},
+            server_tools=[build_web_search_tool()],
+            post_tool_function=mock_post_tool,
+        )
+
+        assert len(post_tool_calls) == 1
+        # Falls back to the block type name since no server_tool_use was found
+        assert post_tool_calls[0]["function_name"] == "web_search_tool_result"
+        assert post_tool_calls[0]["input_args"] == {}
+
+    @pytest.mark.asyncio
     async def test_programmatic_tool_call_user_message_only_tool_results(self):
         """When responding to a code-execution-issued tool_use, the next user
         message in params['messages'] must contain ONLY tool_result blocks."""

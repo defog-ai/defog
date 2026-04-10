@@ -561,7 +561,7 @@ wheels = [
 
 [[package]]
 name = "defog"
-version = "1.5.2"
+version = "1.5.3b1"
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },
