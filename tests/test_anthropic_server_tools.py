@@ -461,6 +461,257 @@ class TestProcessResponse:
         )
 
     @pytest.mark.asyncio
+    async def test_non_programmatic_tool_path_passes_container_id(self):
+        """When code_execution creates a container and the model then calls a
+        regular user tool (non-programmatic path), the follow-up API call must
+        include container_id in request_params.
+
+        Regression test for https://github.com/defog-ai/defog/issues/270
+        """
+        provider = AnthropicProvider(api_key="sk-test")
+
+        # First response: code_execution ran (server_tool_use + result),
+        # AND the model calls a regular user tool.  Container is set.
+        srv_code_use = make_block(
+            "server_tool_use",
+            id="srvtoolu_01",
+            name="code_execution",
+            input={"code": "print('hello')"},
+        )
+        ce_result = make_block(
+            "code_execution_tool_result",
+            tool_use_id="srvtoolu_01",
+            content={"stdout": "hello\n"},
+        )
+        text_block = make_block("text", text="Let me call the tool")
+        # Regular tool_use block (NOT from code_execution — no caller attr)
+        regular_tool_use = make_block(
+            "tool_use",
+            id="toolu_regular_01",
+            name="my_tool",
+            input={"x": 7},
+        )
+        first = make_response(
+            [srv_code_use, ce_result, text_block, regular_tool_use],
+            stop_reason="tool_use",
+            container=SimpleNamespace(
+                id="container_xyz", expires_at="2026-06-01T00:00:00Z"
+            ),
+        )
+
+        # Second response: final answer
+        final_text = make_block("text", text="The result is got 7")
+        second = make_response(
+            [final_text],
+            stop_reason="end_turn",
+            container=SimpleNamespace(
+                id="container_xyz", expires_at="2026-06-01T00:00:00Z"
+            ),
+        )
+
+        mock_create = AsyncMock(return_value=second)
+        client = SimpleNamespace(messages=SimpleNamespace(create=mock_create))
+
+        params: Dict[str, Any] = {
+            "messages": [{"role": "user", "content": "run code and call tool"}],
+            "model": "claude-opus-4-6",
+            "tool_choice": {"type": "auto"},
+        }
+        tool_dict = {"my_tool": my_tool}
+        result = await provider.process_response(
+            client=client,
+            response=first,
+            request_params=params,
+            tools=[my_tool],
+            tool_dict=tool_dict,
+            server_tools=[build_code_execution_tool()],
+        )
+
+        (
+            content,
+            tool_outputs,
+            _input,
+            _output,
+            _cached,
+            _cache_create,
+            _details,
+            server_tool_outputs,
+            server_tool_usage,
+            container_id,
+            container_expires_at,
+        ) = result
+
+        # The follow-up API call must include the container
+        assert mock_create.call_count == 1
+        called_with = mock_create.call_args.kwargs
+        assert called_with.get("container") == "container_xyz", (
+            "Non-programmatic tool path must pass container_id in follow-up API call"
+        )
+
+        # Container should be captured in the return tuple
+        assert container_id == "container_xyz"
+        assert container_expires_at == "2026-06-01T00:00:00Z"
+
+        # The tool was executed
+        assert len(tool_outputs) == 1
+        assert tool_outputs[0]["name"] == "my_tool"
+
+        # Final content captured
+        assert "got 7" in content
+
+    @pytest.mark.asyncio
+    async def test_non_programmatic_tool_path_without_container(self):
+        """When there is no container (no code_execution), the non-programmatic
+        tool path should NOT add a container key to request_params."""
+        provider = AnthropicProvider(api_key="sk-test")
+
+        text_block = make_block("text", text="Calling tool")
+        regular_tool_use = make_block(
+            "tool_use",
+            id="toolu_01",
+            name="my_tool",
+            input={"x": 5},
+        )
+        first = make_response(
+            [text_block, regular_tool_use],
+            stop_reason="tool_use",
+            # No container
+        )
+
+        final_text = make_block("text", text="Done: got 5")
+        second = make_response([final_text], stop_reason="end_turn")
+
+        mock_create = AsyncMock(return_value=second)
+        client = SimpleNamespace(messages=SimpleNamespace(create=mock_create))
+
+        params: Dict[str, Any] = {
+            "messages": [{"role": "user", "content": "call tool"}],
+            "model": "claude-opus-4-6",
+            "tool_choice": {"type": "auto"},
+        }
+        tool_dict = {"my_tool": my_tool}
+        result = await provider.process_response(
+            client=client,
+            response=first,
+            request_params=params,
+            tools=[my_tool],
+            tool_dict=tool_dict,
+        )
+
+        content = result[0]
+        assert "got 5" in content
+        # No container should be set
+        called_with = mock_create.call_args.kwargs
+        assert "container" not in called_with
+
+    @pytest.mark.asyncio
+    async def test_container_id_across_pause_then_tool_use(self):
+        """Multi-step scenario: code_execution triggers pause_turn (creating a
+        container), then the resumed response has a regular tool_use. Both
+        follow-up API calls must include the container_id.
+
+        This tests the full sequence that triggers the bug in issue #270:
+        pause_turn → resume → regular tool call.
+        """
+        provider = AnthropicProvider(api_key="sk-test")
+
+        # Response 1: pause_turn with code_execution, container created
+        srv_code_use = make_block(
+            "server_tool_use",
+            id="srvtoolu_01",
+            name="code_execution",
+            input={"code": "import time; time.sleep(5); print('done')"},
+        )
+        first = make_response(
+            [srv_code_use],
+            stop_reason="pause_turn",
+            container=SimpleNamespace(
+                id="container_multi", expires_at="2026-06-01T00:00:00Z"
+            ),
+        )
+
+        # Response 2 (after pause_turn resume): code execution result +
+        # regular tool_use
+        ce_result = make_block(
+            "code_execution_tool_result",
+            tool_use_id="srvtoolu_01",
+            content={"stdout": "done\n"},
+        )
+        text_block = make_block("text", text="Now calling tool")
+        regular_tool = make_block(
+            "tool_use",
+            id="toolu_02",
+            name="my_tool",
+            input={"x": 99},
+        )
+        second = make_response(
+            [ce_result, text_block, regular_tool],
+            stop_reason="tool_use",
+            container=SimpleNamespace(
+                id="container_multi", expires_at="2026-06-01T00:00:00Z"
+            ),
+        )
+
+        # Response 3: final answer
+        final_text = make_block("text", text="Result: got 99")
+        third = make_response(
+            [final_text],
+            stop_reason="end_turn",
+            container=SimpleNamespace(
+                id="container_multi", expires_at="2026-06-01T00:00:00Z"
+            ),
+        )
+
+        mock_create = AsyncMock(side_effect=[second, third])
+        client = SimpleNamespace(messages=SimpleNamespace(create=mock_create))
+
+        params: Dict[str, Any] = {
+            "messages": [{"role": "user", "content": "run code then call tool"}],
+            "model": "claude-opus-4-6",
+            "tool_choice": {"type": "auto"},
+        }
+        tool_dict = {"my_tool": my_tool}
+        result = await provider.process_response(
+            client=client,
+            response=first,
+            request_params=params,
+            tools=[my_tool],
+            tool_dict=tool_dict,
+            server_tools=[build_code_execution_tool()],
+        )
+
+        (
+            content,
+            tool_outputs,
+            _input,
+            _output,
+            _cached,
+            _cache_create,
+            _details,
+            server_tool_outputs,
+            server_tool_usage,
+            container_id,
+            container_expires_at,
+        ) = result
+
+        assert mock_create.call_count == 2
+
+        # First call (pause_turn resume) should have container
+        first_call = mock_create.call_args_list[0].kwargs
+        assert first_call.get("container") == "container_multi"
+
+        # Second call (after regular tool execution) should also have container
+        second_call = mock_create.call_args_list[1].kwargs
+        assert second_call.get("container") == "container_multi", (
+            "Non-programmatic tool path after pause_turn must pass container_id"
+        )
+
+        assert container_id == "container_multi"
+        assert content == "Result: got 99"
+        assert len(tool_outputs) == 1
+        assert tool_outputs[0]["name"] == "my_tool"
+
+    @pytest.mark.asyncio
     async def test_programmatic_tool_call_user_message_only_tool_results(self):
         """When responding to a code-execution-issued tool_use, the next user
         message in params['messages'] must contain ONLY tool_result blocks."""
