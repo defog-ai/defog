@@ -15,6 +15,7 @@ from .exceptions import LLMError, ConfigurationError, ToolError
 from .config import LLMConfig
 from .llm_providers import LLMProvider
 from .citations import citations_tool
+from .memory.conversation_cache import ConversationCache
 from copy import deepcopy
 from .utils_mcp import get_mcp_tools
 
@@ -117,6 +118,7 @@ async def chat_async(
     ] = None,
     programmatic_tool_calling: bool = False,
     container_id: Optional[str] = None,
+    conversation_cache: Optional[ConversationCache] = None,
 ) -> LLMResponse:
     """
     Execute a chat completion with explicit provider parameter.
@@ -166,6 +168,7 @@ async def chat_async(
             Combinable with user ``tools`` and ``mcp_servers``.
         programmatic_tool_calling: Anthropic only. When True, user-supplied ``tools`` are exposed to the code execution sandbox so Claude can write Python that calls them as ``await my_tool(...)``. Requires ``code_execution`` in ``server_tools``. Forces ``strict_tools=False`` and rejects ``parallel_tool_calls=False`` and forced ``tool_choice``.
         container_id: Anthropic only. Continue a code-execution / programmatic-calling session by passing the ``container_id`` returned on a previous ``LLMResponse``.
+        conversation_cache: Optional supplemental store for conversation history (Anthropic and OpenRouter). Runs alongside the built-in pickle cache — pickle writes always happen; ``conversation_cache.store`` is called in addition. On load, ``conversation_cache.load`` is tried first; a non-None return short-circuits the pickle read. Use this to mirror history to a database or shared store so follow-ups work across machines.
     Returns:
         LLMResponse object containing the result
 
@@ -350,6 +353,7 @@ async def chat_async(
                 server_tools=server_tools,
                 programmatic_tool_calling=programmatic_tool_calling,
                 container_id=container_id,
+                conversation_cache=conversation_cache,
             )
 
             # Process citations if requested and we have tool outputs

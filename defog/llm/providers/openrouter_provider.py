@@ -9,6 +9,7 @@ from typing import Dict, List, Any, Optional, Callable, Tuple, Union
 from .base import BaseLLMProvider, LLMResponse
 from ..exceptions import ProviderError, ToolError
 from ..config import LLMConfig
+from ..memory.conversation_cache import ConversationCache
 from ..cost import CostCalculator
 from ..utils_function_calling import get_function_specs, convert_tool_choice
 from ..image_utils import convert_to_openai_format
@@ -754,6 +755,7 @@ class OpenRouterProvider(BaseLLMProvider):
         tool_result_preview_max_tokens: Optional[int] = None,
         previous_response_id: Optional[str] = None,
         tool_phase_complete_message: str = "exploration done, generating answer",
+        conversation_cache: Optional[ConversationCache] = None,
         **kwargs,
     ) -> LLMResponse:
         """Execute a chat completion via OpenRouter."""
@@ -782,7 +784,7 @@ class OpenRouterProvider(BaseLLMProvider):
 
         # Handle conversation continuation via base class cache
         messages = await self.prepare_conversation_messages(
-            messages, previous_response_id
+            messages, previous_response_id, conversation_cache
         )
 
         # Create OpenAI client pointed at OpenRouter
@@ -865,7 +867,9 @@ class OpenRouterProvider(BaseLLMProvider):
 
         # Persist conversation history for follow-up calls
         history = self.append_assistant_message_to_history(messages, content)
-        await self.persist_conversation_history(gen_response_id, history)
+        await self.persist_conversation_history(
+            gen_response_id, history, conversation_cache
+        )
 
         # Use OpenRouter-reported cost if available, fall back to local price table
         if openrouter_cost is not None:

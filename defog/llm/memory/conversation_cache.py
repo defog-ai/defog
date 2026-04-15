@@ -6,11 +6,41 @@ import re
 import time
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, Hashable, List, Optional, Set, Tuple
+from typing import Any, Dict, Hashable, List, Optional, Protocol, Set, Tuple, runtime_checkable
 
 import aiofiles
 
 from defog import config as defog_config
+
+
+@runtime_checkable
+class ConversationCache(Protocol):
+    """Supplemental storage backend for cached LLM conversations.
+
+    An implementation is called alongside the built-in pickle cache so callers
+    can mirror conversation history to a database, shared filesystem, or any
+    other store. The pickle cache is always written; this protocol runs in
+    addition to it.
+
+    Load semantics: when a ConversationCache is passed to chat_async, its load
+    is tried first. A non-None return short-circuits the pickle read, so the
+    supplemental store takes precedence when it has the entry.
+    """
+
+    async def load(
+        self, response_id: str
+    ) -> Optional[List[Dict[str, Any]]]:
+        """Return messages for response_id, or None on miss."""
+        ...
+
+    async def store(
+        self,
+        response_id: str,
+        messages: List[Dict[str, Any]],
+        expire: Optional[int] = None,
+    ) -> None:
+        """Persist messages keyed by response_id. expire is seconds from now, or None for no expiry."""
+        ...
 
 
 def _get_cache_directory() -> Path:
