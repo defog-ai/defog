@@ -9,6 +9,7 @@ import uuid
 from ..config.settings import LLMConfig
 from ..exceptions import ToolError
 from ..memory.conversation_cache import (
+    ConversationCache,
     load_messages as load_cached_messages,
     store_messages as store_cached_messages,
 )
@@ -385,11 +386,29 @@ class BaseLLMProvider(ABC):
         return tools, tool_handler.build_tool_dict(tools)
 
     async def _load_cached_conversation(
-        self, previous_response_id: Optional[str]
+        self,
+        previous_response_id: Optional[str],
+        conversation_cache: Optional[ConversationCache] = None,
     ) -> Optional[List[Dict[str, Any]]]:
-        """Fetch cached conversation for a response id."""
+        """Fetch cached conversation for a response id.
+
+        If conversation_cache is provided, its load is tried first; a non-None
+        result short-circuits the pickle read.
+        """
         if not previous_response_id:
             return None
+        if conversation_cache is not None:
+            try:
+                supplemental = await conversation_cache.load(previous_response_id)
+            except Exception as exc:
+                self.logger.warning(
+                    "Supplemental conversation cache load failed for %s: %s",
+                    previous_response_id,
+                    exc,
+                )
+                supplemental = None
+            if supplemental is not None:
+                return supplemental
         try:
             return await load_cached_messages(previous_response_id)
         except Exception as exc:
@@ -427,10 +446,13 @@ class BaseLLMProvider(ABC):
         self,
         messages: List[Dict[str, Any]],
         previous_response_id: Optional[str] = None,
+        conversation_cache: Optional[ConversationCache] = None,
     ) -> List[Dict[str, Any]]:
         """Return full conversation including any cached history."""
         base_messages = deepcopy(messages)
-        cached_messages = await self._load_cached_conversation(previous_response_id)
+        cached_messages = await self._load_cached_conversation(
+            previous_response_id, conversation_cache
+        )
         if cached_messages:
             base_messages = self._merge_cached_and_new_messages(
                 cached_messages, base_messages
@@ -438,9 +460,12 @@ class BaseLLMProvider(ABC):
         return base_messages
 
     async def persist_conversation_history(
-        self, response_id: Optional[str], messages: List[Dict[str, Any]]
+        self,
+        response_id: Optional[str],
+        messages: List[Dict[str, Any]],
+        conversation_cache: Optional[ConversationCache] = None,
     ) -> None:
-        """Persist conversation history for later continuation."""
+        """Persist conversation history to the pickle cache, and to the supplemental cache if supplied."""
         if not response_id or not messages:
             return
         try:
@@ -451,6 +476,15 @@ class BaseLLMProvider(ABC):
                 response_id,
                 exc,
             )
+        if conversation_cache is not None:
+            try:
+                await conversation_cache.store(response_id, messages)
+            except Exception as exc:
+                self.logger.warning(
+                    "Supplemental conversation cache store failed for %s: %s",
+                    response_id,
+                    exc,
+                )
 
     def generate_response_id(self) -> str:
         """Generate a unique response id for conversation chaining."""

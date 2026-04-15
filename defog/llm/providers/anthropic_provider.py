@@ -10,6 +10,7 @@ from anthropic import AsyncAnthropic, transform_schema
 from .base import BaseLLMProvider, LLMResponse
 from ..exceptions import ProviderError, MaxTokensError, ToolError
 from ..config import LLMConfig
+from ..memory.conversation_cache import ConversationCache
 from ..cost import CostCalculator
 from ..utils_function_calling import get_function_specs, convert_tool_choice
 from ..image_utils import convert_to_anthropic_format
@@ -1207,6 +1208,7 @@ class AnthropicProvider(BaseLLMProvider):
         ] = None,
         programmatic_tool_calling: bool = False,
         container_id: Optional[str] = None,
+        conversation_cache: Optional[ConversationCache] = None,
         **kwargs,
     ) -> LLMResponse:
         """Execute a chat completion with Anthropic."""
@@ -1282,7 +1284,7 @@ class AnthropicProvider(BaseLLMProvider):
         tools = self.filter_tools_by_budget(tools, tool_handler)
 
         conversation_messages = await self.prepare_conversation_messages(
-            messages, previous_response_id
+            messages, previous_response_id, conversation_cache
         )
 
         params, _ = self.build_params(
@@ -1361,7 +1363,7 @@ class AnthropicProvider(BaseLLMProvider):
                 conversation_messages, content
             )
             await self.persist_conversation_history(
-                cache_response_id, history_for_cache
+                cache_response_id, history_for_cache, conversation_cache
             )
             response_id = cache_response_id
 
