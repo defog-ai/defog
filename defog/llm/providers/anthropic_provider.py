@@ -225,17 +225,19 @@ class AnthropicProvider(BaseLLMProvider):
         # Claude 3.7 Sonnet. Using "-4" instead of "-4-" so that
         # "claude-sonnet-4" (no date suffix) is also matched.
         supports_thinking = "3-7" in model or "-4" in model
-        # Claude 4.6 models use adaptive thinking (type: "adaptive") with
+        # Claude 4.6+ models use adaptive thinking (type: "adaptive") with
         # effort via output_config, replacing the deprecated budget_tokens
         # param. Update this tuple when new models add adaptive support.
-        supports_adaptive = any(p in model for p in ("opus-4-6", "sonnet-4-6"))
-        # effort: "max" is only available on Opus 4.6+. Sending it to
-        # Sonnet 4.6 returns an API error.
-        supports_max_effort = "opus-4-6" in model
-        # Opus 4.6 requires adaptive thinking always on. For other
+        supports_adaptive = any(
+            p in model for p in ("opus-4-6", "opus-4-7", "sonnet-4-6")
+        )
+        # effort: "max" is only available on Opus models. Sending it to
+        # Sonnet returns an API error.
+        supports_max_effort = "opus-4-6" in model or "opus-4-7" in model
+        # Opus models require adaptive thinking always on. For other
         # adaptive models (e.g. Sonnet 4.6), only enable it when
         # reasoning_effort is explicitly requested.
-        requires_adaptive = "opus-4-6" in model
+        requires_adaptive = "opus-4-6" in model or "opus-4-7" in model
         use_adaptive = requires_adaptive or (
             supports_adaptive and reasoning_effort is not None
         )

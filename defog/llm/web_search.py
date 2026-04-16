@@ -175,14 +175,19 @@ async def web_search_tool(
                 request_params["tool_choice"] = {"type": "auto"}
                 request_params["temperature"] = 1.0
 
-                # Claude 4.6 models support adaptive thinking, which
+                # Claude 4.6+ models support adaptive thinking, which
                 # replaces the deprecated budget_tokens approach.
-                _is_adaptive = "opus-4-6" in model or "sonnet-4-6" in model
+                _is_adaptive = (
+                    "opus-4-6" in model
+                    or "opus-4-7" in model
+                    or "sonnet-4-6" in model
+                )
                 if _is_adaptive:
                     request_params["thinking"] = {"type": "adaptive"}
                     # Cap "max" effort to "high" for non-Opus models.
                     effort = reasoning_effort
-                    if effort == "max" and "opus-4-6" not in model:
+                    _is_opus = "opus-4-6" in model or "opus-4-7" in model
+                    if effort == "max" and not _is_opus:
                         effort = "high"
                     request_params["output_config"] = {"effort": effort}
                 else:
