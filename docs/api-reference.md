@@ -248,6 +248,7 @@ async def chat_async(
     tool_sample_functions: Optional[Dict[str, Callable]] = None,
     previous_response_id: Optional[str] = None,
     strict_tools: bool = True,
+    task_budget: Optional[Union[int, Dict[str, Any]]] = None,
 ) -> LLMResponse
 ```
 
@@ -255,6 +256,7 @@ async def chat_async(
 - `tool_result_preview_max_tokens`: Optional token budget for the tool output preview that is sent back to the LLM. Full tool outputs are still stored on the response object.
 - `tool_sample_functions`: Optional mapping of tool name to a callable (or a single callable) that returns a sampled version of the tool output before it is passed back to the LLM.
 - `strict_tools`: When `True` (default), Anthropic uses constrained decoding to enforce tool parameter schemas (`strict: true`). Set to `False` to skip constrained decoding for lower latency with tool-heavy agents. Only affects the Anthropic provider.
+- `task_budget`: Anthropic-only, Claude Opus 4.7 only. Advisory token budget for the full agentic loop (thinking + tool calls + tool results + output). Pass an `int` (expands to `{"type": "tokens", "total": N}`) or a dict with optional `remaining` for loops that compact history between requests. Minimum total is 20,000 tokens. Mutating `remaining` between turns invalidates the prompt cache — prefer setting `total` once and letting the server-side countdown self-regulate.
 
 ### LLMResponse
 
