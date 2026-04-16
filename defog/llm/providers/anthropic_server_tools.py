@@ -56,6 +56,7 @@ SERVER_TOOL_BETA_HEADERS: Dict[str, str] = {
 # return a vague 400.
 DYNAMIC_FILTERING_SUPPORTED_MODELS: Tuple[str, ...] = (
     "opus-4-6",
+    "opus-4-7",
     "sonnet-4-6",
 )
 
@@ -70,11 +71,12 @@ _DYNAMIC_FILTERING_VERSIONS = {
 
 # Models that support the advisor tool as an executor. Advisor is a beta
 # feature; the executor is one of these models and the advisor model
-# (passed via the ``model`` field) is typically Opus 4.6.
+# (passed via the ``model`` field) is typically the latest Opus.
 _ADVISOR_EXECUTOR_SUPPORTED_MODELS: Tuple[str, ...] = (
     "haiku-4-5",
     "sonnet-4-6",
     "opus-4-6",
+    "opus-4-7",
 )
 
 # Code execution version required for programmatic tool calling.
