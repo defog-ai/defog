@@ -36,6 +36,7 @@ async def web_search_tool(
             - OpenAI (o-series, gpt-5): "low", "medium", "high"
             - Gemini (gemini-3): "minimal", "low", "medium", "high" (gemini-3-pro only supports "low", "high")
             - Anthropic (claude-3-7, claude-4): "low", "medium", "high"
+              ("max" for Opus 4.6/4.7, "xhigh" for Opus 4.7 only)
 
     Returns:
         dict with keys:
@@ -184,9 +185,12 @@ async def web_search_tool(
                 )
                 if _is_adaptive:
                     request_params["thinking"] = {"type": "adaptive"}
-                    # Cap "max" effort to "high" for non-Opus models.
                     effort = reasoning_effort
                     _is_opus = "opus-4-6" in model or "opus-4-7" in model
+                    # "xhigh" is only on Opus 4.7; cap down otherwise.
+                    if effort == "xhigh" and "opus-4-7" not in model:
+                        effort = "max" if _is_opus else "high"
+                    # "max" is only on Opus; cap to "high" for Sonnet.
                     if effort == "max" and not _is_opus:
                         effort = "high"
                     request_params["output_config"] = {"effort": effort}

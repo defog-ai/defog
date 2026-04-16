@@ -244,9 +244,12 @@ async def citations_tool(
                 if _is_adaptive:
                     payload["thinking"] = {"type": "adaptive"}
                     payload["temperature"] = 1.0
-                    # Cap "max" effort to "high" for non-Opus models.
                     effort = reasoning_effort
                     _is_opus = "opus-4-6" in model or "opus-4-7" in model
+                    # "xhigh" is only on Opus 4.7; cap down otherwise.
+                    if effort == "xhigh" and "opus-4-7" not in model:
+                        effort = "max" if _is_opus else "high"
+                    # "max" is only on Opus; cap to "high" for Sonnet.
                     if effort == "max" and not _is_opus:
                         effort = "high"
                     payload["output_config"] = {"effort": effort}

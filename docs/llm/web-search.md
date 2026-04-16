@@ -78,12 +78,13 @@ result = await web_search_tool(
 )
 
 # Anthropic (claude-3-7, claude-4 models)
-# Claude 4.6 models use adaptive thinking automatically.
+# Claude 4.6+ models use adaptive thinking automatically.
 result = await web_search_tool(
     question="Analyze the impact of AI on healthcare",
     model="claude-sonnet-4-6",
     provider=LLMProvider.ANTHROPIC,
-    reasoning_effort="medium"  # "low", "medium", "high" ("max" for Opus 4.6 only)
+    reasoning_effort="medium"  # "low", "medium", "high"
+    # "max" also available on Opus 4.6/4.7; "xhigh" on Opus 4.7 only.
 )
 ```
 

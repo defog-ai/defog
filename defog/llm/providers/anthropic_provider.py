@@ -234,6 +234,9 @@ class AnthropicProvider(BaseLLMProvider):
         # effort: "max" is only available on Opus models. Sending it to
         # Sonnet returns an API error.
         supports_max_effort = "opus-4-6" in model or "opus-4-7" in model
+        # effort: "xhigh" is only available on Opus 4.7. Sending it to any
+        # other model returns an API error.
+        supports_xhigh_effort = "opus-4-7" in model
         # Opus models require adaptive thinking always on. For other
         # adaptive models (e.g. Sonnet 4.6), only enable it when
         # reasoning_effort is explicitly requested.
@@ -262,7 +265,7 @@ class AnthropicProvider(BaseLLMProvider):
                     "type": "enabled",
                     "budget_tokens": 4096,
                 }
-            elif reasoning_effort in ("high", "max"):
+            elif reasoning_effort in ("high", "max", "xhigh"):
                 thinking = {
                     "type": "enabled",
                     "budget_tokens": 8192,
@@ -290,11 +293,14 @@ class AnthropicProvider(BaseLLMProvider):
         # structured output format (json_schema).
         output_config = {}
         if use_adaptive and reasoning_effort is not None:
-            # Cap effort to "high" for models that don't support "max".
-            if reasoning_effort == "max" and not supports_max_effort:
-                output_config["effort"] = "high"
-            else:
-                output_config["effort"] = reasoning_effort
+            effort = reasoning_effort
+            # "xhigh" is only on Opus 4.7; cap down for other models.
+            if effort == "xhigh" and not supports_xhigh_effort:
+                effort = "max" if supports_max_effort else "high"
+            # "max" is only on Opus; cap down to "high" for other models.
+            if effort == "max" and not supports_max_effort:
+                effort = "high"
+            output_config["effort"] = effort
         # Native structured outputs via constrained decoding.
         # The Anthropic API supports output_config.format alongside tools
         # with strict: true in the same request, so we always set it here.
