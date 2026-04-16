@@ -78,47 +78,42 @@ def test_is_model_supported():
     assert CostCalculator.is_model_supported("totally-made-up-xyz") is False
 
 
-def test_print_overcharge_table(capsys):
-    """Print the before/after table for the gpt-5.4 fallback regression.
+@pytest.mark.parametrize("model", sorted(MODEL_COSTS.keys()))
+def test_calculator_matches_models_json(model: str) -> None:
+    """Every entry in MODEL_COSTS should cost exactly what its dict says.
 
-    Run with ``pytest -s`` to see the output unconditionally. The asserts at
-    the end make sure the magnitudes we quote in the PR description stay
-    accurate if someone touches pricing later.
+    Catches two regressions at once:
+      - Typos or unit errors in defog/llm/cost/models.py (the dict keys
+        must use the per-1k convention the calculator reads).
+      - Matcher changes that accidentally route an exact model id to a
+        different entry.
     """
-    gpt5 = MODEL_COSTS["gpt-5"]
+    costs = MODEL_COSTS[model]
+    input_t = 1_000
+    output_t = 1_000
+    cached_t = 1_000 if "cached_input_cost_per1k" in costs else 0
+    cache_creation_t = 1_000 if "cache_creation_input_cost_per1k" in costs else 0
 
-    def tokens_cost(costs: dict, input_t: int, output_t: int) -> float:
-        return (
-            input_t / 1000 * costs["input_cost_per1k"]
-            + output_t / 1000 * costs["output_cost_per1k"]
+    expected_cents = (
+        input_t / 1000 * costs["input_cost_per1k"]
+        + output_t / 1000 * costs["output_cost_per1k"]
+    ) * 100
+    if cached_t:
+        expected_cents += (
+            cached_t / 1000 * costs["cached_input_cost_per1k"]
+        ) * 100
+    if cache_creation_t:
+        expected_cents += (
+            cache_creation_t / 1000 * costs["cache_creation_input_cost_per1k"]
         ) * 100
 
-    # 1k input + 1k output is the size used throughout this file.
-    input_t = output_t = 1000
-
-    rows = []
-    for model_id in ("gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"):
-        actual = tokens_cost(MODEL_COSTS[model_id], input_t, output_t)
-        # Old behaviour: longest-substring fallback picked `gpt-5` (since
-        # `gpt-5-mini`/`gpt-5-nano` aren't substrings of `gpt-5.4-*`).
-        old_logged = tokens_cost(gpt5, input_t, output_t)
-        ratio = old_logged / actual if actual else float("inf")
-        rows.append((model_id, old_logged, actual, ratio))
-
-    with capsys.disabled():
-        print()
-        print("Fallback-matcher overcharge for gpt-5.4-* (1k input + 1k output):")
-        print(f"  {'model':<16} {'old (gpt-5 tier)':>20} {'new (actual)':>16} {'ratio':>10}")
-        for model_id, old_logged, actual, ratio in rows:
-            direction = "over" if ratio > 1 else "under"
-            print(
-                f"  {model_id:<16} {old_logged:>18.4f}¢ {actual:>14.4f}¢ "
-                f"{ratio:>8.2f}x {direction}"
-            )
-
-    by_model = {row[0]: row for row in rows}
-    # gpt-5.4 is slightly under-billed at gpt-5 pricing (gpt-5.4 is the
-    # more expensive model). The others are over-billed substantially.
-    assert by_model["gpt-5.4"][3] < 1.0
-    assert by_model["gpt-5.4-mini"][3] > 2.0
-    assert by_model["gpt-5.4-nano"][3] > 7.0
+    actual = CostCalculator.calculate_cost(
+        model=model,
+        input_tokens=input_t,
+        output_tokens=output_t,
+        cached_input_tokens=cached_t,
+        cache_creation_input_tokens=cache_creation_t,
+    )
+    assert actual == pytest.approx(expected_cents), (
+        f"calculate_cost for {model!r} disagreed with its MODEL_COSTS entry"
+    )
