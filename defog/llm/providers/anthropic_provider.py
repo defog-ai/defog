@@ -143,6 +143,64 @@ class AnthropicProvider(BaseLLMProvider):
 
         return {"role": "user", "content": content}
 
+    @staticmethod
+    def _normalize_task_budget(
+        task_budget: Optional[Union[int, Dict[str, Any]]],
+        model: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Validate + normalize a caller-supplied ``task_budget`` into the shape
+        Anthropic's Messages API expects: ``{"type": "tokens", "total": N,
+        "remaining"?: M}``.
+
+        Returns ``None`` when no budget is set. Raises ``ValueError`` on invalid
+        input or when the model does not support task budgets.
+        """
+        if task_budget is None:
+            return None
+
+        if "opus-4-7" not in model:
+            raise ValueError(
+                "task_budget is only supported on claude-opus-4-7; "
+                f"got model={model!r}."
+            )
+
+        if isinstance(task_budget, bool):
+            # bool is an int subclass in Python; reject it explicitly so callers
+            # don't accidentally pass True/False.
+            raise ValueError("task_budget must be an int or dict, not bool.")
+        if isinstance(task_budget, int):
+            normalized: Dict[str, Any] = {"type": "tokens", "total": task_budget}
+        elif isinstance(task_budget, dict):
+            normalized = dict(task_budget)
+            normalized.setdefault("type", "tokens")
+            if "total" not in normalized:
+                raise ValueError("task_budget dict must include 'total'.")
+        else:
+            raise ValueError(
+                f"task_budget must be an int or dict; got {type(task_budget).__name__}."
+            )
+
+        total = normalized["total"]
+        if not isinstance(total, int) or isinstance(total, bool):
+            raise ValueError("task_budget 'total' must be an int.")
+        if total < 20000:
+            raise ValueError(
+                "task_budget 'total' must be at least 20000 tokens "
+                f"(Anthropic API minimum); got {total}."
+            )
+
+        if "remaining" in normalized and normalized["remaining"] is not None:
+            remaining = normalized["remaining"]
+            if not isinstance(remaining, int) or isinstance(remaining, bool):
+                raise ValueError("task_budget 'remaining' must be an int.")
+            if remaining > total:
+                raise ValueError(
+                    "task_budget 'remaining' cannot exceed 'total' "
+                    f"({remaining} > {total})."
+                )
+
+        return normalized
+
     def build_params(
         self,
         messages: List[Dict[str, Any]],
@@ -161,6 +219,7 @@ class AnthropicProvider(BaseLLMProvider):
         server_tools: Optional[List[Dict[str, Any]]] = None,
         programmatic_tool_calling: bool = False,
         container_id: Optional[str] = None,
+        task_budget: Optional[Dict[str, Any]] = None,
         **kwargs,
     ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
         """Create the parameter dict for Anthropic's .messages.create()."""
@@ -313,6 +372,8 @@ class AnthropicProvider(BaseLLMProvider):
                 "type": "json_schema",
                 "schema": transform_schema(response_format),
             }
+        if task_budget is not None:
+            output_config["task_budget"] = task_budget
         if output_config:
             params["output_config"] = output_config
 
@@ -1216,11 +1277,14 @@ class AnthropicProvider(BaseLLMProvider):
         ] = None,
         programmatic_tool_calling: bool = False,
         container_id: Optional[str] = None,
+        task_budget: Optional[Union[int, Dict[str, Any]]] = None,
         conversation_cache: Optional[ConversationCache] = None,
         **kwargs,
     ) -> LLMResponse:
         """Execute a chat completion with Anthropic."""
         from .anthropic_server_tools import normalize_server_tools
+
+        normalized_task_budget = self._normalize_task_budget(task_budget, model)
 
         # Create a ToolHandler instance with tool_budget and image_result_keys if provided
         sample_functions = tool_sample_functions or kwargs.get("tool_sample_functions")
@@ -1253,6 +1317,9 @@ class AnthropicProvider(BaseLLMProvider):
                 model=model,
                 programmatic_tool_calling=programmatic_tool_calling,
             )
+
+        if normalized_task_budget is not None:
+            beta_headers_needed.add("task-budgets-2026-03-13")
 
         # Programmatic tool calling silently flips strict_tools off (with a
         # warning emitted in build_params) and forces parallel tool use to
@@ -1310,6 +1377,7 @@ class AnthropicProvider(BaseLLMProvider):
             server_tools=normalized_server_tools or None,
             programmatic_tool_calling=programmatic_tool_calling,
             container_id=container_id,
+            task_budget=normalized_task_budget,
         )
 
         # Construct a tool dict if needed

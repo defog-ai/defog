@@ -118,6 +118,7 @@ async def chat_async(
     ] = None,
     programmatic_tool_calling: bool = False,
     container_id: Optional[str] = None,
+    task_budget: Optional[Union[int, Dict[str, Any]]] = None,
     conversation_cache: Optional[ConversationCache] = None,
 ) -> LLMResponse:
     """
@@ -168,6 +169,13 @@ async def chat_async(
             Combinable with user ``tools`` and ``mcp_servers``.
         programmatic_tool_calling: Anthropic only. When True, user-supplied ``tools`` are exposed to the code execution sandbox so Claude can write Python that calls them as ``await my_tool(...)``. Requires ``code_execution`` in ``server_tools``. Forces ``strict_tools=False`` and rejects ``parallel_tool_calls=False`` and forced ``tool_choice``.
         container_id: Anthropic only. Continue a code-execution / programmatic-calling session by passing the ``container_id`` returned on a previous ``LLMResponse``.
+        task_budget: Anthropic only, Claude Opus 4.7 only. Advisory token budget for the
+            full agentic loop (thinking + tool calls + tool results + output). Accepts
+            either an int (sugar for ``{"type": "tokens", "total": N}``) or the full
+            dict with optional ``remaining`` for loops that compact history between
+            requests. Minimum total is 20,000 tokens. Setting ``remaining`` that
+            changes turn-to-turn invalidates the prompt cache; prefer setting ``total``
+            once and letting the server-side countdown self-regulate.
         conversation_cache: Optional supplemental store for conversation history (Anthropic and OpenRouter). Runs alongside the built-in pickle cache — pickle writes always happen; ``conversation_cache.store`` is called in addition. On load, ``conversation_cache.load`` is tried first; a non-None return short-circuits the pickle read. Use this to mirror history to a database or shared store so follow-ups work across machines.
     Returns:
         LLMResponse object containing the result
@@ -210,6 +218,7 @@ async def chat_async(
         server_tools is not None
         or programmatic_tool_calling
         or container_id is not None
+        or task_budget is not None
     )
     if _anthropic_only_set:
         if isinstance(provider, LLMProvider):
@@ -218,8 +227,9 @@ async def chat_async(
             _provider_value = str(provider).lower()
         if _provider_value != "anthropic":
             raise ValueError(
-                "server_tools, programmatic_tool_calling, and container_id are "
-                "currently only supported for the anthropic provider."
+                "server_tools, programmatic_tool_calling, container_id, and "
+                "task_budget are currently only supported for the anthropic "
+                "provider."
             )
 
     # Programmatic tool calling forbids ``disable_parallel_tool_use``. The
@@ -353,6 +363,7 @@ async def chat_async(
                 server_tools=server_tools,
                 programmatic_tool_calling=programmatic_tool_calling,
                 container_id=container_id,
+                task_budget=task_budget,
                 conversation_cache=conversation_cache,
             )
 

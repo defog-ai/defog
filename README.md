@@ -177,6 +177,19 @@ response = await chat_async(
 )
 print(response.content)
 print(response.container_id)   # reuse via `container_id=` on a follow-up call
+
+
+# Task budgets: advisory token cap across the full agentic loop
+# (Claude Opus 4.7 only). Accepts an int (expands to {"type": "tokens",
+# "total": N}) or the full dict with optional "remaining" for loops that
+# compact history between requests. Minimum 20,000 tokens.
+response = await chat_async(
+    provider="anthropic",
+    model="claude-opus-4-7",
+    messages=[{"role": "user", "content": "Audit this repo for security issues."}],
+    tools=[...],
+    task_budget=64000,
+)
 ```
 
 See [docs/llm/anthropic-server-tools.md](docs/llm/anthropic-server-tools.md)
