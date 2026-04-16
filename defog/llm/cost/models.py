@@ -40,6 +40,35 @@ MODEL_COSTS = {
         "cached_input_cost_per1k": 0.000005,
         "output_cost_per1k": 0.0004,
     },
+    "gpt-5.4": {
+        "input_cost_per1k": 0.0025,
+        "cached_input_cost_per1k": 0.00025,
+        "output_cost_per1k": 0.015,
+    },
+    "gpt-5.4-mini": {
+        "input_cost_per1k": 0.00075,
+        "cached_input_cost_per1k": 0.000075,
+        "output_cost_per1k": 0.0045,
+    },
+    "gpt-5.4-nano": {
+        "input_cost_per1k": 0.0002,
+        "cached_input_cost_per1k": 0.00002,
+        "output_cost_per1k": 0.00125,
+    },
+    "gpt-5.4-pro": {
+        "input_cost_per1k": 0.03,
+        "output_cost_per1k": 0.18,
+    },
+    "gpt-5.3-chat-latest": {
+        "input_cost_per1k": 0.00175,
+        "cached_input_cost_per1k": 0.000175,
+        "output_cost_per1k": 0.014,
+    },
+    "gpt-5.3-codex": {
+        "input_cost_per1k": 0.00175,
+        "cached_input_cost_per1k": 0.000175,
+        "output_cost_per1k": 0.014,
+    },
     "o3-mini": {
         "input_cost_per1k": 0.0011,
         "cached_input_cost_per1k": 0.00055,
