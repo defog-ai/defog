@@ -24,3 +24,11 @@
 - Add `PYTHONPATH=.` when running tests, so that the tests/examples use the version of defog in this repo - instead of the machine installed version
 - Use the `--envfile .env` argument to load environment variables (API keys etc.) when running tests
 - Try to run scoped tests that directly affect changed code instead of running all tests at once
+
+# Model Pricing
+- Prices live in `defog/llm/cost/models.py` as per-1k-token rates.
+- When adding or updating an entry, use ONLY the provider's official pricing page:
+  - OpenAI: https://developers.openai.com/api/docs/pricing
+  - Anthropic (Claude): https://platform.claude.com/docs/en/about-claude/models/overview
+- Convert the published per-1M-token numbers to per-1k (divide by 1000). Keys are `input_cost_per1k`, `cached_input_cost_per1k`, `output_cost_per1k`, and (for Anthropic) `cache_creation_input_cost_per1k`.
+- Do not infer prices from neighbouring entries or prior versions. A newer tier name (e.g. `gpt-5.4-mini`) does not necessarily share pricing with the matching `gpt-5-mini` entry — look each model up on the source page.
