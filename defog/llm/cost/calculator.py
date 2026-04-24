@@ -9,11 +9,17 @@ _SIZE_SUFFIXES = ("mini", "nano", "flash", "lite", "pro")
 
 
 def _split_size_suffix(name: str) -> tuple[str, str]:
-    """Split 'gpt-5.4-mini' -> ('gpt-5.4', 'mini'); 'gpt-5' -> ('gpt-5', '')."""
-    for s in _SIZE_SUFFIXES:
-        token = f"-{s}"
-        if name.endswith(token):
-            return name[: -len(token)], s
+    """Split size-tier model ids while allowing optional snapshot suffixes.
+
+    Examples:
+      - 'gpt-5.4-mini' -> ('gpt-5.4', 'mini')
+      - 'gpt-5.5-pro-2026-04-23' -> ('gpt-5.5', 'pro')
+      - 'gpt-5' -> ('gpt-5', '')
+    """
+    parts = name.split("-")
+    for index in range(len(parts) - 1, 0, -1):
+        if parts[index] in _SIZE_SUFFIXES:
+            return "-".join(parts[:index]), parts[index]
     return name, ""
 
 

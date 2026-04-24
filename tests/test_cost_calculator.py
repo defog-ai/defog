@@ -29,6 +29,17 @@ def test_gpt_5_4_entries_are_explicit():
     assert _find_match("gpt-5.4-mini") == "gpt-5.4-mini"
 
 
+def test_gpt_5_5_entries_are_explicit():
+    # gpt-5.5 has distinct pricing from gpt-5/gpt-5.4 and must not silently
+    # fall back to an older GPT-5 family price.
+    assert "gpt-5.5" in MODEL_COSTS
+    assert "gpt-5.5-pro" in MODEL_COSTS
+    assert _find_match("gpt-5.5") == "gpt-5.5"
+    assert _find_match("gpt-5.5-2026-04-23") == "gpt-5.5"
+    assert _find_match("gpt-5.5-pro") == "gpt-5.5-pro"
+    assert _find_match("gpt-5.5-pro-2026-04-23") == "gpt-5.5-pro"
+
+
 def test_unknown_mini_does_not_fall_back_to_base_pricing():
     # Regression: previously `gpt-5.4-mini` fell back to `gpt-5` (full) pricing
     # via loose substring match, inflating cost ~5x. With size-suffix parity,
@@ -70,9 +81,21 @@ def test_gpt_5_4_pricing_matches_openai_rate_card():
     assert _cost("gpt-5.4") == pytest.approx(1.75)
 
 
+def test_gpt_5_5_pricing_matches_openai_rate_card():
+    # Per https://openai.com/api/pricing/ and
+    # https://openai.com/index/introducing-gpt-5-5/ as of 2026-04-24:
+    # gpt-5.5: $5.00 input / $0.50 cached input / $30.00 output per 1M tokens
+    assert _cost("gpt-5.5") == pytest.approx(3.5)
+    assert _cost("gpt-5.5", cached=1000) == pytest.approx(3.55)
+    # gpt-5.5-pro: $30.00 input / $180.00 output per 1M tokens
+    assert _cost("gpt-5.5-pro") == pytest.approx(21.0)
+
+
 def test_is_model_supported():
     assert CostCalculator.is_model_supported("gpt-5-mini") is True
     assert CostCalculator.is_model_supported("gpt-5.4-mini") is True
+    assert CostCalculator.is_model_supported("gpt-5.5") is True
+    assert CostCalculator.is_model_supported("gpt-5.5-pro") is True
     assert CostCalculator.is_model_supported("gpt-5.9-mini") is True
     assert CostCalculator.is_model_supported("claude-sonnet-4-6") is True
     assert CostCalculator.is_model_supported("totally-made-up-xyz") is False
@@ -99,9 +122,7 @@ def test_calculator_matches_models_json(model: str) -> None:
         + output_t / 1000 * costs["output_cost_per1k"]
     ) * 100
     if cached_t:
-        expected_cents += (
-            cached_t / 1000 * costs["cached_input_cost_per1k"]
-        ) * 100
+        expected_cents += (cached_t / 1000 * costs["cached_input_cost_per1k"]) * 100
     if cache_creation_t:
         expected_cents += (
             cache_creation_t / 1000 * costs["cache_creation_input_cost_per1k"]

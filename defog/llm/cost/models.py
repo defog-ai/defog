@@ -40,6 +40,15 @@ MODEL_COSTS = {
         "cached_input_cost_per1k": 0.000005,
         "output_cost_per1k": 0.0004,
     },
+    "gpt-5.5": {
+        "input_cost_per1k": 0.005,
+        "cached_input_cost_per1k": 0.0005,
+        "output_cost_per1k": 0.03,
+    },
+    "gpt-5.5-pro": {
+        "input_cost_per1k": 0.03,
+        "output_cost_per1k": 0.18,
+    },
     "gpt-5.4": {
         "input_cost_per1k": 0.0025,
         "cached_input_cost_per1k": 0.00025,
