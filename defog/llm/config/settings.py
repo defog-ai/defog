@@ -41,6 +41,7 @@ class LLMConfig:
             "anthropic": "ANTHROPIC_API_KEY",
             "gemini": "GEMINI_API_KEY",
             "openrouter": "OPENROUTER_API_KEY",
+            "deepseek": "DEEPSEEK_API_KEY",
         }
 
         for provider, env_var in key_mappings.items():
@@ -62,6 +63,7 @@ class LLMConfig:
             "anthropic": "ANTHROPIC_BASE_URL",
             "gemini": "GEMINI_BASE_URL",
             "openrouter": "OPENROUTER_BASE_URL",
+            "deepseek": "DEEPSEEK_BASE_URL",
         }
 
         default_urls = {

@@ -194,4 +194,14 @@ MODEL_COSTS = {
         "output_cost_per1k": 0.012,
         "cached_input_cost_per1k": 0.0002,
     },
+    "deepseek-v4-pro": {
+        "input_cost_per1k": 0.00174,
+        "cached_input_cost_per1k": 0.000145,
+        "output_cost_per1k": 0.00348,
+    },
+    "deepseek-v4-flash": {
+        "input_cost_per1k": 0.00014,
+        "cached_input_cost_per1k": 0.000028,
+        "output_cost_per1k": 0.00028,
+    },
 }
