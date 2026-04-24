@@ -89,6 +89,7 @@ class TestChatClients(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(map_model_to_provider("gpt-4o-mini"), LLMProvider.OPENAI)
+        self.assertEqual(map_model_to_provider("gpt-5.5"), LLMProvider.OPENAI)
 
         with self.assertRaises(Exception):
             map_model_to_provider("unknown-model")
