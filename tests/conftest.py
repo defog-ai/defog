@@ -98,6 +98,16 @@ else:
     AVAILABLE_PROVIDERS["openrouter"] = False
     AVAILABLE_MODELS["openrouter"] = []
 
+if os.getenv("DEEPSEEK_API_KEY"):
+    AVAILABLE_PROVIDERS["deepseek"] = True
+    AVAILABLE_MODELS["deepseek"] = [
+        "deepseek-v4-pro",
+        "deepseek-v4-flash",
+    ]
+else:
+    AVAILABLE_PROVIDERS["deepseek"] = False
+    AVAILABLE_MODELS["deepseek"] = []
+
 
 def get_available_models():
     """Get all available models across all providers with API keys."""
