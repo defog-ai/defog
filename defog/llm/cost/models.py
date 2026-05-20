@@ -203,6 +203,11 @@ MODEL_COSTS = {
         "output_cost_per1k": 0.012,
         "cached_input_cost_per1k": 0.0002,
     },
+    "gemini-3.5-flash": {
+        "input_cost_per1k": 0.0015,
+        "output_cost_per1k": 0.009,
+        "cached_input_cost_per1k": 0.00015,
+    },
     "deepseek-v4-pro": {
         "input_cost_per1k": 0.00174,
         "cached_input_cost_per1k": 0.000145,

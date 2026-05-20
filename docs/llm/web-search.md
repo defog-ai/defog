@@ -28,7 +28,7 @@ Web search is supported on the following providers:
 |----------|--------------|-------|
 | OpenAI | `gpt-4.1-mini`, `gpt-4.1` | Uses Responses API with web_search tool |
 | Anthropic | `claude-haiku-4-5`, `claude-sonnet-4` | Uses web_search_20250305 tool |
-| Gemini | `gemini-2.0-flash`, `gemini-3-flash-preview` | Uses google_search via Interactions API |
+| Gemini | `gemini-2.0-flash`, `gemini-3-flash-preview`, `gemini-3.5-flash` | Uses google_search via Interactions API |
 
 ### Structured Output
 
