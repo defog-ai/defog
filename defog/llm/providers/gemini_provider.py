@@ -235,13 +235,10 @@ class GeminiProvider(BaseLLMProvider):
         """Construct parameters for Gemini's interactions.create call."""
 
         # 1. Handle History / New Messages
-        # For Gemini 3, we prefer stateless (full history) to ensure thought signatures are handled correctly
-        # unless we can guarantee previous_interaction_id works with signatures.
-        # Currently, we force stateless for gemini-3 to be safe.
-        if previous_response_id and "gemini-3" not in model:
-            # If we have a previous response ID, we assume the server has the history.
-            # We only need to send the *new* messages.
-            # Heuristic: Send everything after the last assistant message.
+        # When previous_response_id is supplied, the server holds prior turns
+        # (including any thought blocks / signatures), so we only need to send
+        # messages after the last assistant turn.
+        if previous_response_id:
             last_assistant_idx = -1
             for i in range(len(messages) - 1, -1, -1):
                 if messages[i].get("role") == "assistant":
@@ -251,15 +248,7 @@ class GeminiProvider(BaseLLMProvider):
             if last_assistant_idx != -1:
                 new_messages = messages[last_assistant_idx + 1 :]
             else:
-                # If no assistant message found, send everything
                 new_messages = messages
-
-            # If for some reason new_messages is empty (e.g. last msg was assistant),
-            # we might be in a weird state. But let's assume valid flow.
-            if not new_messages:
-                # Maybe we are just continuing generation?
-                # But usually we have a user prompt.
-                pass
         else:
             new_messages = messages
 
