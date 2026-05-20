@@ -82,6 +82,7 @@ if os.getenv("GEMINI_API_KEY"):
         "gemini-2.5-pro",
         "gemini-3.1-flash-lite-preview",
         "gemini-3.1-pro-preview",
+        "gemini-3.5-flash",
     ]
 else:
     AVAILABLE_PROVIDERS["gemini"] = False
