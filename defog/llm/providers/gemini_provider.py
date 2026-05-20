@@ -282,13 +282,17 @@ class GeminiProvider(BaseLLMProvider):
             request_params["system_instruction"] = system_instruction
 
         if response_format:
-            request_params["response_mime_type"] = "application/json"
             if isinstance(response_format, type) and issubclass(
                 response_format, BaseModel
             ):
-                request_params["response_format"] = response_format.model_json_schema()
+                schema = response_format.model_json_schema()
             else:
-                request_params["response_format"] = response_format
+                schema = response_format
+            request_params["response_format"] = {
+                "type": "text",
+                "mime_type": "application/json",
+                "schema": schema,
+            }
 
         if previous_response_id:
             request_params["previous_interaction_id"] = previous_response_id
@@ -563,11 +567,6 @@ class GeminiProvider(BaseLLMProvider):
                     # Pass through configuration from request_params
                     if "tools" in request_params:
                         next_interaction_kwargs["tools"] = request_params["tools"]
-
-                    if "response_mime_type" in request_params:
-                        next_interaction_kwargs["response_mime_type"] = request_params[
-                            "response_mime_type"
-                        ]
 
                     if "response_format" in request_params:
                         next_interaction_kwargs["response_format"] = request_params[
