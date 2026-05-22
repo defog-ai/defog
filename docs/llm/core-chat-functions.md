@@ -148,4 +148,20 @@ response = await chat_async(
     response_format=MyPydanticModel
 )
 
+# Restrict OpenRouter to specific upstream providers
+response = await chat_async(
+    provider="openrouter",
+    model="openai/gpt-5-mini",
+    messages=messages,
+    providers=["azure"],  # sends OpenRouter provider.only
+)
+
+# Advanced OpenRouter routing object
+response = await chat_async(
+    provider="openrouter",
+    model="deepseek/deepseek-r1",
+    messages=messages,
+    providers={"order": ["deepinfra/turbo"], "allow_fallbacks": False},
+)
+
 ```
