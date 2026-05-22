@@ -135,6 +135,47 @@ class OpenRouterProvider(BaseLLMProvider):
         return None
 
     @staticmethod
+    def _build_provider_routing(
+        providers: Optional[Union[List[str], Dict[str, Any]]],
+    ) -> Optional[Dict[str, Any]]:
+        """Build OpenRouter's ``provider`` routing object.
+
+        A list is public API sugar for ``provider.only``. A dict is treated as
+        the full provider routing object and copied so callers can pass
+        advanced OpenRouter fields without this client mutating their input.
+        """
+        if providers is None:
+            return None
+
+        if isinstance(providers, dict):
+            if not providers:
+                raise ValueError("providers must not be an empty dict")
+            key_aliases = {
+                "allowFallbacks": "allow_fallbacks",
+                "requireParameters": "require_parameters",
+                "dataCollection": "data_collection",
+                "enforceDistillableText": "enforce_distillable_text",
+                "preferredMinThroughput": "preferred_min_throughput",
+                "preferredMaxLatency": "preferred_max_latency",
+                "maxPrice": "max_price",
+            }
+            return {
+                key_aliases.get(key, key): value for key, value in providers.items()
+            }
+
+        if isinstance(providers, (list, tuple)):
+            provider_list = list(providers)
+            if not provider_list or not all(
+                isinstance(provider, str) and provider for provider in provider_list
+            ):
+                raise ValueError("providers must be a non-empty list of strings")
+            return {"only": provider_list}
+
+        raise ValueError(
+            "providers must be a list of strings or a provider routing dict"
+        )
+
+    @staticmethod
     def _deterministic_json_repair(content: str) -> str:
         """Apply deterministic fixes for common JSON issues from open models.
 
@@ -280,6 +321,9 @@ class OpenRouterProvider(BaseLLMProvider):
             "temperature": 0.0,
             "max_tokens": 4096,
         }
+        extra_body = request_params.get("extra_body")
+        if extra_body:
+            repair_params["extra_body"] = extra_body
         # Ask for structured output if we can build a response_format
         rf = self._build_response_format(response_format)
         if rf:
@@ -301,6 +345,7 @@ class OpenRouterProvider(BaseLLMProvider):
         client,
         model: str,
         request_params: Optional[Dict[str, Any]] = None,
+        extra_body: Optional[Dict[str, Any]] = None,
     ) -> Any:
         """Parse structured response with deterministic repair and LLM fallback.
 
@@ -342,12 +387,15 @@ class OpenRouterProvider(BaseLLMProvider):
 
         # --- Step 3: LLM-based repair ---
         try:
+            request_params_for_repair = dict(request_params or {})
+            if extra_body:
+                request_params_for_repair["extra_body"] = extra_body
             result = await self._llm_json_repair(
                 raw_content,
                 response_format,
                 client,
                 model,
-                request_params or {},
+                request_params_for_repair,
             )
             if _is_parsed(result):
                 logger.info("LLM-based JSON repair succeeded")
@@ -377,6 +425,7 @@ class OpenRouterProvider(BaseLLMProvider):
         reasoning_effort: Optional[str] = None,
         parallel_tool_calls: bool = True,
         previous_response_id: Optional[str] = None,
+        providers: Optional[Union[List[str], Dict[str, Any]]] = None,
         **kwargs,
     ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
         """Build parameters for the OpenAI-compatible Chat Completions API."""
@@ -416,6 +465,10 @@ class OpenRouterProvider(BaseLLMProvider):
 
         # Extra body for OpenRouter-specific features
         extra_body: Dict[str, Any] = {}
+
+        provider_routing = self._build_provider_routing(providers)
+        if provider_routing:
+            extra_body["provider"] = provider_routing
 
         # Prompt caching for Anthropic models
         if self._is_anthropic_model(model):
@@ -688,7 +741,12 @@ class OpenRouterProvider(BaseLLMProvider):
                     total_openrouter_cost = (total_openrouter_cost or 0) + _cost
                 raw_content = response.choices[0].message.content or ""
                 content = await self._parse_with_repair(
-                    raw_content, response_format, client, model, request_params
+                    raw_content,
+                    response_format,
+                    client,
+                    model,
+                    request_params,
+                    extra_body=extra_body,
                 )
             else:
                 content = response.choices[0].message.content or ""
@@ -704,7 +762,12 @@ class OpenRouterProvider(BaseLLMProvider):
                 # Already called with response_format in build_params
                 raw_content = response.choices[0].message.content or ""
                 content = await self._parse_with_repair(
-                    raw_content, response_format, client, model, request_params
+                    raw_content,
+                    response_format,
+                    client,
+                    model,
+                    request_params,
+                    extra_body=extra_body,
                 )
             else:
                 content = response.choices[0].message.content or ""
@@ -754,6 +817,7 @@ class OpenRouterProvider(BaseLLMProvider):
         tool_sample_functions: Optional[Dict[str, Callable]] = None,
         tool_result_preview_max_tokens: Optional[int] = None,
         previous_response_id: Optional[str] = None,
+        providers: Optional[Union[List[str], Dict[str, Any]]] = None,
         tool_phase_complete_message: str = "exploration done, generating answer",
         conversation_cache: Optional[ConversationCache] = None,
         **kwargs,
@@ -813,6 +877,7 @@ class OpenRouterProvider(BaseLLMProvider):
             timeout=timeout,
             parallel_tool_calls=parallel_tool_calls,
             previous_response_id=previous_response_id,
+            providers=providers,
         )
 
         # Build tool dict

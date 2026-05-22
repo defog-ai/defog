@@ -99,6 +99,7 @@ async def chat_async(
     pre_model_call_hook: Optional[Callable] = None,
     config: Optional[LLMConfig] = None,
     base_url: Optional[str] = None,
+    providers: Optional[Union[List[str], Dict[str, Any]]] = None,
     mcp_servers: Optional[List[str]] = None,
     image_result_keys: Optional[List[str]] = None,
     tool_budget: Optional[Dict[str, int]] = None,
@@ -150,6 +151,10 @@ async def chat_async(
             for the primary provider (e.g., for proxies or self-hosted endpoints).
             Both the Anthropic and OpenAI SDKs accept this parameter natively.
             If not provided, falls back to the URL in config, then to the SDK's default.
+        providers: OpenRouter-only upstream provider routing. Pass a list of provider
+            slugs to restrict the request to those providers (maps to OpenRouter
+            ``provider.only``), or pass a full provider routing dict such as
+            ``{"order": ["deepinfra/turbo"], "allow_fallbacks": False}``.
         mcp_servers: List of MCP server urls for streamable http servers (e.g., ["http://localhost:8000/mcp", "http://localhost:8001/mcp"])
         image_result_keys: List of keys to check in tool results for image data (e.g., ['image_base64', 'screenshot_data'])
         tool_budget: Dictionary mapping tool names to maximum allowed calls. Tools not in the dictionary have unlimited calls.
@@ -208,6 +213,16 @@ async def chat_async(
 
     base_delay = 1  # Initial delay in seconds
     error_trace = None
+
+    def _provider_value(provider_obj: Union[LLMProvider, str]) -> str:
+        return (
+            provider_obj.value
+            if isinstance(provider_obj, LLMProvider)
+            else str(provider_obj).lower()
+        )
+
+    if providers is not None and _provider_value(provider) != "openrouter":
+        raise ValueError("providers is only supported when provider is 'openrouter'.")
 
     # validate that mcp servers are simple strings and nothing else
     if mcp_servers:
@@ -336,38 +351,45 @@ async def chat_async(
                 provider_instance.validate_pre_model_call_hook(pre_model_call_hook)
 
             # Execute the chat completion
-            response = await provider_instance.execute_chat(
-                messages=messages,
-                model=current_model,
-                max_completion_tokens=max_completion_tokens,
-                temperature=temperature,
-                response_format=response_format,
-                verbosity=verbosity,
-                tools=tools,
-                tool_choice=tool_choice,
-                store=store,
-                metadata=metadata,
-                timeout=timeout,
-                reasoning_effort=reasoning_effort,
-                post_tool_function=post_tool_function,
-                post_response_hook=post_response_hook,
-                pre_model_call_hook=pre_model_call_hook,
-                image_result_keys=image_result_keys,
-                tool_budget=tool_budget,
-                parallel_tool_calls=parallel_tool_calls,
-                tool_output_max_tokens=tool_output_max_tokens,
-                tool_result_preview_max_tokens=tool_result_preview_max_tokens,
-                tool_sample_functions=tool_sample_functions,
-                previous_response_id=previous_response_id,
-                return_tool_outputs_only=insert_tool_citations,
-                strict_tools=strict_tools,
-                tool_phase_complete_message=tool_phase_complete_message,
-                server_tools=server_tools,
-                programmatic_tool_calling=programmatic_tool_calling,
-                container_id=container_id,
-                task_budget=task_budget,
-                conversation_cache=conversation_cache,
-            )
+            execute_kwargs = {
+                "messages": messages,
+                "model": current_model,
+                "max_completion_tokens": max_completion_tokens,
+                "temperature": temperature,
+                "response_format": response_format,
+                "verbosity": verbosity,
+                "tools": tools,
+                "tool_choice": tool_choice,
+                "store": store,
+                "metadata": metadata,
+                "timeout": timeout,
+                "reasoning_effort": reasoning_effort,
+                "post_tool_function": post_tool_function,
+                "post_response_hook": post_response_hook,
+                "pre_model_call_hook": pre_model_call_hook,
+                "image_result_keys": image_result_keys,
+                "tool_budget": tool_budget,
+                "parallel_tool_calls": parallel_tool_calls,
+                "tool_output_max_tokens": tool_output_max_tokens,
+                "tool_result_preview_max_tokens": tool_result_preview_max_tokens,
+                "tool_sample_functions": tool_sample_functions,
+                "previous_response_id": previous_response_id,
+                "return_tool_outputs_only": insert_tool_citations,
+                "strict_tools": strict_tools,
+                "tool_phase_complete_message": tool_phase_complete_message,
+                "server_tools": server_tools,
+                "programmatic_tool_calling": programmatic_tool_calling,
+                "container_id": container_id,
+                "task_budget": task_budget,
+                "conversation_cache": conversation_cache,
+            }
+            if (
+                providers is not None
+                and _provider_value(current_provider) == "openrouter"
+            ):
+                execute_kwargs["providers"] = providers
+
+            response = await provider_instance.execute_chat(**execute_kwargs)
 
             # Process citations if requested and we have tool outputs
             if insert_tool_citations and response.tool_outputs:
