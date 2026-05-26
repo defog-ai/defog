@@ -8,7 +8,7 @@ from typing import Dict, List, Any, Optional, Callable, Tuple, Union
 from anthropic import AsyncAnthropic, transform_schema
 
 from .base import BaseLLMProvider, LLMResponse
-from ..exceptions import ProviderError, MaxTokensError, ToolError
+from ..exceptions import ProviderError, MaxTokensError, ToolError, PauseToolExecution
 from ..config import LLMConfig
 from ..memory.conversation_cache import ConversationCache
 from ..cost import CostCalculator
@@ -46,6 +46,220 @@ class AnthropicProvider(BaseLLMProvider):
 
     def get_provider_name(self) -> str:
         return "anthropic"
+
+    # ------------------------------------------------------------------
+    # Human-in-the-loop pause/resume helpers
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _serialize_block(block: Any) -> Any:
+        """Convert an Anthropic SDK content block to a JSON-serializable dict.
+
+        Plain dicts pass through unchanged; SDK objects (ThinkingBlock,
+        ToolUseBlock, etc.) are dumped via ``model_dump()`` so the captured
+        conversation survives pickling/JSON and round-trips back into the API
+        on resume (thinking signatures included).
+        """
+        if isinstance(block, dict):
+            return block
+        if hasattr(block, "model_dump"):
+            try:
+                return block.model_dump()
+            except Exception:
+                pass
+        return block
+
+    @classmethod
+    def _serialize_messages(
+        cls, messages: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Serialize a list of Anthropic-format messages to plain dicts."""
+        serialized: List[Dict[str, Any]] = []
+        for msg in messages:
+            content = msg.get("content")
+            if isinstance(content, list):
+                content = [cls._serialize_block(b) for b in content]
+            serialized.append({"role": msg.get("role"), "content": content})
+        return serialized
+
+    def _inject_resume_tool_results(
+        self,
+        messages: List[Dict[str, Any]],
+        resume_tool_results: Dict[str, Any],
+        tool_handler: ToolHandler,
+        preview_max_tokens: Optional[int],
+        model: str,
+    ) -> List[Dict[str, Any]]:
+        """Complete the trailing tool_result turn for a resumed conversation.
+
+        Finds the last assistant turn that issued ``tool_use`` blocks, then
+        appends ``tool_result`` blocks for every pending tool_use id, pulling
+        each result from ``resume_tool_results``. Sibling tools that already
+        ran (captured at pause time as a partial tool_result turn) are left
+        untouched.
+        """
+        asst_idx = None
+        for i in range(len(messages) - 1, -1, -1):
+            if messages[i].get("role") != "assistant":
+                continue
+            content = messages[i].get("content")
+            if isinstance(content, list) and any(
+                isinstance(b, dict) and b.get("type") in ("tool_use", "mcp_tool_use")
+                for b in content
+            ):
+                asst_idx = i
+                break
+
+        if asst_idx is None:
+            raise ValueError(
+                "resume_tool_results was provided but no assistant tool_use turn "
+                "was found in messages. Pass back the messages from the paused "
+                "LLMResponse."
+            )
+
+        tool_use_ids = [
+            b["id"]
+            for b in messages[asst_idx]["content"]
+            if isinstance(b, dict)
+            and b.get("type") in ("tool_use", "mcp_tool_use")
+            and b.get("id")
+        ]
+
+        # Look for an existing (partial) tool_result user turn right after the
+        # assistant turn — that's where sibling results from the pause live.
+        existing_result_ids = set()
+        trailing_user_turn = None
+        if (
+            asst_idx + 1 < len(messages)
+            and messages[asst_idx + 1].get("role") == "user"
+            and isinstance(messages[asst_idx + 1].get("content"), list)
+        ):
+            trailing_user_turn = messages[asst_idx + 1]
+            for b in trailing_user_turn["content"]:
+                if isinstance(b, dict) and b.get("type") == "tool_result":
+                    existing_result_ids.add(b.get("tool_use_id"))
+
+        missing_ids = [tid for tid in tool_use_ids if tid not in existing_result_ids]
+        provided = set(resume_tool_results or {})
+        unfilled = [tid for tid in missing_ids if tid not in provided]
+        if unfilled:
+            raise ValueError(
+                "resume_tool_results is missing results for pending tool_use "
+                f"id(s): {unfilled}. Provide a result for every pending tool "
+                "call (the one that paused plus any sibling tool calls in the "
+                "same assistant turn)."
+            )
+
+        new_blocks = []
+        for tid in missing_ids:
+            text_for_llm, _, _ = tool_handler.prepare_result_for_llm(
+                resume_tool_results[tid],
+                preview_max_tokens=preview_max_tokens,
+                model=model,
+            )
+            new_blocks.append(
+                {
+                    "type": "tool_result",
+                    "tool_use_id": tid,
+                    "content": text_for_llm,
+                }
+            )
+
+        if trailing_user_turn is not None:
+            trailing_user_turn["content"].extend(new_blocks)
+        else:
+            messages.insert(asst_idx + 1, {"role": "user", "content": new_blocks})
+
+        return messages
+
+    def _capture_pause(
+        self,
+        pause: PauseToolExecution,
+        request_params: Dict[str, Any],
+        thinking_blocks: List[Any],
+        tool_call_blocks: List[Any],
+        tool_handler: ToolHandler,
+        preview_max_tokens: Optional[int],
+        model: str,
+        *,
+        input_tokens: int,
+        output_tokens: int,
+        cached_input_tokens: int,
+        cache_creation_input_tokens: int,
+    ) -> PauseToolExecution:
+        """Capture the in-flight conversation on a PauseToolExecution.
+
+        Appends the assistant turn that issued the tool_use(s) — with thinking
+        blocks intact — and, when other tools in the same batch already
+        finished, a partial tool_result turn preserving their output. The
+        result is a fully serialized history the caller persists and replays
+        on resume.
+        """
+        captured: List[Dict[str, Any]] = []
+        system = request_params.get("system")
+        if system:
+            captured.append({"role": "system", "content": system})
+        captured.extend(self._serialize_messages(request_params.get("messages", [])))
+
+        assistant_content = [self._serialize_block(b) for b in thinking_blocks]
+        assistant_content.extend(self._serialize_block(b) for b in tool_call_blocks)
+        captured.append({"role": "assistant", "content": assistant_content})
+
+        sibling_blocks = []
+        for block in tool_call_blocks:
+            bid = getattr(block, "id", None)
+            if bid in pause.completed_results:
+                text_for_llm, _, _ = tool_handler.prepare_result_for_llm(
+                    pause.completed_results[bid],
+                    preview_max_tokens=preview_max_tokens,
+                    model=model,
+                )
+                sibling_blocks.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": bid,
+                        "content": text_for_llm,
+                    }
+                )
+        if sibling_blocks:
+            captured.append({"role": "user", "content": sibling_blocks})
+
+        pause.messages = captured
+        pause.pending_tool_use = {
+            "id": pause.tool_use_id,
+            "name": pause.tool_name,
+            "input": pause.tool_input,
+        }
+        pause.input_tokens = input_tokens
+        pause.output_tokens = output_tokens
+        pause.cached_input_tokens = cached_input_tokens
+        pause.cache_creation_input_tokens = cache_creation_input_tokens
+        return pause
+
+    def _build_paused_response(
+        self, pause: PauseToolExecution, model: str, start_time: float
+    ) -> LLMResponse:
+        """Build the LLMResponse returned to the caller when a tool pauses."""
+        cost = CostCalculator.calculate_cost(
+            model,
+            pause.input_tokens,
+            pause.output_tokens,
+            pause.cached_input_tokens,
+            pause.cache_creation_input_tokens,
+        )
+        return LLMResponse(
+            model=model,
+            content=None,
+            time=round(time.time() - start_time, 3),
+            input_tokens=pause.input_tokens,
+            output_tokens=pause.output_tokens,
+            cached_input_tokens=pause.cached_input_tokens,
+            cache_creation_input_tokens=pause.cache_creation_input_tokens,
+            cost_in_cents=cost,
+            status="paused",
+            pending_tool_use=pause.pending_tool_use,
+            pause_payload=pause.payload,
+            messages=pause.messages,
+        )
 
     def convert_content_to_anthropic(self, content: Any) -> Any:
         """Convert message content to Anthropic format."""
@@ -854,20 +1068,40 @@ class AnthropicProvider(BaseLLMProvider):
                         # Execute regular tool calls (not MCP tools, which are already executed by the API)
                         results = []
                         if regular_tool_calls:
-                            (
-                                results,
-                                consecutive_exceptions,
-                            ) = await self.execute_tool_calls_with_retry(
-                                regular_tool_calls,
-                                tool_dict,
-                                request_params["messages"],
-                                post_tool_function,
-                                consecutive_exceptions,
-                                tool_handler=tool_handler,
-                                parallel_tool_calls=kwargs.get(
-                                    "parallel_tool_calls", True
-                                ),
-                            )
+                            try:
+                                (
+                                    results,
+                                    consecutive_exceptions,
+                                ) = await self.execute_tool_calls_with_retry(
+                                    regular_tool_calls,
+                                    tool_dict,
+                                    request_params["messages"],
+                                    post_tool_function,
+                                    consecutive_exceptions,
+                                    tool_handler=tool_handler,
+                                    parallel_tool_calls=kwargs.get(
+                                        "parallel_tool_calls", True
+                                    ),
+                                )
+                            except PauseToolExecution as pause:
+                                # A tool asked to suspend the loop. Capture the
+                                # assistant tool_use turn (thinking intact) plus
+                                # any sibling results, then propagate so
+                                # execute_chat can return a paused LLMResponse.
+                                self._capture_pause(
+                                    pause,
+                                    request_params,
+                                    thinking_blocks,
+                                    tool_call_blocks,
+                                    tool_handler,
+                                    tool_result_preview_max_tokens,
+                                    model_for_tokens,
+                                    input_tokens=total_input_tokens,
+                                    output_tokens=total_output_tokens,
+                                    cached_input_tokens=cached_input_tokens,
+                                    cache_creation_input_tokens=cache_creation_input_tokens,
+                                )
+                                raise
 
                         # For MCP tools, extract results from mcp_tool_result blocks
                         mcp_results = []
@@ -1279,6 +1513,7 @@ class AnthropicProvider(BaseLLMProvider):
         container_id: Optional[str] = None,
         task_budget: Optional[Union[int, Dict[str, Any]]] = None,
         conversation_cache: Optional[ConversationCache] = None,
+        resume_tool_results: Optional[Dict[str, Any]] = None,
         **kwargs,
     ) -> LLMResponse:
         """Execute a chat completion with Anthropic."""
@@ -1362,6 +1597,17 @@ class AnthropicProvider(BaseLLMProvider):
             messages, previous_response_id, conversation_cache
         )
 
+        # Resuming a paused human-in-the-loop run: complete the trailing
+        # tool_result turn from the supplied answers before building params.
+        if resume_tool_results:
+            conversation_messages = self._inject_resume_tool_results(
+                conversation_messages,
+                resume_tool_results,
+                tool_handler,
+                preview_max_tokens,
+                model,
+            )
+
         params, _ = self.build_params(
             messages=conversation_messages,
             model=model,
@@ -1427,6 +1673,11 @@ class AnthropicProvider(BaseLLMProvider):
                 programmatic_tool_calling=programmatic_tool_calling,
                 **kwargs,
             )
+        except PauseToolExecution as pause:
+            # A tool suspended the loop; return a paused LLMResponse instead of
+            # raising. The caller persists response.messages + pending_tool_use
+            # and resumes later via resume_tool_results.
+            return self._build_paused_response(pause, model, t)
         except Exception as e:
             traceback.print_exc()
             raise ProviderError(self.get_provider_name(), f"API call failed: {e}", e)

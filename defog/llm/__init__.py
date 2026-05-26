@@ -1,6 +1,7 @@
 """LLM module for multi-provider chat completions."""
 
 from .utils import chat_async, LLMResponse
+from .exceptions import PauseToolExecution
 from .pdf_processor import (
     PDFAnalysisInput,
     ClaudePDFProcessor,
@@ -24,6 +25,7 @@ __all__ = [
     # Core functions
     "chat_async",
     "LLMResponse",
+    "PauseToolExecution",
     # PDF processing
     "PDFAnalysisInput",
     "ClaudePDFProcessor",

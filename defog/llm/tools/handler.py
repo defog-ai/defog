@@ -2,12 +2,13 @@ import inspect
 import json
 import logging
 from typing import Dict, List, Callable, Any, Optional
-from ..exceptions import ToolError
+from ..exceptions import ToolError, PauseToolExecution
 from ..utils_function_calling import (
     execute_tool,
     execute_tool_async,
     execute_tools_parallel,
     verify_post_tool_function,
+    _tool_call_identity,
 )
 
 logger = logging.getLogger(__name__)
@@ -249,6 +250,11 @@ class ToolHandler:
 
             # Update usage count after successful execution
             self._update_tool_usage(tool_name)
+        except PauseToolExecution as pause:
+            # Human-in-the-loop suspend signal: record which tool paused and
+            # let it propagate untouched (do not wrap as a ToolError).
+            pause.attach_identity(tool_id, tool_name, args)
+            raise
         except Exception as e:
             raise ToolError(tool_name, f"Error executing tool: {e}", e)
 
@@ -313,14 +319,25 @@ class ToolHandler:
                         or tool_call.get("tool_use_id")
                     )
 
-                    # Use execute_tool_call which handles budget tracking
-                    result = await self.execute_tool_call(
-                        func_name,
-                        func_args,
-                        tool_dict,
-                        post_tool_function,
-                        tool_id=tool_id,
-                    )
+                    try:
+                        # Use execute_tool_call which handles budget tracking
+                        result = await self.execute_tool_call(
+                            func_name,
+                            func_args,
+                            tool_dict,
+                            post_tool_function,
+                            tool_id=tool_id,
+                        )
+                    except PauseToolExecution as pause:
+                        # Preserve the results of tools that already ran in
+                        # this batch so the pause doesn't discard their work.
+                        for prior_call, prior_result in zip(tool_calls, results):
+                            prior_id, _, _ = _tool_call_identity(prior_call)
+                            if prior_id is not None:
+                                pause.completed_results.setdefault(
+                                    prior_id, prior_result
+                                )
+                        raise
                     results.append(result)
                 return results
             else:

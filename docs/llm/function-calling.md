@@ -129,3 +129,32 @@ response = await chat_async(
 ```
 
 The assistant receives the sampled/truncated preview, while `response.tool_outputs` always contains the full tool output for logging or follow-up use.
+
+### Pause a Tool to Ask the User (Human-in-the-Loop)
+
+A tool can suspend the whole agent loop to ask the end user something, return
+control to your application, and resume later with the user's answer delivered
+as that tool's result:
+
+```python
+from defog.llm import chat_async, PauseToolExecution
+
+async def ask_user_question(question: str) -> dict:
+    """Ask the end user a clarifying question when the request is ambiguous."""
+    raise PauseToolExecution(payload={"questions": [question]})
+
+resp = await chat_async(provider="anthropic", model="claude-sonnet-4-6",
+                        messages=messages, tools=[ask_user_question])
+
+if resp.status == "paused":
+    answer = collect_answer(resp.pause_payload)         # may be much later
+    resp = await chat_async(
+        provider="anthropic", model="claude-sonnet-4-6",
+        messages=resp.messages, tools=[ask_user_question],
+        resume_tool_results={resp.pending_tool_use["id"]: answer},
+    )
+```
+
+See [Human-in-the-Loop Tool Calls](human-in-the-loop.md) for the full flow,
+including OpenAI (`previous_response_id`), persisting across a restart, and
+parallel tool calls.

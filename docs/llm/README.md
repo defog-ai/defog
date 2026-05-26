@@ -13,6 +13,7 @@ This directory contains detailed documentation for all LLM-related functionality
 
 - [Tool Budget Management](tool-budget-management.md) - Limit tool usage to control costs
 - [Tool Citations](tool-citations.md) - Automatic citation addition for tool outputs
+- [Human-in-the-Loop Tool Calls](human-in-the-loop.md) - Pause an agent loop from inside a tool to ask the user, then resume with their answer
 - [Cost Tracking](cost-tracking.md) - Track and monitor LLM operation costs
 
 ## Specialized Tools

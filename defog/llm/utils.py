@@ -12,7 +12,7 @@ from .providers import (
     DeepSeekProvider,
 )
 from .providers.base import LLMResponse
-from .exceptions import LLMError, ConfigurationError, ToolError
+from .exceptions import LLMError, ConfigurationError, ToolError, PauseToolExecution
 from .config import LLMConfig
 from .llm_providers import LLMProvider
 from .citations import citations_tool
@@ -123,6 +123,7 @@ async def chat_async(
     container_id: Optional[str] = None,
     task_budget: Optional[Union[int, Dict[str, Any]]] = None,
     conversation_cache: Optional[ConversationCache] = None,
+    resume_tool_results: Optional[Dict[str, Any]] = None,
 ) -> LLMResponse:
     """
     Execute a chat completion with explicit provider parameter.
@@ -184,6 +185,7 @@ async def chat_async(
             changes turn-to-turn invalidates the prompt cache; prefer setting ``total``
             once and letting the server-side countdown self-regulate.
         conversation_cache: Optional supplemental store for conversation history (Anthropic and OpenRouter). Runs alongside the built-in pickle cache — pickle writes always happen; ``conversation_cache.store`` is called in addition. On load, ``conversation_cache.load`` is tried first; a non-None return short-circuits the pickle read. Use this to mirror history to a database or shared store so follow-ups work across machines.
+        resume_tool_results: Anthropic and OpenAI only. Resume a run that was paused by a tool raising ``PauseToolExecution``. Maps each pending tool-call id (from the paused ``LLMResponse.pending_tool_use``) to the result to deliver as that tool's output, e.g. ``{tool_use_id: {"answers": [...]}}``. defog appends the matching tool_result turn and continues the agent loop. Pass the paused response's ``messages`` back via ``messages`` (Anthropic), and additionally its ``response_id`` via ``previous_response_id`` (OpenAI).
     Returns:
         LLMResponse object containing the result
 
@@ -223,6 +225,21 @@ async def chat_async(
 
     if providers is not None and _provider_value(provider) != "openrouter":
         raise ValueError("providers is only supported when provider is 'openrouter'.")
+
+    # Human-in-the-loop resume is only wired for anthropic and openai.
+    if resume_tool_results is not None:
+        if _provider_value(provider) not in ("anthropic", "openai"):
+            raise ValueError(
+                "resume_tool_results is only supported for the 'anthropic' and "
+                "'openai' providers."
+            )
+        if not isinstance(resume_tool_results, dict):
+            raise ValueError("resume_tool_results must be a dict of {tool_id: result}.")
+        if not tools:
+            raise ValueError(
+                "resume_tool_results requires the same `tools` used in the paused "
+                "run so the agent loop can continue."
+            )
 
     # validate that mcp servers are simple strings and nothing else
     if mcp_servers:
@@ -382,6 +399,7 @@ async def chat_async(
                 "container_id": container_id,
                 "task_budget": task_budget,
                 "conversation_cache": conversation_cache,
+                "resume_tool_results": resume_tool_results,
             }
             if (
                 providers is not None
@@ -390,6 +408,11 @@ async def chat_async(
                 execute_kwargs["providers"] = providers
 
             response = await provider_instance.execute_chat(**execute_kwargs)
+
+            # A tool suspended the loop for human-in-the-loop input. Return the
+            # paused response as-is; citation/post-processing does not apply.
+            if getattr(response, "status", None) == "paused":
+                return response
 
             # Process citations if requested and we have tool outputs
             if insert_tool_citations and response.tool_outputs:
@@ -488,6 +511,16 @@ async def chat_async(
 
             return response
 
+        except PauseToolExecution:
+            # A tool raised PauseToolExecution but the provider does not
+            # support the pause/resume primitive (only anthropic and openai
+            # capture/return a paused response). Surface a clear error rather
+            # than leaking the raw control-flow signal.
+            raise ConfigurationError(
+                "A tool raised PauseToolExecution, but the human-in-the-loop "
+                "pause/resume primitive is only supported for the 'anthropic' "
+                "and 'openai' providers."
+            )
         except ToolError:
             # Tool execution errors should not trigger a retry of the entire
             # agentic loop — only the erroneous step should be retried (which

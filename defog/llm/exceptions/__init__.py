@@ -6,6 +6,7 @@ from .llm_exceptions import (
     ConfigurationError,
     AuthenticationError,
     APIError,
+    PauseToolExecution,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "ConfigurationError",
     "AuthenticationError",
     "APIError",
+    "PauseToolExecution",
 ]

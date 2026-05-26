@@ -14,6 +14,22 @@ from typing import (
 from pydantic import BaseModel, Field, create_model
 from defog.llm.models import OpenAIFunctionSpecs, AnthropicFunctionSpecs
 from defog.llm.llm_providers import LLMProvider
+from defog.llm.exceptions import PauseToolExecution
+
+
+def _tool_call_identity(tool_call: Dict[str, Any]):
+    """Extract (id, name, args) from a tool_call dict in any provider shape."""
+    tool_id = (
+        tool_call.get("id")
+        or tool_call.get("tool_call_id")
+        or tool_call.get("call_id")
+        or tool_call.get("tool_use_id")
+    )
+    func_name = tool_call.get("function", {}).get("name") or tool_call.get("name")
+    func_args = tool_call.get("function", {}).get("arguments") or tool_call.get(
+        "arguments", {}
+    )
+    return tool_id, func_name, func_args
 
 
 def python_type_to_json_schema_type(python_type):
@@ -420,30 +436,36 @@ async def execute_tools_parallel(
         # Sequential execution (current behavior)
         results = []
         for tool_call in tool_calls:
-            func_name = tool_call.get("function", {}).get("name") or tool_call.get(
-                "name"
-            )
-            func_args = tool_call.get("function", {}).get("arguments") or tool_call.get(
-                "arguments", {}
-            )
+            tool_id, func_name, func_args = _tool_call_identity(tool_call)
 
-            if func_name in tool_dict:
-                tool = tool_dict[func_name]
-                if inspect.iscoroutinefunction(tool):
-                    result = await execute_tool_async(tool, func_args)
+            try:
+                if func_name in tool_dict:
+                    tool = tool_dict[func_name]
+                    if inspect.iscoroutinefunction(tool):
+                        result = await execute_tool_async(tool, func_args)
+                    else:
+                        result = execute_tool(tool, func_args)
+                    results.append(result)
                 else:
-                    result = execute_tool(tool, func_args)
-                results.append(result)
-            else:
-                results.append(f"Error: Function {func_name} not found")
+                    results.append(f"Error: Function {func_name} not found")
+            except PauseToolExecution as pause:
+                # A tool asked to suspend the loop. Annotate it with the
+                # results of the tools that already finished in this batch so
+                # the provider can preserve that work across the pause.
+                pause.attach_identity(tool_id, func_name, func_args)
+                for prior_call, prior_result in zip(tool_calls, results):
+                    prior_id, _, _ = _tool_call_identity(prior_call)
+                    if prior_id is not None:
+                        pause.completed_results[prior_id] = prior_result
+                raise
         return results
     else:
         # Parallel execution
         async def execute_single_tool(tool_call):
+            func_name = tool_call.get("function", {}).get("name") or tool_call.get(
+                "name"
+            )
             try:
-                func_name = tool_call.get("function", {}).get("name") or tool_call.get(
-                    "name"
-                )
                 func_args = tool_call.get("function", {}).get(
                     "arguments"
                 ) or tool_call.get("arguments", {})
@@ -460,12 +482,32 @@ async def execute_tools_parallel(
                         )
                 else:
                     return f"Error: Function {func_name} not found"
+            except PauseToolExecution:
+                # Let pause signals propagate; gather(return_exceptions=True)
+                # captures them as results and we re-raise below. (They are
+                # BaseException, so this except clause is only here for clarity.)
+                raise
             except Exception as e:
                 return f"Error executing {func_name}: {str(e)}"
 
         # Execute all tool calls concurrently
         tasks = [execute_single_tool(tool_call) for tool_call in tool_calls]
         results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # If any tool asked to pause, surface the first pause and attach the
+        # results of every sibling that completed normally so the provider can
+        # preserve that work when it captures the conversation.
+        for tool_call, result in zip(tool_calls, results):
+            if isinstance(result, PauseToolExecution):
+                tool_id, func_name, func_args = _tool_call_identity(tool_call)
+                result.attach_identity(tool_id, func_name, func_args)
+                for sibling_call, sibling_result in zip(tool_calls, results):
+                    sibling_id, _, _ = _tool_call_identity(sibling_call)
+                    if sibling_id is not None and not isinstance(
+                        sibling_result, BaseException
+                    ):
+                        result.completed_results[sibling_id] = sibling_result
+                raise result
 
         # Convert any exceptions to error strings
         processed_results = []
