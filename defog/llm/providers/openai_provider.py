@@ -7,7 +7,7 @@ from copy import deepcopy
 from typing import Dict, List, Any, Optional, Callable, Tuple, Union
 
 from .base import BaseLLMProvider, LLMResponse
-from ..exceptions import ProviderError, ToolError
+from ..exceptions import ProviderError, ToolError, PauseToolExecution
 from ..config import LLMConfig
 from ..cost import CostCalculator
 from ..utils_function_calling import get_function_specs, convert_tool_choice
@@ -40,6 +40,161 @@ class OpenAIProvider(BaseLLMProvider):
 
     def get_provider_name(self) -> str:
         return "openai"
+
+    # ------------------------------------------------------------------
+    # Human-in-the-loop pause/resume helpers
+    # ------------------------------------------------------------------
+    def _capture_pause(
+        self,
+        pause: PauseToolExecution,
+        response,
+        request_params: Dict[str, Any],
+        tool_handler: ToolHandler,
+        preview_max_tokens: Optional[int],
+        model: str,
+        *,
+        input_tokens: int,
+        cached_input_tokens: int,
+        output_tokens: int,
+    ) -> PauseToolExecution:
+        """Capture state on a PauseToolExecution for the Responses API.
+
+        OpenAI keeps the assistant turn (reasoning + function_call) server-side,
+        referenced by ``response.id``. So instead of serializing message blocks
+        we stash the originating response id (resumed via ``previous_response_id``)
+        plus any sibling ``function_call_output`` items that already completed,
+        and the system instructions so they can be re-sent on resume.
+        """
+        stashed: List[Dict[str, Any]] = []
+        instructions = request_params.get("instructions")
+        if instructions:
+            stashed.append({"role": "system", "content": instructions})
+        for call_id, result in pause.completed_results.items():
+            text_for_llm, _, _ = tool_handler.prepare_result_for_llm(
+                result, preview_max_tokens=preview_max_tokens, model=model
+            )
+            stashed.append(
+                {
+                    "type": "function_call_output",
+                    "call_id": call_id,
+                    "output": text_for_llm,
+                }
+            )
+
+        pause.messages = stashed
+        pause.response_id = getattr(response, "id", None)
+        pause.pending_tool_use = {
+            "id": pause.tool_use_id,
+            "name": pause.tool_name,
+            "input": pause.tool_input,
+        }
+        pause.input_tokens = input_tokens
+        pause.cached_input_tokens = cached_input_tokens
+        pause.output_tokens = output_tokens
+        return pause
+
+    def _build_paused_response(
+        self, pause: PauseToolExecution, model: str, start_time: float
+    ) -> LLMResponse:
+        """Build the LLMResponse returned to the caller when a tool pauses."""
+        cost = CostCalculator.calculate_cost(
+            model, pause.input_tokens, pause.output_tokens, pause.cached_input_tokens
+        )
+        return LLMResponse(
+            model=model,
+            content=None,
+            time=round(time.time() - start_time, 3),
+            input_tokens=pause.input_tokens,
+            cached_input_tokens=pause.cached_input_tokens,
+            output_tokens=pause.output_tokens,
+            cost_in_cents=cost,
+            status="paused",
+            pending_tool_use=pause.pending_tool_use,
+            pause_payload=pause.payload,
+            messages=pause.messages,
+            response_id=pause.response_id,
+        )
+
+    def _build_resume_params(
+        self,
+        messages: List[Dict[str, Any]],
+        resume_tool_results: Dict[str, Any],
+        model: str,
+        tools: Optional[List[Callable]],
+        tool_choice: Optional[str],
+        reasoning_effort: Optional[str],
+        store: bool,
+        metadata: Optional[Dict[str, str]],
+        timeout: int,
+        parallel_tool_calls: bool,
+        previous_response_id: Optional[str],
+        max_completion_tokens: Optional[int],
+        response_format,
+        tool_handler: ToolHandler,
+        preview_max_tokens: Optional[int],
+    ) -> Dict[str, Any]:
+        """Build Responses API params to resume a paused run.
+
+        The paused assistant turn (reasoning + function_call) is referenced via
+        ``previous_response_id``; we only submit ``function_call_output`` items
+        for every pending tool call plus any siblings stashed at pause time.
+        """
+        if not previous_response_id:
+            raise ValueError(
+                "Resuming an OpenAI run requires previous_response_id "
+                "(pass the paused response's response_id)."
+            )
+
+        instructions_parts: List[str] = []
+        input_items: List[Dict[str, Any]] = []
+        for msg in messages or []:
+            if not isinstance(msg, dict):
+                continue
+            if msg.get("type") == "function_call_output":
+                input_items.append(msg)
+            elif msg.get("role") in ("system", "developer"):
+                content = msg.get("content")
+                if isinstance(content, str):
+                    instructions_parts.append(content)
+                elif isinstance(content, list):
+                    instructions_parts.extend(
+                        b.get("text", "")
+                        for b in content
+                        if isinstance(b, dict) and b.get("type") == "text"
+                    )
+
+        for call_id, result in resume_tool_results.items():
+            text_for_llm, _, _ = tool_handler.prepare_result_for_llm(
+                result, preview_max_tokens=preview_max_tokens, model=model
+            )
+            input_items.append(
+                {
+                    "type": "function_call_output",
+                    "call_id": call_id,
+                    "output": text_for_llm,
+                }
+            )
+
+        request_params, _ = self.build_params(
+            messages=[],
+            model=model,
+            max_completion_tokens=max_completion_tokens,
+            temperature=0.0,
+            response_format=response_format,
+            tools=tools,
+            tool_choice=tool_choice,
+            reasoning_effort=reasoning_effort,
+            store=store,
+            metadata=metadata,
+            timeout=timeout,
+            parallel_tool_calls=parallel_tool_calls,
+            previous_response_id=previous_response_id,
+        )
+        request_params["input"] = input_items
+        instructions = "\n\n".join(p for p in instructions_parts if p.strip())
+        if instructions:
+            request_params["instructions"] = instructions
+        return request_params
 
     async def _apply_pre_model_call_hook(
         self,
@@ -539,18 +694,36 @@ class OpenAIProvider(BaseLLMProvider):
                             )
 
                         # Use base class method for tool execution with retry
-                        (
-                            results,
-                            consecutive_exceptions,
-                        ) = await self.execute_tool_calls_with_retry(
-                            tool_calls_batch,
-                            tool_dict,
-                            request_params["input"],
-                            post_tool_function,
-                            consecutive_exceptions,
-                            tool_handler,
-                            parallel_tool_calls=parallel_tool_calls,
-                        )
+                        try:
+                            (
+                                results,
+                                consecutive_exceptions,
+                            ) = await self.execute_tool_calls_with_retry(
+                                tool_calls_batch,
+                                tool_dict,
+                                request_params["input"],
+                                post_tool_function,
+                                consecutive_exceptions,
+                                tool_handler,
+                                parallel_tool_calls=parallel_tool_calls,
+                            )
+                        except PauseToolExecution as pause:
+                            # A tool asked to suspend the loop. Capture the
+                            # originating response id + sibling outputs and
+                            # propagate so execute_chat returns a paused
+                            # LLMResponse.
+                            self._capture_pause(
+                                pause,
+                                response,
+                                request_params,
+                                tool_handler,
+                                tool_result_preview_max_tokens,
+                                model,
+                                input_tokens=total_input_tokens,
+                                cached_input_tokens=total_cached_input_tokens,
+                                output_tokens=total_output_tokens,
+                            )
+                            raise
 
                         # Do not append an assistant tool_calls placeholder in Responses input
 
@@ -739,6 +912,7 @@ class OpenAIProvider(BaseLLMProvider):
         tool_result_preview_max_tokens: Optional[int] = None,
         previous_response_id: Optional[str] = None,
         tool_phase_complete_message: str = "exploration done, generating answer",
+        resume_tool_results: Optional[Dict[str, Any]] = None,
         **kwargs,
     ) -> LLMResponse:
         """Execute a chat completion with OpenAI."""
@@ -771,21 +945,42 @@ class OpenAIProvider(BaseLLMProvider):
         # Filter tools based on budget before building params
         tools = self.filter_tools_by_budget(tools, tool_handler)
 
-        request_params, messages = self.build_params(
-            messages=messages,
-            model=model,
-            max_completion_tokens=max_completion_tokens,
-            temperature=temperature,
-            response_format=response_format,
-            tools=tools,
-            tool_choice=tool_choice,
-            reasoning_effort=reasoning_effort,
-            store=store,
-            metadata=metadata,
-            timeout=timeout,
-            parallel_tool_calls=parallel_tool_calls,
-            previous_response_id=previous_response_id,
-        )
+        if resume_tool_results:
+            # Resuming a paused human-in-the-loop run: submit the tool outputs
+            # against the response that issued the function calls.
+            request_params = self._build_resume_params(
+                messages,
+                resume_tool_results,
+                model,
+                tools,
+                tool_choice,
+                reasoning_effort,
+                store,
+                metadata,
+                timeout,
+                parallel_tool_calls,
+                previous_response_id,
+                max_completion_tokens,
+                response_format,
+                tool_handler,
+                preview_max_tokens,
+            )
+        else:
+            request_params, messages = self.build_params(
+                messages=messages,
+                model=model,
+                max_completion_tokens=max_completion_tokens,
+                temperature=temperature,
+                response_format=response_format,
+                tools=tools,
+                tool_choice=tool_choice,
+                reasoning_effort=reasoning_effort,
+                store=store,
+                metadata=metadata,
+                timeout=timeout,
+                parallel_tool_calls=parallel_tool_calls,
+                previous_response_id=previous_response_id,
+            )
 
         # Build a tool dict if needed
         tool_dict = {}
@@ -837,6 +1032,11 @@ class OpenAIProvider(BaseLLMProvider):
                 tool_result_preview_max_tokens=preview_max_tokens,
                 tool_phase_complete_message=tool_phase_complete_message,
             )
+        except PauseToolExecution as pause:
+            # A tool suspended the loop; return a paused LLMResponse. The caller
+            # persists response.messages + response.response_id and resumes via
+            # resume_tool_results (with previous_response_id=response.response_id).
+            return self._build_paused_response(pause, model, t)
         except Exception as e:
             raise ProviderError(self.get_provider_name(), f"API call failed: {e}", e)
 

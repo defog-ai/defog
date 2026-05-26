@@ -37,6 +37,13 @@ class LLMResponse:
     server_tool_usage: Optional[Dict[str, int]] = None
     container_id: Optional[str] = None
     container_expires_at: Optional[str] = None
+    # Human-in-the-loop pause/resume fields. Populated only when a tool raised
+    # PauseToolExecution; ``status`` is "paused" in that case and the caller
+    # resumes via chat_async(messages=..., resume_tool_results=...).
+    status: Optional[str] = None
+    pending_tool_use: Optional[Dict[str, Any]] = None
+    pause_payload: Optional[Any] = None
+    messages: Optional[List[Dict[str, Any]]] = None
 
 
 class BaseLLMProvider(ABC):
