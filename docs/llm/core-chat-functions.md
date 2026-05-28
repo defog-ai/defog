@@ -42,7 +42,7 @@ response = await chat_async(
     temperature=0.7,
     
     # Advanced parameters
-    reasoning_effort="high",          # low, medium, high (max for Opus 4.6 only)
+    reasoning_effort="high",          # low, medium, high; max on Opus 4.6/4.7/4.8; xhigh on Opus 4.7/4.8
     response_format=MyPydanticModel,  # Structured output
     tools=[...],                      # Function calling
     tool_choice="auto",               # auto, none, required, or specific tool
@@ -165,3 +165,45 @@ response = await chat_async(
 )
 
 ```
+
+## Mid-Conversation System Messages (Anthropic, Claude Opus 4.8)
+
+System instructions normally live at the start of the conversation and are
+hoisted into Anthropic's top-level `system` field. Editing that field — for
+example, appending a new instruction partway through a long session —
+invalidates the prompt cache for the entire conversation that follows it.
+
+On **Claude Opus 4.8**, `chat_async` handles this automatically. A
+`{"role": "system"}` message that appears *after* the conversation has started
+is kept in place as a system turn (rather than being hoisted), which preserves
+the cached prefix while still giving the instruction system-level priority from
+that point onward. No flag is required.
+
+```python
+response = await chat_async(
+    provider="anthropic",
+    model="claude-opus-4-8",
+    messages=[
+        {"role": "system", "content": "You are a code review assistant."},
+        {"role": "user", "content": "Review process() in utils.py."},
+        {"role": "assistant", "content": "Looks fine for small inputs."},
+        {"role": "user", "content": "Now review the calling code."},
+        # Appended mid-session — kept in place, so the cached prefix above
+        # (system prompt + earlier turns) still hits the cache.
+        {"role": "system", "content": "From now on, require type annotations."},
+    ],
+)
+```
+
+This is a safe, transparent optimization with no behavioral surprises:
+
+- The **leading** system prompt (before any user/assistant turn) is always
+  hoisted into the top-level `system` field, as before.
+- A mid-conversation system message is kept in place **only when its position is
+  unambiguously legal** for Anthropic's API — it directly follows a user turn
+  and is either the last message or directly precedes an assistant turn.
+- In any other position — or on any other model or provider — every system
+  message is hoisted into the top-level system prompt, exactly as it was before.
+  No previously valid request changes behavior.
+- Consecutive in-place system messages are merged into one (Anthropic rejects
+  adjacent system turns).
