@@ -68,6 +68,49 @@ class AnthropicProvider(BaseLLMProvider):
                 pass
         return block
 
+    @staticmethod
+    def _merge_system_content(a: Any, b: Any) -> Any:
+        """Merge two system-message contents into one.
+
+        Anthropic rejects consecutive ``{"role": "system"}`` turns, so when two
+        mid-conversation system messages end up adjacent we fold them together.
+        Two plain strings join with a blank line; otherwise both are normalized
+        to text-block lists and concatenated.
+        """
+
+        def _as_blocks(content: Any) -> List[Any]:
+            if isinstance(content, str):
+                return [{"type": "text", "text": content}]
+            return list(content)
+
+        if isinstance(a, str) and isinstance(b, str):
+            return f"{a}\n\n{b}"
+        return _as_blocks(a) + _as_blocks(b)
+
+    @classmethod
+    def _coalesce_system_messages(
+        cls, messages: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Merge runs of consecutive ``{"role": "system"}`` messages into one.
+
+        Anthropic rejects consecutive system turns, so adjacent system messages
+        are folded together (via :meth:`_merge_system_content`) before any
+        placement decisions are made. Non-system messages pass through
+        unchanged. The input list is not mutated.
+        """
+        out: List[Dict[str, Any]] = []
+        for msg in messages:
+            if msg.get("role") == "system" and out and out[-1].get("role") == "system":
+                out[-1] = {
+                    "role": "system",
+                    "content": cls._merge_system_content(
+                        out[-1]["content"], msg["content"]
+                    ),
+                }
+            else:
+                out.append(msg)
+        return out
+
     @classmethod
     def _serialize_messages(
         cls, messages: List[Dict[str, Any]]
@@ -461,34 +504,71 @@ class AnthropicProvider(BaseLLMProvider):
                 return True
             return False
 
-        for msg in messages:
+        # Mid-conversation system messages (Claude Opus 4.8 only, enabled
+        # automatically): a ``{"role": "system"}`` message that appears *after*
+        # the conversation has started is kept in place as a system turn
+        # instead of being hoisted into the top-level ``system`` field. Keeping
+        # it in place preserves the cached prefix — editing the top-level
+        # ``system`` field invalidates the cache for everything after it —
+        # while still giving the instruction system-level priority from that
+        # point onward. Leading system messages (those before any user/
+        # assistant turn) are always hoisted, matching conventional usage.
+        #
+        # This is a safe, transparent optimization: a system message is only
+        # kept in place when its position is unambiguously legal per Anthropic's
+        # placement rules (it directly follows a user turn and is either the
+        # last message or directly precedes an assistant turn). In any other
+        # position — or on any other model — it falls back to the historical
+        # hoist-into-``system`` behavior, so no previously valid request starts
+        # erroring.
+        keep_mid_in_place = "opus-4-8" in model
+        # Collapse runs of consecutive system messages first; Anthropic rejects
+        # consecutive ``system`` turns, and merging them up front lets the
+        # placement check below treat each as a single unit.
+        coalesced = self._coalesce_system_messages(messages)
+
+        def _hoist(content: Any) -> None:
+            if isinstance(content, str):
+                system_messages.append(content)
+            elif isinstance(content, list):
+                system_messages.append(
+                    "\n\n".join([item["text"] for item in content if "text" in item])
+                )
+
+        seen_non_system = False
+        for idx, msg in enumerate(coalesced):
             if msg.get("role") == "system":
-                if isinstance(msg["content"], str):
-                    system_messages.append(msg["content"])
-                elif isinstance(msg["content"], list):
-                    system_messages.append(
-                        "\n\n".join(
-                            [item["text"] for item in msg["content"] if "text" in item]
-                        )
+                in_place = False
+                if keep_mid_in_place and seen_non_system:
+                    prev = converted_messages[-1] if converted_messages else None
+                    nxt = coalesced[idx + 1] if idx + 1 < len(coalesced) else None
+                    prev_ok = prev is not None and prev.get("role") == "user"
+                    next_ok = nxt is None or nxt.get("role") == "assistant"
+                    in_place = prev_ok and next_ok
+                if in_place:
+                    converted_messages.append(
+                        {"role": "system", "content": msg["content"]}
                     )
-            else:
-                # Convert message content to Anthropic format
-                converted_msg = msg.copy()
-                converted_content = self.convert_content_to_anthropic(msg["content"])
+                else:
+                    _hoist(msg["content"])
+                continue
 
-                # Ensure user messages are never empty
-                if msg.get("role") == "assistant" and _content_is_empty(
-                    converted_content
-                ):
-                    converted_content = (
-                        "No content was generated for this turn. "
-                        "Refer to the preceding tool outputs for context."
-                    )
+            seen_non_system = True
+            # Convert message content to Anthropic format
+            converted_msg = msg.copy()
+            converted_content = self.convert_content_to_anthropic(msg["content"])
 
-                converted_msg["content"] = converted_content
-                converted_messages.append(converted_msg)
+            # Ensure user messages are never empty
+            if msg.get("role") == "assistant" and _content_is_empty(converted_content):
+                converted_content = (
+                    "No content was generated for this turn. "
+                    "Refer to the preceding tool outputs for context."
+                )
 
-        # Concatenate all system messages into a single string
+            converted_msg["content"] = converted_content
+            converted_messages.append(converted_msg)
+
+        # Concatenate all hoisted system messages into a single string
         sys_msg = "\n\n".join(system_messages) if system_messages else ""
 
         messages = converted_messages
@@ -502,18 +582,22 @@ class AnthropicProvider(BaseLLMProvider):
         # effort via output_config, replacing the deprecated budget_tokens
         # param. Update this tuple when new models add adaptive support.
         supports_adaptive = any(
-            p in model for p in ("opus-4-6", "opus-4-7", "sonnet-4-6")
+            p in model for p in ("opus-4-6", "opus-4-7", "opus-4-8", "sonnet-4-6")
         )
         # effort: "max" is only available on Opus models. Sending it to
         # Sonnet returns an API error.
-        supports_max_effort = "opus-4-6" in model or "opus-4-7" in model
-        # effort: "xhigh" is only available on Opus 4.7. Sending it to any
-        # other model returns an API error.
-        supports_xhigh_effort = "opus-4-7" in model
+        supports_max_effort = any(
+            p in model for p in ("opus-4-6", "opus-4-7", "opus-4-8")
+        )
+        # effort: "xhigh" is only available on Opus 4.7 and Opus 4.8. Sending
+        # it to any other model returns an API error.
+        supports_xhigh_effort = "opus-4-7" in model or "opus-4-8" in model
         # Opus models require adaptive thinking always on. For other
         # adaptive models (e.g. Sonnet 4.6), only enable it when
         # reasoning_effort is explicitly requested.
-        requires_adaptive = "opus-4-6" in model or "opus-4-7" in model
+        requires_adaptive = any(
+            p in model for p in ("opus-4-6", "opus-4-7", "opus-4-8")
+        )
         use_adaptive = requires_adaptive or (
             supports_adaptive and reasoning_effort is not None
         )

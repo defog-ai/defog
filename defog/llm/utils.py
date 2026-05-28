@@ -186,6 +186,9 @@ async def chat_async(
             once and letting the server-side countdown self-regulate.
         conversation_cache: Optional supplemental store for conversation history (Anthropic and OpenRouter). Runs alongside the built-in pickle cache — pickle writes always happen; ``conversation_cache.store`` is called in addition. On load, ``conversation_cache.load`` is tried first; a non-None return short-circuits the pickle read. Use this to mirror history to a database or shared store so follow-ups work across machines.
         resume_tool_results: Anthropic and OpenAI only. Resume a run that was paused by a tool raising ``PauseToolExecution``. Maps each pending tool-call id (from the paused ``LLMResponse.pending_tool_use``) to the result to deliver as that tool's output, e.g. ``{tool_use_id: {"answers": [...]}}``. defog appends the matching tool_result turn and continues the agent loop. Pass the paused response's ``messages`` back via ``messages`` (Anthropic), and additionally its ``response_id`` via ``previous_response_id`` (OpenAI).
+
+    Mid-conversation system messages (Anthropic, Claude Opus 4.8 only) are handled automatically: a ``{"role": "system"}`` message that appears *after* the conversation has started — directly following a user turn and either ending the list or directly preceding an assistant turn — is kept in place as a system turn instead of being hoisted into the top-level ``system`` field. This preserves the cached prefix (editing the top-level ``system`` field invalidates the cache for everything after it) while still giving the instruction system-level priority from that point onward. Leading system messages, system messages in any other position, and all system messages on other models or providers continue to be hoisted into the top-level system prompt, so existing behaviour is unchanged.
+
     Returns:
         LLMResponse object containing the result
 
