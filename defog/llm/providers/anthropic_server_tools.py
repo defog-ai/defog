@@ -57,7 +57,9 @@ SERVER_TOOL_BETA_HEADERS: Dict[str, str] = {
 DYNAMIC_FILTERING_SUPPORTED_MODELS: Tuple[str, ...] = (
     "opus-4-6",
     "opus-4-7",
+    "opus-4-8",
     "sonnet-4-6",
+    "fable",
 )
 
 # Versions that require dynamic-filtering-capable executor models
@@ -77,6 +79,8 @@ _ADVISOR_EXECUTOR_SUPPORTED_MODELS: Tuple[str, ...] = (
     "sonnet-4-6",
     "opus-4-6",
     "opus-4-7",
+    "opus-4-8",
+    "fable",
 )
 
 # Code execution version required for programmatic tool calling.

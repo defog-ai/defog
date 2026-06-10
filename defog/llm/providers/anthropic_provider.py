@@ -415,9 +415,10 @@ class AnthropicProvider(BaseLLMProvider):
         if task_budget is None:
             return None
 
-        if "opus-4-7" not in model:
+        if not any(p in model for p in ("opus-4-7", "opus-4-8", "fable")):
             raise ValueError(
-                "task_budget is only supported on claude-opus-4-7; "
+                "task_budget is only supported on claude-opus-4-7, "
+                "claude-opus-4-8, and claude-fable-5; "
                 f"got model={model!r}."
             )
 
@@ -521,7 +522,7 @@ class AnthropicProvider(BaseLLMProvider):
         # position — or on any other model — it falls back to the historical
         # hoist-into-``system`` behavior, so no previously valid request starts
         # erroring.
-        keep_mid_in_place = "opus-4-8" in model
+        keep_mid_in_place = "opus-4-8" in model or "fable" in model
         # Collapse runs of consecutive system messages first; Anthropic rejects
         # consecutive ``system`` turns, and merging them up front lets the
         # placement check below treat each as a single unit.
@@ -582,21 +583,24 @@ class AnthropicProvider(BaseLLMProvider):
         # effort via output_config, replacing the deprecated budget_tokens
         # param. Update this tuple when new models add adaptive support.
         supports_adaptive = any(
-            p in model for p in ("opus-4-6", "opus-4-7", "opus-4-8", "sonnet-4-6")
+            p in model
+            for p in ("opus-4-6", "opus-4-7", "opus-4-8", "sonnet-4-6", "fable")
         )
-        # effort: "max" is only available on Opus models. Sending it to
-        # Sonnet returns an API error.
+        # effort: "max" is only available on Opus and Fable models. Sending it
+        # to Sonnet returns an API error.
         supports_max_effort = any(
-            p in model for p in ("opus-4-6", "opus-4-7", "opus-4-8")
+            p in model for p in ("opus-4-6", "opus-4-7", "opus-4-8", "fable")
         )
-        # effort: "xhigh" is only available on Opus 4.7 and Opus 4.8. Sending
-        # it to any other model returns an API error.
-        supports_xhigh_effort = "opus-4-7" in model or "opus-4-8" in model
-        # Opus models require adaptive thinking always on. For other
+        # effort: "xhigh" is only available on Opus 4.7, Opus 4.8, and Fable.
+        # Sending it to any other model returns an API error.
+        supports_xhigh_effort = any(
+            p in model for p in ("opus-4-7", "opus-4-8", "fable")
+        )
+        # Opus and Fable models require adaptive thinking always on. For other
         # adaptive models (e.g. Sonnet 4.6), only enable it when
         # reasoning_effort is explicitly requested.
         requires_adaptive = any(
-            p in model for p in ("opus-4-6", "opus-4-7", "opus-4-8")
+            p in model for p in ("opus-4-6", "opus-4-7", "opus-4-8", "fable")
         )
         use_adaptive = requires_adaptive or (
             supports_adaptive and reasoning_effort is not None

@@ -93,6 +93,12 @@ MODEL_COSTS = {
         "cached_input_cost_per1k": 0.000275,
         "output_cost_per1k": 0.0044,
     },
+    "claude-fable-5": {
+        "input_cost_per1k": 0.010,
+        "cached_input_cost_per1k": 0.001,
+        "cache_creation_input_cost_per1k": 0.0125,
+        "output_cost_per1k": 0.050,
+    },
     "claude-3-5-sonnet": {
         "input_cost_per1k": 0.003,
         "output_cost_per1k": 0.015,
