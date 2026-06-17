@@ -230,4 +230,14 @@ MODEL_COSTS = {
         "cached_input_cost_per1k": 0.000028,
         "output_cost_per1k": 0.00028,
     },
+    "glm-5.2": {
+        "input_cost_per1k": 0.0014,
+        "cached_input_cost_per1k": 0.00026,
+        "output_cost_per1k": 0.0044,
+    },
+    "glm-5.1": {
+        "input_cost_per1k": 0.0014,
+        "cached_input_cost_per1k": 0.00026,
+        "output_cost_per1k": 0.0044,
+    },
 }

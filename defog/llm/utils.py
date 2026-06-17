@@ -10,6 +10,7 @@ from .providers import (
     GeminiProvider,
     OpenRouterProvider,
     DeepSeekProvider,
+    ZAIProvider,
 )
 from .providers.base import LLMResponse
 from .exceptions import LLMError, ConfigurationError, ToolError, PauseToolExecution
@@ -66,6 +67,7 @@ def get_provider_instance(
         "gemini": GeminiProvider,
         "openrouter": OpenRouterProvider,
         "deepseek": DeepSeekProvider,
+        "zai": ZAIProvider,
     }
 
     if provider_name not in provider_classes:
@@ -573,6 +575,8 @@ def map_model_to_provider(model: str) -> LLMProvider:
         return LLMProvider.ANTHROPIC
     elif model.startswith("gemini"):
         return LLMProvider.GEMINI
+    elif model.startswith("glm"):
+        return LLMProvider.ZAI
     elif (
         model.startswith("gpt")
         or model.startswith("o1")

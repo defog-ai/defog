@@ -7,3 +7,4 @@ class LLMProvider(Enum):
     GEMINI = "gemini"
     OPENROUTER = "openrouter"
     DEEPSEEK = "deepseek"
+    ZAI = "zai"
