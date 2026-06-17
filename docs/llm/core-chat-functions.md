@@ -2,7 +2,7 @@
 
 The library provides a unified interface for working with multiple LLM providers.
 
-Supported providers: OpenAI, Anthropic, Gemini, OpenRouter.
+Supported providers: OpenAI, Anthropic, Gemini, DeepSeek, OpenRouter.
 
 ## Basic Usage
 
@@ -131,6 +131,21 @@ response = await chat_async(
     messages=messages
 )
 
+# DeepSeek (native, via api.deepseek.com)
+response = await chat_async(
+    provider=LLMProvider.DEEPSEEK,  # or "deepseek"
+    model="deepseek-v4-pro",  # or "deepseek-v4-flash"
+    messages=messages
+)
+
+# DeepSeek with structured output
+response = await chat_async(
+    provider="deepseek",
+    model="deepseek-v4-pro",
+    messages=messages,
+    response_format=MyPydanticModel,
+)
+
 # OpenRouter (access any model via a single API key)
 response = await chat_async(
     provider=LLMProvider.OPENROUTER,
@@ -159,12 +174,25 @@ response = await chat_async(
 # Advanced OpenRouter routing object
 response = await chat_async(
     provider="openrouter",
-    model="deepseek/deepseek-r1",
+    model="openai/gpt-5-mini",
     messages=messages,
-    providers={"order": ["deepinfra/turbo"], "allow_fallbacks": False},
+    providers={"order": ["azure"], "allow_fallbacks": False},
 )
 
 ```
+
+### Native DeepSeek
+
+The DeepSeek provider (`provider="deepseek"`) talks directly to
+`api.deepseek.com` using a `DEEPSEEK_API_KEY`. Model ids are the bare DeepSeek
+names (`deepseek-v4-pro`, `deepseek-v4-flash`).
+
+**Structured output note:** DeepSeek does not support OpenAI's `json_schema`
+response-format mode (it returns `400 invalid_request_error`). When you pass a
+`response_format` Pydantic model to the native DeepSeek provider, it transparently
+uses `{"type": "json_object"}` mode under the hood and injects the schema into
+the system prompt to shape the output. You still get a parsed Pydantic instance
+back in `response.content` — the json_object handling is internal.
 
 ## Mid-Conversation System Messages (Anthropic, Claude Opus 4.8)
 
