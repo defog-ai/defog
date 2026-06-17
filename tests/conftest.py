@@ -109,6 +109,16 @@ else:
     AVAILABLE_PROVIDERS["deepseek"] = False
     AVAILABLE_MODELS["deepseek"] = []
 
+if os.getenv("ZAI_API_KEY"):
+    AVAILABLE_PROVIDERS["zai"] = True
+    AVAILABLE_MODELS["zai"] = [
+        "glm-5.2",
+        "glm-5.1",
+    ]
+else:
+    AVAILABLE_PROVIDERS["zai"] = False
+    AVAILABLE_MODELS["zai"] = []
+
 
 def get_available_models():
     """Get all available models across all providers with API keys."""

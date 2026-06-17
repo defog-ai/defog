@@ -85,6 +85,7 @@ Alternatively, set the corresponding environment variable and it will be picked 
 - `ANTHROPIC_BASE_URL`
 - `GEMINI_BASE_URL`
 - `OPENROUTER_BASE_URL`
+- `ZAI_BASE_URL`
 
 Or use the `LLMConfig` object for multi-provider configuration:
 
@@ -146,6 +147,15 @@ response = await chat_async(
     response_format=MyPydanticModel,
 )
 
+# ZAI (native, via api.z.ai)
+response = await chat_async(
+    provider=LLMProvider.ZAI,  # or "zai"
+    model="glm-5.2",  # or "glm-5.1"
+    messages=messages,
+    tools=[my_function],
+    tool_choice="auto",
+)
+
 # OpenRouter (access any model via a single API key)
 response = await chat_async(
     provider=LLMProvider.OPENROUTER,
@@ -193,6 +203,13 @@ response-format mode (it returns `400 invalid_request_error`). When you pass a
 uses `{"type": "json_object"}` mode under the hood and injects the schema into
 the system prompt to shape the output. You still get a parsed Pydantic instance
 back in `response.content` — the json_object handling is internal.
+
+### Native ZAI
+
+The ZAI provider (`provider="zai"`) talks directly to
+`api.z.ai/api/paas/v4` using a `ZAI_API_KEY`. Model ids are the bare ZAI names
+(`glm-5.2`, `glm-5.1`). It supports regular chat, `json_object` structured
+output, and function tools through the native chat completions endpoint.
 
 ## Mid-Conversation System Messages (Anthropic, Claude Opus 4.8)
 

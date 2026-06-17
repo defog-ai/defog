@@ -4,6 +4,7 @@ from .openai_provider import OpenAIProvider
 from .gemini_provider import GeminiProvider
 from .openrouter_provider import OpenRouterProvider
 from .deepseek_provider import DeepSeekProvider
+from .zai_provider import ZAIProvider
 
 __all__ = [
     "BaseLLMProvider",
@@ -13,4 +14,5 @@ __all__ = [
     "GeminiProvider",
     "OpenRouterProvider",
     "DeepSeekProvider",
+    "ZAIProvider",
 ]
