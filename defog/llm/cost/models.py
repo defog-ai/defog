@@ -221,13 +221,13 @@ MODEL_COSTS = {
         "cached_input_cost_per1k": 0.00015,
     },
     "deepseek-v4-pro": {
-        "input_cost_per1k": 0.00174,
-        "cached_input_cost_per1k": 0.000145,
-        "output_cost_per1k": 0.00348,
+        "input_cost_per1k": 0.000435,
+        "cached_input_cost_per1k": 0.000003625,
+        "output_cost_per1k": 0.00087,
     },
     "deepseek-v4-flash": {
         "input_cost_per1k": 0.00014,
-        "cached_input_cost_per1k": 0.000028,
+        "cached_input_cost_per1k": 0.0000028,
         "output_cost_per1k": 0.00028,
     },
     "glm-5.2": {
