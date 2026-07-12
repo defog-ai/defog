@@ -40,6 +40,19 @@ def test_gpt_5_5_entries_are_explicit():
     assert _find_match("gpt-5.5-pro-2026-04-23") == "gpt-5.5-pro"
 
 
+def test_gpt_5_6_entries_are_explicit():
+    # GPT-5.6 uses named tiers rather than the mini/nano/pro tier names.
+    assert "gpt-5.6" in MODEL_COSTS
+    assert "gpt-5.6-sol" in MODEL_COSTS
+    assert "gpt-5.6-terra" in MODEL_COSTS
+    assert "gpt-5.6-luna" in MODEL_COSTS
+    assert _find_match("gpt-5.6") == "gpt-5.6"
+    assert _find_match("gpt-5.6-sol") == "gpt-5.6-sol"
+    assert _find_match("gpt-5.6-terra") == "gpt-5.6-terra"
+    assert _find_match("gpt-5.6-luna") == "gpt-5.6-luna"
+    assert _find_match("gpt-5.6-terra-2026-07-09") == "gpt-5.6-terra"
+
+
 def test_unknown_mini_does_not_fall_back_to_base_pricing():
     # Regression: previously `gpt-5.4-mini` fell back to `gpt-5` (full) pricing
     # via loose substring match, inflating cost ~5x. With size-suffix parity,
@@ -91,11 +104,26 @@ def test_gpt_5_5_pricing_matches_openai_rate_card():
     assert _cost("gpt-5.5-pro") == pytest.approx(21.0)
 
 
+def test_gpt_5_6_pricing_matches_openai_rate_card():
+    # Per https://developers.openai.com/api/docs/pricing as of 2026-07-12.
+    # Sol (and its gpt-5.6 alias): $5 / $0.50 cached / $30 per 1M tokens.
+    assert _cost("gpt-5.6") == pytest.approx(3.5)
+    assert _cost("gpt-5.6-sol", cached=1000) == pytest.approx(3.55)
+    # Terra: $2.50 / $0.25 cached / $15 per 1M tokens.
+    assert _cost("gpt-5.6-terra", cached=1000) == pytest.approx(1.775)
+    # Luna: $1 / $0.10 cached / $6 per 1M tokens.
+    assert _cost("gpt-5.6-luna", cached=1000) == pytest.approx(0.71)
+
+
 def test_is_model_supported():
     assert CostCalculator.is_model_supported("gpt-5-mini") is True
     assert CostCalculator.is_model_supported("gpt-5.4-mini") is True
     assert CostCalculator.is_model_supported("gpt-5.5") is True
     assert CostCalculator.is_model_supported("gpt-5.5-pro") is True
+    assert CostCalculator.is_model_supported("gpt-5.6") is True
+    assert CostCalculator.is_model_supported("gpt-5.6-sol") is True
+    assert CostCalculator.is_model_supported("gpt-5.6-terra") is True
+    assert CostCalculator.is_model_supported("gpt-5.6-luna") is True
     assert CostCalculator.is_model_supported("gpt-5.9-mini") is True
     assert CostCalculator.is_model_supported("claude-sonnet-4-6") is True
     assert CostCalculator.is_model_supported("totally-made-up-xyz") is False

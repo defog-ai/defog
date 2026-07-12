@@ -40,6 +40,27 @@ MODEL_COSTS = {
         "cached_input_cost_per1k": 0.000005,
         "output_cost_per1k": 0.0004,
     },
+    # gpt-5.6 is an alias for gpt-5.6-sol.
+    "gpt-5.6": {
+        "input_cost_per1k": 0.005,
+        "cached_input_cost_per1k": 0.0005,
+        "output_cost_per1k": 0.03,
+    },
+    "gpt-5.6-sol": {
+        "input_cost_per1k": 0.005,
+        "cached_input_cost_per1k": 0.0005,
+        "output_cost_per1k": 0.03,
+    },
+    "gpt-5.6-terra": {
+        "input_cost_per1k": 0.0025,
+        "cached_input_cost_per1k": 0.00025,
+        "output_cost_per1k": 0.015,
+    },
+    "gpt-5.6-luna": {
+        "input_cost_per1k": 0.001,
+        "cached_input_cost_per1k": 0.0001,
+        "output_cost_per1k": 0.006,
+    },
     "gpt-5.5": {
         "input_cost_per1k": 0.005,
         "cached_input_cost_per1k": 0.0005,
