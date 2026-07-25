@@ -114,6 +114,21 @@ MODEL_COSTS = {
         "cached_input_cost_per1k": 0.000275,
         "output_cost_per1k": 0.0044,
     },
+    # Speech-to-text models (Transcription API). Input is billed as audio
+    # tokens; OpenAI's rule-of-thumb estimates are ~$0.006/min for
+    # gpt-4o-transcribe(-diarize) and ~$0.003/min for the mini tier.
+    "gpt-4o-transcribe": {
+        "input_cost_per1k": 0.0025,
+        "output_cost_per1k": 0.01,
+    },
+    "gpt-4o-mini-transcribe": {
+        "input_cost_per1k": 0.00125,
+        "output_cost_per1k": 0.005,
+    },
+    "gpt-4o-transcribe-diarize": {
+        "input_cost_per1k": 0.0025,
+        "output_cost_per1k": 0.01,
+    },
     "claude-fable-5": {
         "input_cost_per1k": 0.010,
         "cached_input_cost_per1k": 0.001,
