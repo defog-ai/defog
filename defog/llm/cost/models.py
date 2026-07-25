@@ -128,49 +128,64 @@ MODEL_COSTS = {
     },
     "claude-sonnet-4": {
         "input_cost_per1k": 0.003,
-        "cached_input_cost_per1k": 0.00075,
+        "cached_input_cost_per1k": 0.0003,
         "cache_creation_input_cost_per1k": 0.00375,
         "output_cost_per1k": 0.015,
     },
     "claude-sonnet-4-5": {
         "input_cost_per1k": 0.003,
-        "cached_input_cost_per1k": 0.00075,
+        "cached_input_cost_per1k": 0.0003,
         "cache_creation_input_cost_per1k": 0.00375,
         "output_cost_per1k": 0.015,
     },
     "claude-sonnet-4-6": {
         "input_cost_per1k": 0.003,
-        "cached_input_cost_per1k": 0.00075,
+        "cached_input_cost_per1k": 0.0003,
         "cache_creation_input_cost_per1k": 0.00375,
         "output_cost_per1k": 0.015,
     },
+    # Introductory pricing through 2026-08-31; becomes $3/$15 per MTok
+    # (cached $0.30/MTok, 5m cache write $3.75/MTok) on 2026-09-01.
+    "claude-sonnet-5": {
+        "input_cost_per1k": 0.002,
+        "cached_input_cost_per1k": 0.0002,
+        "cache_creation_input_cost_per1k": 0.0025,
+        "output_cost_per1k": 0.01,
+    },
     "claude-opus-4-1": {
         "input_cost_per1k": 0.015,
-        "cached_input_cost_per1k": 0.00375,
+        "cached_input_cost_per1k": 0.0015,
         "cache_creation_input_cost_per1k": 0.01875,
         "output_cost_per1k": 0.075,
     },
     "claude-opus-4-5": {
         "input_cost_per1k": 0.005,
-        "cached_input_cost_per1k": 0.00125,
+        "cached_input_cost_per1k": 0.0005,
         "cache_creation_input_cost_per1k": 0.00625,
         "output_cost_per1k": 0.025,
     },
     "claude-opus-4-6": {
         "input_cost_per1k": 0.005,
-        "cached_input_cost_per1k": 0.00125,
+        "cached_input_cost_per1k": 0.0005,
         "cache_creation_input_cost_per1k": 0.00625,
         "output_cost_per1k": 0.025,
     },
     "claude-opus-4-7": {
         "input_cost_per1k": 0.005,
-        "cached_input_cost_per1k": 0.00125,
+        "cached_input_cost_per1k": 0.0005,
         "cache_creation_input_cost_per1k": 0.00625,
         "output_cost_per1k": 0.025,
     },
     "claude-opus-4-8": {
         "input_cost_per1k": 0.005,
-        "cached_input_cost_per1k": 0.00125,
+        "cached_input_cost_per1k": 0.0005,
+        "cache_creation_input_cost_per1k": 0.00625,
+        "output_cost_per1k": 0.025,
+    },
+    # Launched 2026-07-24 at unchanged Opus-generation pricing.
+    "claude-opus-5": {
+        "input_cost_per1k": 0.005,
+        "cached_input_cost_per1k": 0.0005,
         "cache_creation_input_cost_per1k": 0.00625,
         "output_cost_per1k": 0.025,
     },

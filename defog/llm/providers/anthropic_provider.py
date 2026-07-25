@@ -578,29 +578,36 @@ class AnthropicProvider(BaseLLMProvider):
         # opus-4-1, opus-4-5, opus-4-6, haiku-4-5, etc.), "3-7" catches
         # Claude 3.7 Sonnet. Using "-4" instead of "-4-" so that
         # "claude-sonnet-4" (no date suffix) is also matched.
-        supports_thinking = "3-7" in model or "-4" in model
+        supports_thinking = "3-7" in model or "-4" in model or "-5" in model
         # Claude 4.6+ models use adaptive thinking (type: "adaptive") with
         # effort via output_config, replacing the deprecated budget_tokens
         # param. Update this tuple when new models add adaptive support.
         supports_adaptive = any(
             p in model
-            for p in ("opus-4-6", "opus-4-7", "opus-4-8", "sonnet-4-6", "fable")
+            for p in (
+                "opus-4-6",
+                "opus-4-7",
+                "opus-4-8",
+                "opus-5",
+                "sonnet-4-6",
+                "fable",
+            )
         )
         # effort: "max" is only available on Opus and Fable models. Sending it
         # to Sonnet returns an API error.
         supports_max_effort = any(
-            p in model for p in ("opus-4-6", "opus-4-7", "opus-4-8", "fable")
+            p in model for p in ("opus-4-6", "opus-4-7", "opus-4-8", "opus-5", "fable")
         )
         # effort: "xhigh" is only available on Opus 4.7, Opus 4.8, and Fable.
         # Sending it to any other model returns an API error.
         supports_xhigh_effort = any(
-            p in model for p in ("opus-4-7", "opus-4-8", "fable")
+            p in model for p in ("opus-4-7", "opus-4-8", "opus-5", "fable")
         )
         # Opus and Fable models require adaptive thinking always on. For other
         # adaptive models (e.g. Sonnet 4.6), only enable it when
         # reasoning_effort is explicitly requested.
         requires_adaptive = any(
-            p in model for p in ("opus-4-6", "opus-4-7", "opus-4-8", "fable")
+            p in model for p in ("opus-4-6", "opus-4-7", "opus-4-8", "opus-5", "fable")
         )
         use_adaptive = requires_adaptive or (
             supports_adaptive and reasoning_effort is not None
@@ -615,21 +622,32 @@ class AnthropicProvider(BaseLLMProvider):
             }
             temperature = 1.0
         elif reasoning_effort is not None and supports_thinking:
-            temperature = 1.0
             if reasoning_effort == "low":
+                temperature = 1.0
                 thinking = {
                     "type": "enabled",
                     "budget_tokens": 2048,
                 }
             elif reasoning_effort == "medium":
+                temperature = 1.0
                 thinking = {
                     "type": "enabled",
                     "budget_tokens": 4096,
                 }
             elif reasoning_effort in ("high", "max", "xhigh"):
+                temperature = 1.0
                 thinking = {
                     "type": "enabled",
                     "budget_tokens": 8192,
+                }
+            else:
+                # reasoning_effort == "none" (or an unrecognized level):
+                # previously fell through all branches and left `thinking`
+                # unbound, crashing any call that passed effort "none" to an
+                # Anthropic model (e.g. OpenAI-primary configs whose backup
+                # provider is Anthropic).
+                thinking = {
+                    "type": "disabled",
                 }
         else:
             thinking = {
