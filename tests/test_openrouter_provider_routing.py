@@ -2,11 +2,16 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from pydantic import BaseModel
 
 from defog.llm.config import LLMConfig
 from defog.llm.providers.base import LLMResponse
 from defog.llm.providers.openrouter_provider import OpenRouterProvider
 from defog.llm.utils import chat_async
+
+
+class RoutingRepairOutput(BaseModel):
+    value: str
 
 
 def test_build_params_providers_list_maps_to_only():
@@ -92,11 +97,20 @@ async def test_chat_async_rejects_providers_for_non_openrouter():
 
 
 @pytest.mark.asyncio
-async def test_llm_json_repair_forwards_provider_extra_body():
+async def test_structured_repair_forwards_provider_extra_body():
     provider = OpenRouterProvider(api_key="sk-test")
     extra_body = {"provider": {"only": ["azure"]}}
     response = SimpleNamespace(
-        choices=[SimpleNamespace(message=SimpleNamespace(content="fixed"))]
+        choices=[
+            SimpleNamespace(message=SimpleNamespace(content='{"value": "fixed"}'))
+        ],
+        usage=SimpleNamespace(
+            prompt_tokens=1,
+            completion_tokens=1,
+            prompt_tokens_details=None,
+            completion_tokens_details=None,
+            cost=None,
+        ),
     )
     client = SimpleNamespace(
         chat=SimpleNamespace(
@@ -104,13 +118,14 @@ async def test_llm_json_repair_forwards_provider_extra_body():
         )
     )
 
-    result = await provider._llm_json_repair(
-        broken_content="broken",
-        response_format=None,
+    result = await provider._parse_with_repair(
+        raw_content="broken",
+        response_format=RoutingRepairOutput,
         client=client,
         model="openai/gpt-5-mini",
-        request_params={"messages": [], "extra_body": extra_body},
+        request_params={"messages": []},
+        extra_body=extra_body,
     )
 
-    assert result == "fixed"
+    assert result == RoutingRepairOutput(value="fixed")
     assert client.chat.completions.create.call_args.kwargs["extra_body"] == extra_body

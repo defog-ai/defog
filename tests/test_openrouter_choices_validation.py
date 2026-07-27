@@ -1,13 +1,12 @@
 """Unit tests for OpenRouter response.choices validation (issue #261).
 
-Verifies that process_response and _llm_json_repair raise ProviderError
-when OpenRouter returns choices=None on follow-up API calls, instead of
-crashing with a TypeError.
+Verifies that process_response raises ProviderError for required follow-up calls
+and structured repair fails closed when a bounded repair call has no choices.
 """
 
 import json
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from pydantic import BaseModel
 
@@ -248,26 +247,27 @@ class TestStructuredOutputFinalCallValidation(unittest.IsolatedAsyncioTestCase):
 # ---------------------------------------------------------------------------
 
 
-class TestLlmJsonRepairValidation(unittest.IsolatedAsyncioTestCase):
-    """_llm_json_repair makes an API call to fix broken JSON. If that call
-    returns choices=None, it must raise ProviderError."""
-
-    async def test_repair_choices_none_raises_provider_error(self):
+class TestStructuredRepairValidation(unittest.IsolatedAsyncioTestCase):
+    async def test_repair_choices_none_fails_closed(self):
         provider = OpenRouterProvider(api_key="test-key")
-
+        raw = '{"answer": "hello", "score": }'
         bad_response = _make_response(choices_present=False)
         client = AsyncMock()
         client.chat.completions.create = AsyncMock(return_value=bad_response)
+        metadata = {}
 
-        with self.assertRaises(ProviderError) as ctx:
-            await provider._llm_json_repair(
-                broken_content='{"answer": "hello", "score": }',
-                response_format=StructuredOutput,
-                client=client,
-                model="test-model",
-                request_params={"messages": []},
-            )
-        self.assertIn("No response from OpenRouter", str(ctx.exception))
+        result = await provider._parse_with_repair(
+            raw_content=raw,
+            response_format=StructuredOutput,
+            client=client,
+            model="test-model",
+            request_params={"messages": []},
+            repair_metadata=metadata,
+        )
+
+        self.assertEqual(result, raw)
+        self.assertEqual(metadata["attempts"], 1)
+        self.assertFalse(metadata["success"])
 
 
 # ---------------------------------------------------------------------------
@@ -342,7 +342,7 @@ class TestValidResponsesStillWork(unittest.IsolatedAsyncioTestCase):
         content = result[0]
         self.assertEqual(content, "The sum is 8")
 
-    async def test_llm_json_repair_with_valid_response(self):
+    async def test_structured_repair_with_valid_response(self):
         provider = OpenRouterProvider(api_key="test-key")
 
         good_json = json.dumps({"answer": "fixed", "score": 99})
@@ -350,8 +350,8 @@ class TestValidResponsesStillWork(unittest.IsolatedAsyncioTestCase):
         client = AsyncMock()
         client.chat.completions.create = AsyncMock(return_value=good_response)
 
-        result = await provider._llm_json_repair(
-            broken_content='{"answer": "hello", "score": }',
+        result = await provider._parse_with_repair(
+            raw_content='{"answer": "hello", "score": }',
             response_format=StructuredOutput,
             client=client,
             model="test-model",

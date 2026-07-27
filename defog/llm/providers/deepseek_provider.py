@@ -1,8 +1,6 @@
 from defog import config as defog_config
-import re
 import time
 import json
-import logging
 from copy import deepcopy
 from typing import Dict, List, Any, Optional, Callable, Tuple, Union
 
@@ -15,7 +13,6 @@ from ..utils_function_calling import get_function_specs, convert_tool_choice
 from ..image_utils import convert_to_openai_format
 from ..tools.handler import ToolHandler
 
-logger = logging.getLogger(__name__)
 
 DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
 
@@ -126,152 +123,6 @@ class DeepSeekProvider(BaseLLMProvider):
     # JSON repair helpers (json_object output is loose)
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _deterministic_json_repair(content: str) -> str:
-        """Apply deterministic fixes for common JSON issues from loose output.
-
-        Handles: markdown fences, Python literals (True/False/None),
-        JS constants (NaN/Infinity/undefined), trailing commas, comments,
-        single-quoted strings, and unbalanced brackets.
-        """
-        s = content.strip()
-
-        # Strip markdown code fences
-        if s.startswith("```"):
-            first_nl = s.find("\n")
-            s = s[first_nl + 1 :] if first_nl != -1 else s[3:]
-            if s.endswith("```"):
-                s = s[:-3]
-            s = s.strip()
-
-        # Remove single-line JS/Python comments (best effort)
-        s = re.sub(r"(?m)^\s*//[^\n]*$", "", s)
-        s = re.sub(r"//[^\n]*", "", s)
-        s = re.sub(r"/\*.*?\*/", "", s, flags=re.DOTALL)
-
-        # Replace Python/JS literals with JSON equivalents
-        s = re.sub(r"\bTrue\b", "true", s)
-        s = re.sub(r"\bFalse\b", "false", s)
-        s = re.sub(r"\bNone\b", "null", s)
-        s = re.sub(r"\bNaN\b", "null", s)
-        s = re.sub(r"\bundefined\b", "null", s)
-        s = re.sub(r"\bInfinity\b", "null", s)
-        s = re.sub(r"-\s*null\b", "null", s)  # fix -Infinity → -null → null
-
-        # Remove trailing commas before } or ]
-        s = re.sub(r",(\s*[}\]])", r"\1", s)
-
-        # Try single-quote → double-quote conversion if no double quotes present
-        # in the structural positions (keys/values). Best-effort heuristic.
-        if "'" in s and not re.search(r'(?<=[{\[,:])\s*"', s):
-            candidate = s.replace("'", '"')
-            try:
-                json.loads(candidate)
-                s = candidate
-            except json.JSONDecodeError:
-                pass  # didn't help, keep original
-
-        # Balance unclosed brackets using a character-level scan
-        open_braces = 0
-        open_brackets = 0
-        in_string = False
-        escape_next = False
-        for ch in s:
-            if escape_next:
-                escape_next = False
-                continue
-            if ch == "\\" and in_string:
-                escape_next = True
-                continue
-            if ch == '"':
-                in_string = not in_string
-                continue
-            if in_string:
-                continue
-            if ch == "{":
-                open_braces += 1
-            elif ch == "}":
-                open_braces -= 1
-            elif ch == "[":
-                open_brackets += 1
-            elif ch == "]":
-                open_brackets -= 1
-
-        # If we ended inside a string, close it
-        if in_string:
-            s += '"'
-
-        # If last non-whitespace is a colon, append null (truncated value)
-        stripped_tail = s.rstrip()
-        if stripped_tail and stripped_tail[-1] == ":":
-            s = stripped_tail + " null"
-        # If last non-whitespace is a comma, strip it
-        elif stripped_tail and stripped_tail[-1] == ",":
-            s = stripped_tail[:-1]
-
-        # Append missing closing brackets
-        if open_brackets > 0:
-            s += "]" * open_brackets
-        if open_braces > 0:
-            s += "}" * open_braces
-
-        # Final pass: remove any remaining trailing commas before closers
-        s = re.sub(r",(\s*[}\]])", r"\1", s)
-
-        return s
-
-    async def _llm_json_repair(
-        self,
-        broken_content: str,
-        response_format,
-        client,
-        model: str,
-        request_params: Dict[str, Any],
-    ) -> Any:
-        """Use a follow-on LLM call to fix broken JSON.
-
-        Appends the model's broken response as an assistant turn and adds a
-        user follow-up asking it to return valid JSON, preserving the full
-        conversation context.
-        """
-        schema = None
-        if hasattr(response_format, "model_json_schema"):
-            schema = response_format.model_json_schema()
-
-        schema_text = json.dumps(schema, indent=2) if schema else "Not available"
-
-        follow_up = (
-            "Your previous response was not valid JSON or did not match the "
-            "expected schema. Please return ONLY the corrected JSON — no "
-            "markdown fences, no explanations, no extra text.\n\n"
-            f"Expected JSON schema:\n{schema_text}"
-        )
-
-        logger.info("Attempting LLM-based JSON repair for model=%s", model)
-
-        messages = list(request_params.get("messages", []))
-        messages.append({"role": "assistant", "content": broken_content})
-        messages.append({"role": "user", "content": follow_up})
-
-        repair_params = {
-            "model": model,
-            "messages": messages,
-            "temperature": 0.0,
-            "max_tokens": 4096,
-        }
-        rf = self._build_response_format(response_format)
-        if rf:
-            repair_params["response_format"] = rf
-
-        response = await client.chat.completions.create(**repair_params)
-        if not hasattr(response, "choices") or not response.choices:
-            raise ProviderError(
-                self.get_provider_name(),
-                "No response from DeepSeek",
-            )
-        fixed_content = response.choices[0].message.content or ""
-        return self.parse_structured_response(fixed_content, response_format)
-
     async def _parse_with_repair(
         self,
         raw_content: str,
@@ -279,69 +130,16 @@ class DeepSeekProvider(BaseLLMProvider):
         client,
         model: str,
         request_params: Optional[Dict[str, Any]] = None,
+        repair_metadata: Optional[Dict[str, Any]] = None,
     ) -> Any:
-        """Parse structured response with deterministic repair and LLM fallback.
-
-        Sequence:
-        1. Try base parse_structured_response (markdown strip + json.loads + regex)
-        2. Apply deterministic fixes and re-parse
-        3. Make a follow-on LLM call to repair the JSON
-        4. Return original content if everything fails
-        """
-        if not response_format or not raw_content:
-            return raw_content
-
-        has_pydantic = hasattr(response_format, "model_validate")
-
-        def _is_parsed(result):
-            """True when the result is a parsed object, not raw text."""
-            if has_pydantic:
-                return not isinstance(result, str)
-            return isinstance(result, (dict, list))
-
-        # --- Step 1: standard parsing ---
-        try:
-            result = self.parse_structured_response(raw_content, response_format)
-            if _is_parsed(result):
-                return result
-        except Exception:
-            pass
-
-        # --- Step 2: deterministic repair ---
-        try:
-            repaired = self._deterministic_json_repair(raw_content)
-            result = self.parse_structured_response(repaired, response_format)
-            if _is_parsed(result):
-                logger.info("Deterministic JSON repair succeeded")
-                return result
-        except Exception:
-            pass
-
-        # --- Step 3: LLM-based repair ---
-        try:
-            result = await self._llm_json_repair(
-                raw_content,
-                response_format,
-                client,
-                model,
-                dict(request_params or {}),
-            )
-            if _is_parsed(result):
-                logger.info("LLM-based JSON repair succeeded")
-                return result
-        except Exception as e:
-            logger.warning("LLM-based JSON repair failed: %s", e)
-
-        # --- All repair attempts exhausted ---
-        logger.warning(
-            "All JSON repair attempts failed for structured output; "
-            "returning raw content"
+        return await super()._parse_with_repair(
+            raw_content,
+            response_format,
+            client,
+            model,
+            request_params,
+            repair_metadata=repair_metadata,
         )
-        return raw_content
-
-    # ------------------------------------------------------------------
-    # Request building
-    # ------------------------------------------------------------------
 
     def build_params(
         self,
@@ -439,6 +237,7 @@ class DeepSeekProvider(BaseLLMProvider):
         Optional[int],
         Optional[Dict[str, int]],
         str,
+        Optional[Dict[str, Any]],
     ]:
         """Process Chat Completions response, handling tool call chaining."""
         if tool_handler is None:
@@ -451,6 +250,7 @@ class DeepSeekProvider(BaseLLMProvider):
         total_input_tokens = 0
         total_cached_input_tokens = 0
         total_output_tokens = 0
+        repair_metadata: Dict[str, Any] = {}
         tool_calls_executed = False
 
         if tools:
@@ -664,6 +464,7 @@ class DeepSeekProvider(BaseLLMProvider):
                     client,
                     model,
                     final_params,
+                    repair_metadata=repair_metadata,
                 )
             else:
                 content = response.choices[0].message.content or ""
@@ -684,6 +485,7 @@ class DeepSeekProvider(BaseLLMProvider):
                     client,
                     model,
                     request_params,
+                    repair_metadata=repair_metadata,
                 )
             else:
                 content = response.choices[0].message.content or ""
@@ -698,6 +500,10 @@ class DeepSeekProvider(BaseLLMProvider):
             total_cached_input_tokens += cached_tokens
             total_output_tokens += output_tokens
 
+        total_input_tokens += repair_metadata.get("input_tokens", 0)
+        total_cached_input_tokens += repair_metadata.get("cached_input_tokens", 0)
+        total_output_tokens += repair_metadata.get("output_tokens", 0)
+
         return (
             content,
             tool_outputs,
@@ -706,6 +512,7 @@ class DeepSeekProvider(BaseLLMProvider):
             total_output_tokens,
             output_tokens_details,
             response.id or "",
+            repair_metadata or None,
         )
 
     # ------------------------------------------------------------------
@@ -807,6 +614,7 @@ class DeepSeekProvider(BaseLLMProvider):
                 output_tokens,
                 output_tokens_details,
                 response_id,
+                repair_metadata,
             ) = await self.process_response(
                 client=client,
                 response=response,
@@ -853,4 +661,5 @@ class DeepSeekProvider(BaseLLMProvider):
             cost_in_cents=cost,
             tool_outputs=tool_outputs,
             response_id=gen_response_id,
+            structured_output_repairs=repair_metadata,
         )
