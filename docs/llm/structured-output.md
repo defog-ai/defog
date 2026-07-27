@@ -56,3 +56,40 @@ notes = response.parsed
 print(f"Meeting on {notes.date}")
 print(f"Attendees: {', '.join(p.name for p in notes.attendees)}")
 
+### Repair behavior for loose JSON providers
+
+DeepSeek and ZAI support JSON-object mode but do not enforce the complete
+Pydantic schema at generation time. OpenRouter models can also occasionally
+return loose JSON. For these providers, Defog repairs structured output in this
+order:
+
+1. Normalize JSON syntax and apply safe local schema fixes, such as converting
+   `null` to `""` for string fields and removing keys forbidden by the model.
+2. If semantic validation errors remain, request patches only for the invalid
+   JSON-pointer paths. Valid fields and valid list items are not regenerated.
+3. If the output cannot be parsed at all, make one bounded full-object repair
+   call using the broken output and schema. The original source conversation is
+   not replayed.
+
+Repair calls are bounded to one attempt and fail closed: if a patch changes an
+unlisted path, omits an invalid path, or the assembled object still fails the
+original Pydantic validation, `response.content` contains the original raw
+string.
+
+When a repair was needed, `response.structured_output_repairs` contains audit
+metadata:
+
+```python
+repair = response.structured_output_repairs
+if repair:
+    print(repair["strategy"])  # deterministic, field_patch, or full_object
+    print(repair["attempts"])
+    print(repair["deterministic_fields"])
+    print(repair["model_patched_fields"])
+    print(repair["input_tokens"], repair["output_tokens"])
+    print(repair["cost_in_cents"], repair["success"])
+```
+
+Repair-call tokens and cost are included in the top-level `input_tokens`,
+`output_tokens`, and `cost_in_cents` totals. The telemetry fields report the
+repair portion separately.

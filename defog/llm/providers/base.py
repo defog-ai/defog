@@ -14,6 +14,10 @@ from ..memory.conversation_cache import (
     store_messages as store_cached_messages,
 )
 from ..tools import ToolHandler
+from ..structured_output_repair import (
+    deterministic_json_repair,
+    repair_structured_response,
+)
 import inspect
 
 
@@ -44,6 +48,7 @@ class LLMResponse:
     pending_tool_use: Optional[Dict[str, Any]] = None
     pause_payload: Optional[Any] = None
     messages: Optional[List[Dict[str, Any]]] = None
+    structured_output_repairs: Optional[Dict[str, Any]] = None
 
 
 class BaseLLMProvider(ABC):
@@ -204,6 +209,41 @@ class BaseLLMProvider(ABC):
             return response_format.model_validate(parsed)
 
         return parsed
+
+    _deterministic_json_repair = staticmethod(deterministic_json_repair)
+
+    async def _run_structured_repair_completion(
+        self, client: Any, request_params: Dict[str, Any]
+    ) -> Any:
+        """Run one OpenAI-compatible structured-output repair completion."""
+        return await client.chat.completions.create(**request_params)
+
+    async def _parse_with_repair(
+        self,
+        raw_content: str,
+        response_format: Any,
+        client: Any,
+        model: str,
+        request_params: Optional[Dict[str, Any]] = None,
+        extra_body: Optional[Dict[str, Any]] = None,
+        repair_metadata: Optional[Dict[str, Any]] = None,
+    ) -> Any:
+        """Shared schema-aware repair path for loose-JSON providers."""
+        request_options = {}
+        if extra_body:
+            request_options["extra_body"] = extra_body
+
+        return await repair_structured_response(
+            raw_content=raw_content,
+            response_format=response_format,
+            model=model,
+            create_completion=lambda params: self._run_structured_repair_completion(
+                client, params
+            ),
+            usage_calculator=self.calculate_token_usage,
+            metadata=repair_metadata,
+            request_options=request_options,
+        )
 
     def calculate_token_usage(
         self, response
