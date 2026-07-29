@@ -420,11 +420,22 @@ class OpenAIPDFProcessor(BasePDFProcessor):
         """Initialize OpenAI PDF processor with API client."""
         super().__init__(provider, model, temperature)
 
-        # Initialize OpenAI client
-        self.client = openai.AsyncOpenAI(
-            api_key=api_key or defog_config.get("OPENAI_API_KEY"),
-            base_url=base_url or "https://api.openai.com/v1/",
-        )
+        self._client_kwargs = {
+            "api_key": api_key or defog_config.get("OPENAI_API_KEY"),
+            "base_url": base_url or "https://api.openai.com/v1/",
+        }
+        self.client = None
+
+    async def analyze_pdf(
+        self, url: str, task: str, response_format: Optional[Type[BaseModel]] = None
+    ) -> PDFAnalysisResult:
+        """Analyze a PDF while deterministically managing the OpenAI client."""
+        async with openai.AsyncOpenAI(**self._client_kwargs) as client:
+            self.client = client
+            try:
+                return await super().analyze_pdf(url, task, response_format)
+            finally:
+                self.client = None
 
     async def _create_api_input(
         self,

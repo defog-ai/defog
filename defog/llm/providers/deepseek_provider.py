@@ -573,12 +573,6 @@ class DeepSeekProvider(BaseLLMProvider):
             messages, previous_response_id, conversation_cache
         )
 
-        # Create OpenAI client pointed at DeepSeek
-        client = AsyncOpenAI(
-            base_url=self.base_url,
-            api_key=self.api_key,
-        )
-
         # Filter tools by budget
         tools = self.filter_tools_by_budget(tools, tool_handler)
 
@@ -604,34 +598,40 @@ class DeepSeekProvider(BaseLLMProvider):
             tool_dict = tool_handler.build_tool_dict(tools)
 
         try:
-            response = await client.chat.completions.create(**request_params)
+            # Close the underlying HTTPX connection pool deterministically,
+            # including when the request is cancelled or processing raises.
+            async with AsyncOpenAI(
+                base_url=self.base_url,
+                api_key=self.api_key,
+            ) as client:
+                response = await client.chat.completions.create(**request_params)
 
-            (
-                content,
-                tool_outputs,
-                input_tokens,
-                cached_input_tokens,
-                output_tokens,
-                output_tokens_details,
-                response_id,
-                repair_metadata,
-            ) = await self.process_response(
-                client=client,
-                response=response,
-                request_params=request_params,
-                tools=tools,
-                tool_dict=tool_dict,
-                response_format=response_format,
-                model=model,
-                post_tool_function=post_tool_function,
-                post_response_hook=post_response_hook,
-                tool_handler=tool_handler,
-                parallel_tool_calls=parallel_tool_calls,
-                return_tool_outputs_only=return_tool_outputs_only,
-                tool_sample_functions=sample_functions,
-                tool_result_preview_max_tokens=preview_max_tokens,
-                tool_phase_complete_message=tool_phase_complete_message,
-            )
+                (
+                    content,
+                    tool_outputs,
+                    input_tokens,
+                    cached_input_tokens,
+                    output_tokens,
+                    output_tokens_details,
+                    response_id,
+                    repair_metadata,
+                ) = await self.process_response(
+                    client=client,
+                    response=response,
+                    request_params=request_params,
+                    tools=tools,
+                    tool_dict=tool_dict,
+                    response_format=response_format,
+                    model=model,
+                    post_tool_function=post_tool_function,
+                    post_response_hook=post_response_hook,
+                    tool_handler=tool_handler,
+                    parallel_tool_calls=parallel_tool_calls,
+                    return_tool_outputs_only=return_tool_outputs_only,
+                    tool_sample_functions=sample_functions,
+                    tool_result_preview_max_tokens=preview_max_tokens,
+                    tool_phase_complete_message=tool_phase_complete_message,
+                )
         except (ProviderError, ToolError):
             raise
         except Exception as e:

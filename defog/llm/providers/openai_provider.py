@@ -940,7 +940,6 @@ class OpenAIProvider(BaseLLMProvider):
             self.validate_pre_model_call_hook(pre_model_call_hook)
 
         t = time.time()
-        client_openai = AsyncOpenAI(base_url=self.base_url, api_key=self.api_key)
 
         # Filter tools based on budget before building params
         tools = self.filter_tools_by_budget(tools, tool_handler)
@@ -988,50 +987,55 @@ class OpenAIProvider(BaseLLMProvider):
             tool_dict = tool_handler.build_tool_dict(tools)
 
         try:
-            # Use Responses API
-            await self._apply_pre_model_call_hook(
-                request_params,
-                model,
-                pre_model_call_hook,
-                checkpoint_kind="initial_request",
-            )
-            if response_format and not tools:
-                response = await client_openai.responses.parse(
-                    **request_params,
-                    text_format=response_format,
+            # Close the underlying HTTPX connection pool deterministically,
+            # including when the request is cancelled or processing raises.
+            async with AsyncOpenAI(
+                base_url=self.base_url, api_key=self.api_key
+            ) as client_openai:
+                # Use Responses API
+                await self._apply_pre_model_call_hook(
+                    request_params,
+                    model,
+                    pre_model_call_hook,
+                    checkpoint_kind="initial_request",
                 )
-            else:
-                response = await client_openai.responses.create(**request_params)
+                if response_format and not tools:
+                    response = await client_openai.responses.parse(
+                        **request_params,
+                        text_format=response_format,
+                    )
+                else:
+                    response = await client_openai.responses.create(**request_params)
 
-            request_params["previous_response_id"] = response.id
-            request_params["input"] = []
+                request_params["previous_response_id"] = response.id
+                request_params["input"] = []
 
-            (
-                content,
-                tool_outputs,
-                input_tokens,
-                cached_input_tokens,
-                output_tokens,
-                completion_token_details,
-                response_id,
-            ) = await self.process_response(
-                client=client_openai,
-                response=response,
-                request_params=request_params,
-                tools=tools,
-                tool_dict=tool_dict,
-                response_format=response_format,
-                model=model,
-                post_tool_function=post_tool_function,
-                post_response_hook=post_response_hook,
-                pre_model_call_hook=pre_model_call_hook,
-                tool_handler=tool_handler,
-                parallel_tool_calls=parallel_tool_calls,
-                return_tool_outputs_only=return_tool_outputs_only,
-                tool_sample_functions=sample_functions,
-                tool_result_preview_max_tokens=preview_max_tokens,
-                tool_phase_complete_message=tool_phase_complete_message,
-            )
+                (
+                    content,
+                    tool_outputs,
+                    input_tokens,
+                    cached_input_tokens,
+                    output_tokens,
+                    completion_token_details,
+                    response_id,
+                ) = await self.process_response(
+                    client=client_openai,
+                    response=response,
+                    request_params=request_params,
+                    tools=tools,
+                    tool_dict=tool_dict,
+                    response_format=response_format,
+                    model=model,
+                    post_tool_function=post_tool_function,
+                    post_response_hook=post_response_hook,
+                    pre_model_call_hook=pre_model_call_hook,
+                    tool_handler=tool_handler,
+                    parallel_tool_calls=parallel_tool_calls,
+                    return_tool_outputs_only=return_tool_outputs_only,
+                    tool_sample_functions=sample_functions,
+                    tool_result_preview_max_tokens=preview_max_tokens,
+                    tool_phase_complete_message=tool_phase_complete_message,
+                )
         except PauseToolExecution as pause:
             # A tool suspended the loop; return a paused LLMResponse. The caller
             # persists response.messages + response.response_id and resumes via

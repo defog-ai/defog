@@ -59,80 +59,81 @@ async def web_search_tool(
         if provider in [LLMProvider.OPENAI, LLMProvider.OPENAI.value]:
             from openai import AsyncOpenAI
 
-            client = AsyncOpenAI(api_key=config.get("OPENAI_API_KEY"))
+            async with AsyncOpenAI(api_key=config.get("OPENAI_API_KEY")) as client:
+                tracker.update(20, "Initiating web search")
+                subtask_logger.log_search_status(question)
 
-            tracker.update(20, "Initiating web search")
-            subtask_logger.log_search_status(question)
+                # Build request parameters
+                request_params = {
+                    "model": model,
+                    "tools": [{"type": "web_search"}],
+                    "tool_choice": "required",
+                    "input": question,
+                    "max_output_tokens": max_tokens,
+                }
 
-            # Build request parameters
-            request_params = {
-                "model": model,
-                "tools": [{"type": "web_search"}],
-                "tool_choice": "required",
-                "input": question,
-                "max_output_tokens": max_tokens,
-            }
-
-            # Add structured output format if provided
-            if response_format:
-                schema = response_format.model_json_schema()
-                request_params["text"] = {
-                    "format": {
-                        "type": "json_schema",
-                        "name": schema.get("title", response_format.__name__),
-                        "schema": schema | {"additionalProperties": False},
+                # Add structured output format if provided
+                if response_format:
+                    schema = response_format.model_json_schema()
+                    request_params["text"] = {
+                        "format": {
+                            "type": "json_schema",
+                            "name": schema.get("title", response_format.__name__),
+                            "schema": schema | {"additionalProperties": False},
+                        }
                     }
+
+                # Add reasoning effort for o-series and gpt-5 models
+                if reasoning_effort and (
+                    model.startswith("o") or model.startswith("gpt-5")
+                ):
+                    request_params["reasoning"] = {
+                        "effort": reasoning_effort,
+                        "summary": "auto",
+                    }
+
+                response = await client.responses.create(**request_params)
+                tracker.update(80, "Processing search results")
+                subtask_logger.log_subtask(
+                    "Extracting citations and content", "processing"
+                )
+
+                usage = {
+                    "input_tokens": response.usage.input_tokens,
+                    "output_tokens": response.usage.output_tokens,
                 }
+                output_text = response.output_text
+                websites_cited = []
+                for output in response.output:
+                    if hasattr(output, "content") and output.content:
+                        for content in output.content:
+                            if content.annotations:
+                                for annotation in content.annotations:
+                                    websites_cited.append(
+                                        {
+                                            "url": annotation.url,
+                                            "title": annotation.title,
+                                        }
+                                    )
 
-            # Add reasoning effort for o-series and gpt-5 models
-            if reasoning_effort and (
-                model.startswith("o") or model.startswith("gpt-5")
-            ):
-                request_params["reasoning"] = {
-                    "effort": reasoning_effort,
-                    "summary": "auto",
+                subtask_logger.log_result_summary(
+                    "Web Search",
+                    {
+                        "websites_found": len(websites_cited),
+                        "tokens_used": usage["input_tokens"] + usage["output_tokens"],
+                    },
+                )
+
+                # Parse structured output if response_format provided
+                search_results = output_text
+                if response_format and output_text:
+                    search_results = response_format.model_validate_json(output_text)
+
+                return {
+                    "usage": usage,
+                    "search_results": search_results,
+                    "websites_cited": websites_cited,
                 }
-
-            response = await client.responses.create(**request_params)
-            tracker.update(80, "Processing search results")
-            subtask_logger.log_subtask("Extracting citations and content", "processing")
-
-            usage = {
-                "input_tokens": response.usage.input_tokens,
-                "output_tokens": response.usage.output_tokens,
-            }
-            output_text = response.output_text
-            websites_cited = []
-            for output in response.output:
-                if hasattr(output, "content") and output.content:
-                    for content in output.content:
-                        if content.annotations:
-                            for annotation in content.annotations:
-                                websites_cited.append(
-                                    {
-                                        "url": annotation.url,
-                                        "title": annotation.title,
-                                    }
-                                )
-
-            subtask_logger.log_result_summary(
-                "Web Search",
-                {
-                    "websites_found": len(websites_cited),
-                    "tokens_used": usage["input_tokens"] + usage["output_tokens"],
-                },
-            )
-
-            # Parse structured output if response_format provided
-            search_results = output_text
-            if response_format and output_text:
-                search_results = response_format.model_validate_json(output_text)
-
-            return {
-                "usage": usage,
-                "search_results": search_results,
-                "websites_cited": websites_cited,
-            }
 
         elif provider in [LLMProvider.ANTHROPIC, LLMProvider.ANTHROPIC.value]:
             import json

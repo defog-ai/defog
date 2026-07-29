@@ -643,15 +643,6 @@ class OpenRouterProvider(BaseLLMProvider):
             messages, previous_response_id, conversation_cache
         )
 
-        # Create OpenAI client pointed at OpenRouter
-        client = AsyncOpenAI(
-            base_url=self.base_url,
-            api_key=self.api_key,
-            default_headers={
-                "X-Title": "defog",
-            },
-        )
-
         # Filter tools by budget
         tools = self.filter_tools_by_budget(tools, tool_handler)
 
@@ -678,43 +669,52 @@ class OpenRouterProvider(BaseLLMProvider):
             tool_dict = tool_handler.build_tool_dict(tools)
 
         try:
-            # Separate extra_body from regular params for the API call
-            extra_body = request_params.pop("extra_body", None)
+            # Close the underlying HTTPX connection pool deterministically,
+            # including when the request is cancelled or processing raises.
+            async with AsyncOpenAI(
+                base_url=self.base_url,
+                api_key=self.api_key,
+                default_headers={
+                    "X-Title": "defog",
+                },
+            ) as client:
+                # Separate extra_body from regular params for the API call
+                extra_body = request_params.pop("extra_body", None)
 
-            create_kwargs = {**request_params}
-            if extra_body:
-                create_kwargs["extra_body"] = extra_body
+                create_kwargs = {**request_params}
+                if extra_body:
+                    create_kwargs["extra_body"] = extra_body
 
-            response = await client.chat.completions.create(**create_kwargs)
+                response = await client.chat.completions.create(**create_kwargs)
 
-            (
-                content,
-                tool_outputs,
-                input_tokens,
-                cached_input_tokens,
-                output_tokens,
-                output_tokens_details,
-                response_id,
-                openrouter_cost,
-                repair_metadata,
-            ) = await self.process_response(
-                client=client,
-                response=response,
-                request_params=request_params,
-                tools=tools,
-                tool_dict=tool_dict,
-                response_format=response_format,
-                model=model,
-                post_tool_function=post_tool_function,
-                post_response_hook=post_response_hook,
-                tool_handler=tool_handler,
-                parallel_tool_calls=parallel_tool_calls,
-                return_tool_outputs_only=return_tool_outputs_only,
-                tool_sample_functions=sample_functions,
-                tool_result_preview_max_tokens=preview_max_tokens,
-                tool_phase_complete_message=tool_phase_complete_message,
-                extra_body=extra_body,
-            )
+                (
+                    content,
+                    tool_outputs,
+                    input_tokens,
+                    cached_input_tokens,
+                    output_tokens,
+                    output_tokens_details,
+                    response_id,
+                    openrouter_cost,
+                    repair_metadata,
+                ) = await self.process_response(
+                    client=client,
+                    response=response,
+                    request_params=request_params,
+                    tools=tools,
+                    tool_dict=tool_dict,
+                    response_format=response_format,
+                    model=model,
+                    post_tool_function=post_tool_function,
+                    post_response_hook=post_response_hook,
+                    tool_handler=tool_handler,
+                    parallel_tool_calls=parallel_tool_calls,
+                    return_tool_outputs_only=return_tool_outputs_only,
+                    tool_sample_functions=sample_functions,
+                    tool_result_preview_max_tokens=preview_max_tokens,
+                    tool_phase_complete_message=tool_phase_complete_message,
+                    extra_body=extra_body,
+                )
         except (ProviderError, ToolError):
             raise
         except Exception as e:
