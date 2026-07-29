@@ -46,57 +46,56 @@ async def code_interpreter_tool(
                 ResponseOutputMessage,
             )
 
-            client = AsyncOpenAI(api_key=config.get("OPENAI_API_KEY"))
+            async with AsyncOpenAI(api_key=config.get("OPENAI_API_KEY")) as client:
+                if csv_string:
+                    tracker.update(20, "Uploading data file")
+                    subtask_logger.log_subtask("Uploading CSV to OpenAI", "processing")
+                    file = await client.files.create(
+                        file=csv_file,
+                        purpose="user_data",
+                    )
 
-            if csv_string:
-                tracker.update(20, "Uploading data file")
-                subtask_logger.log_subtask("Uploading CSV to OpenAI", "processing")
-                file = await client.files.create(
-                    file=csv_file,
-                    purpose="user_data",
+                tracker.update(40, "Running code interpreter")
+                subtask_logger.log_code_execution("python")
+                response = await client.responses.create(
+                    model=model,
+                    tools=[
+                        {
+                            "type": "code_interpreter",
+                            "container": {
+                                "type": "auto",
+                                "file_ids": [file.id] if csv_string else [],
+                            },
+                        }
+                    ],
+                    tool_choice="required",
+                    input=[
+                        {
+                            "role": "user",
+                            "content": [{"type": "input_text", "text": question}],
+                        }
+                    ],
+                    instructions=instructions,
+                )
+                tracker.update(80, "Processing results")
+                subtask_logger.log_subtask("Extracting code and output", "processing")
+
+                code = ""
+                output_text = ""
+
+                for chunk in response.output:
+                    if isinstance(chunk, ResponseCodeInterpreterToolCall):
+                        code += chunk.code
+                    elif isinstance(chunk, ResponseOutputMessage):
+                        for content in chunk.content:
+                            output_text += content.text
+
+                subtask_logger.log_result_summary(
+                    "Code Execution",
+                    {"code_length": len(code), "output_length": len(output_text)},
                 )
 
-            tracker.update(40, "Running code interpreter")
-            subtask_logger.log_code_execution("python")
-            response = await client.responses.create(
-                model=model,
-                tools=[
-                    {
-                        "type": "code_interpreter",
-                        "container": {
-                            "type": "auto",
-                            "file_ids": [file.id] if csv_string else [],
-                        },
-                    }
-                ],
-                tool_choice="required",
-                input=[
-                    {
-                        "role": "user",
-                        "content": [{"type": "input_text", "text": question}],
-                    }
-                ],
-                instructions=instructions,
-            )
-            tracker.update(80, "Processing results")
-            subtask_logger.log_subtask("Extracting code and output", "processing")
-
-            code = ""
-            output_text = ""
-
-            for chunk in response.output:
-                if isinstance(chunk, ResponseCodeInterpreterToolCall):
-                    code += chunk.code
-                elif isinstance(chunk, ResponseOutputMessage):
-                    for content in chunk.content:
-                        output_text += content.text
-
-            subtask_logger.log_result_summary(
-                "Code Execution",
-                {"code_length": len(code), "output_length": len(output_text)},
-            )
-
-            return {"code": code, "output": output_text}
+                return {"code": code, "output": output_text}
         elif provider in [LLMProvider.ANTHROPIC, LLMProvider.ANTHROPIC.value]:
             from anthropic import AsyncAnthropic
 

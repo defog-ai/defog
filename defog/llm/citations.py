@@ -22,26 +22,25 @@ class CitationsResult(list):
 async def upload_document_to_openai_vector_store(document, store_id):
     from openai import AsyncOpenAI
 
-    client = AsyncOpenAI(api_key=config.get("OPENAI_API_KEY"))
+    async with AsyncOpenAI(api_key=config.get("OPENAI_API_KEY")) as client:
+        file_name = document["document_name"]
+        if not file_name.endswith(".txt"):
+            file_name = file_name + ".txt"
+        file_content = document["document_content"]
+        if isinstance(file_content, str):
+            # convert to bytes
+            file_content = file_content.encode("utf-8")
 
-    file_name = document["document_name"]
-    if not file_name.endswith(".txt"):
-        file_name = file_name + ".txt"
-    file_content = document["document_content"]
-    if isinstance(file_content, str):
-        # convert to bytes
-        file_content = file_content.encode("utf-8")
+        # first, upload the file to the vector store
+        file = await client.files.create(
+            file=(file_name, file_content), purpose="assistants"
+        )
 
-    # first, upload the file to the vector store
-    file = await client.files.create(
-        file=(file_name, file_content), purpose="assistants"
-    )
-
-    # then add it to the vector store
-    await client.vector_stores.files.create(
-        vector_store_id=store_id,
-        file_id=file.id,
-    )
+        # then add it to the vector store
+        await client.vector_stores.files.create(
+            vector_store_id=store_id,
+            file_id=file.id,
+        )
 
 
 async def citations_tool(
@@ -74,116 +73,121 @@ async def citations_tool(
         if provider in [LLMProvider.OPENAI, LLMProvider.OPENAI.value]:
             from openai import AsyncOpenAI
 
-            client = AsyncOpenAI(api_key=config.get("OPENAI_API_KEY"))
+            async with AsyncOpenAI(api_key=config.get("OPENAI_API_KEY")) as client:
+                # create an ephemeral vector store
+                store = await client.vector_stores.create()
+                store_id = store.id
 
-            # create an ephemeral vector store
-            store = await client.vector_stores.create()
-            store_id = store.id
+                # Upload all documents in parallel
+                tracker.update(10, "Uploading documents to vector store")
+                subtask_logger.log_subtask("Starting document uploads", "processing")
 
-            # Upload all documents in parallel
-            tracker.update(10, "Uploading documents to vector store")
-            subtask_logger.log_subtask("Starting document uploads", "processing")
-
-            upload_tasks = []
-            for idx, document in enumerate(documents, 1):
-                subtask_logger.log_document_upload(
-                    document["document_name"], idx, len(documents)
-                )
-                upload_tasks.append(
-                    upload_document_to_openai_vector_store(document, store_id)
-                )
-
-            await asyncio.gather(*upload_tasks)
-            tracker.update(40, "Documents uploaded")
-
-            # keep polling until the vector store is ready
-            is_ready = False
-            while not is_ready:
-                store = await client.vector_stores.files.list(vector_store_id=store_id)
-                total_completed = sum(
-                    1 for file in store.data if file.status == "completed"
-                )
-                is_ready = total_completed == len(documents)
-
-                # Update progress based on indexing status
-                progress = 40 + (total_completed / len(documents) * 40)  # 40-80% range
-                tracker.update(
-                    progress, f"Indexing {total_completed}/{len(documents)} files"
-                )
-                subtask_logger.log_vector_store_status(total_completed, len(documents))
-
-                if not is_ready:
-                    await asyncio.sleep(1)
-
-            # get the answer
-            tracker.update(80, "Generating citations")
-            subtask_logger.log_subtask("Querying with file search", "processing")
-            payload = {
-                "model": model,
-                "input": question,
-                "tools": [
-                    {
-                        "type": "file_search",
-                        "vector_store_ids": [store_id],
-                    }
-                ],
-                "tool_choice": "required",
-                "instructions": instructions,
-                "max_output_tokens": max_tokens,
-            }
-            if reasoning_effort:
-                payload["reasoning"] = {
-                    "effort": reasoning_effort,
-                    "summary": "auto",
-                }
-
-            response = await client.responses.create(**payload)
-
-            usage = getattr(response, "usage", None)
-            cost_in_cents = None
-            if usage:
-                input_tokens = getattr(usage, "input_tokens", 0) or 0
-                output_tokens = getattr(usage, "output_tokens", 0) or 0
-                cached_tokens = (
-                    getattr(
-                        getattr(usage, "input_tokens_details", None),
-                        "cached_tokens",
-                        0,
+                upload_tasks = []
+                for idx, document in enumerate(documents, 1):
+                    subtask_logger.log_document_upload(
+                        document["document_name"], idx, len(documents)
                     )
-                    or 0
-                )
-                cost_in_cents = CostCalculator.calculate_cost(
-                    model, input_tokens, output_tokens, cached_tokens
+                    upload_tasks.append(
+                        upload_document_to_openai_vector_store(document, store_id)
+                    )
+
+                await asyncio.gather(*upload_tasks)
+                tracker.update(40, "Documents uploaded")
+
+                # keep polling until the vector store is ready
+                is_ready = False
+                while not is_ready:
+                    store = await client.vector_stores.files.list(
+                        vector_store_id=store_id
+                    )
+                    total_completed = sum(
+                        1 for file in store.data if file.status == "completed"
+                    )
+                    is_ready = total_completed == len(documents)
+
+                    # Update progress based on indexing status
+                    progress = 40 + (
+                        total_completed / len(documents) * 40
+                    )  # 40-80% range
+                    tracker.update(
+                        progress, f"Indexing {total_completed}/{len(documents)} files"
+                    )
+                    subtask_logger.log_vector_store_status(
+                        total_completed, len(documents)
+                    )
+
+                    if not is_ready:
+                        await asyncio.sleep(1)
+
+                # get the answer
+                tracker.update(80, "Generating citations")
+                subtask_logger.log_subtask("Querying with file search", "processing")
+                payload = {
+                    "model": model,
+                    "input": question,
+                    "tools": [
+                        {
+                            "type": "file_search",
+                            "vector_store_ids": [store_id],
+                        }
+                    ],
+                    "tool_choice": "required",
+                    "instructions": instructions,
+                    "max_output_tokens": max_tokens,
+                }
+                if reasoning_effort:
+                    payload["reasoning"] = {
+                        "effort": reasoning_effort,
+                        "summary": "auto",
+                    }
+
+                response = await client.responses.create(**payload)
+
+                usage = getattr(response, "usage", None)
+                cost_in_cents = None
+                if usage:
+                    input_tokens = getattr(usage, "input_tokens", 0) or 0
+                    output_tokens = getattr(usage, "output_tokens", 0) or 0
+                    cached_tokens = (
+                        getattr(
+                            getattr(usage, "input_tokens_details", None),
+                            "cached_tokens",
+                            0,
+                        )
+                        or 0
+                    )
+                    cost_in_cents = CostCalculator.calculate_cost(
+                        model, input_tokens, output_tokens, cached_tokens
+                    )
+
+                # convert the response to a list of blocks
+                # similar to a subset of the Anthropic citations API
+                blocks = []
+                for part in response.output:
+                    if part.type == "message":
+                        contents = part.content
+                        for item in contents:
+                            if item.type == "output_text":
+                                blocks.append(
+                                    {
+                                        "text": item.text,
+                                        "type": "text",
+                                        "citations": [
+                                            {"document_title": i.filename}
+                                            for i in item.annotations
+                                        ],
+                                    }
+                                )
+                tracker.update(95, "Processing results")
+                subtask_logger.log_result_summary(
+                    "Citations",
+                    {
+                        "blocks_generated": len(blocks),
+                        "documents_processed": len(documents),
+                    },
                 )
 
-            # convert the response to a list of blocks
-            # similar to a subset of the Anthropic citations API
-            blocks = []
-            for part in response.output:
-                if part.type == "message":
-                    contents = part.content
-                    for item in contents:
-                        if item.type == "output_text":
-                            blocks.append(
-                                {
-                                    "text": item.text,
-                                    "type": "text",
-                                    "citations": [
-                                        {"document_title": i.filename}
-                                        for i in item.annotations
-                                    ],
-                                }
-                            )
-            tracker.update(95, "Processing results")
-            subtask_logger.log_result_summary(
-                "Citations",
-                {
-                    "blocks_generated": len(blocks),
-                    "documents_processed": len(documents),
-                },
-            )
-
-            return CitationsResult(blocks, cost_in_cents=cost_in_cents, usage=usage)
+                return CitationsResult(blocks, cost_in_cents=cost_in_cents, usage=usage)
 
         elif provider in [LLMProvider.ANTHROPIC, LLMProvider.ANTHROPIC.value]:
             from anthropic import AsyncAnthropic
@@ -237,9 +241,7 @@ async def citations_tool(
                 # Claude 4.6+ models support adaptive thinking, which
                 # replaces the deprecated budget_tokens approach.
                 _is_adaptive = (
-                    "opus-4-6" in model
-                    or "opus-4-7" in model
-                    or "sonnet-4-6" in model
+                    "opus-4-6" in model or "opus-4-7" in model or "sonnet-4-6" in model
                 )
                 if _is_adaptive:
                     payload["thinking"] = {"type": "adaptive"}
