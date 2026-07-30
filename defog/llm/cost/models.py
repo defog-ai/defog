@@ -52,14 +52,14 @@ MODEL_COSTS = {
         "output_cost_per1k": 0.03,
     },
     "gpt-5.6-terra": {
-        "input_cost_per1k": 0.0025,
-        "cached_input_cost_per1k": 0.00025,
-        "output_cost_per1k": 0.015,
+        "input_cost_per1k": 0.002,
+        "cached_input_cost_per1k": 0.0002,
+        "output_cost_per1k": 0.012,
     },
     "gpt-5.6-luna": {
-        "input_cost_per1k": 0.001,
-        "cached_input_cost_per1k": 0.0001,
-        "output_cost_per1k": 0.006,
+        "input_cost_per1k": 0.0002,
+        "cached_input_cost_per1k": 0.00002,
+        "output_cost_per1k": 0.0012,
     },
     "gpt-5.5": {
         "input_cost_per1k": 0.005,
