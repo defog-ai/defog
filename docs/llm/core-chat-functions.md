@@ -111,10 +111,11 @@ response = await chat_async(
 # OpenAI
 response = await chat_async(
     provider=LLMProvider.OPENAI,
-    model="gpt-4o",
+    model="gpt-5-mini",
     messages=messages,
     tools=[my_function],
-    tool_choice="auto"
+    tool_choice="auto",
+    flex_processing=True,  # Lower cost; requests may take longer
 )
 
 # Anthropic

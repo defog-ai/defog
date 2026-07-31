@@ -126,6 +126,7 @@ async def chat_async(
     task_budget: Optional[Union[int, Dict[str, Any]]] = None,
     conversation_cache: Optional[ConversationCache] = None,
     resume_tool_results: Optional[Dict[str, Any]] = None,
+    flex_processing: bool = False,
 ) -> LLMResponse:
     """
     Execute a chat completion with explicit provider parameter.
@@ -143,6 +144,8 @@ async def chat_async(
         backup_model: Fallback model to use on retry
         backup_provider: Fallback provider to use on retry
         reasoning_effort: Reasoning effort level (o1/o3 models only)
+        flex_processing: OpenAI only. When True, use OpenAI's lower-cost,
+            higher-latency Flex processing tier.
         tools: List of tools the model can call
         tool_choice: Tool calling behavior ("auto", "required", function name)
         max_retries: Maximum number of retry attempts
@@ -230,6 +233,9 @@ async def chat_async(
 
     if providers is not None and _provider_value(provider) != "openrouter":
         raise ValueError("providers is only supported when provider is 'openrouter'.")
+
+    if flex_processing and _provider_value(provider) != "openai":
+        raise ValueError("flex_processing is only supported when provider is 'openai'.")
 
     # Human-in-the-loop resume is only wired for anthropic and openai.
     if resume_tool_results is not None:
@@ -406,6 +412,8 @@ async def chat_async(
                 "conversation_cache": conversation_cache,
                 "resume_tool_results": resume_tool_results,
             }
+            if flex_processing and _provider_value(current_provider) == "openai":
+                execute_kwargs["flex_processing"] = True
             if (
                 providers is not None
                 and _provider_value(current_provider) == "openrouter"

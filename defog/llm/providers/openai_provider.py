@@ -132,6 +132,7 @@ class OpenAIProvider(BaseLLMProvider):
         response_format,
         tool_handler: ToolHandler,
         preview_max_tokens: Optional[int],
+        flex_processing: bool,
     ) -> Dict[str, Any]:
         """Build Responses API params to resume a paused run.
 
@@ -189,6 +190,7 @@ class OpenAIProvider(BaseLLMProvider):
             timeout=timeout,
             parallel_tool_calls=parallel_tool_calls,
             previous_response_id=previous_response_id,
+            flex_processing=flex_processing,
         )
         request_params["input"] = input_items
         instructions = "\n\n".join(p for p in instructions_parts if p.strip())
@@ -394,6 +396,7 @@ class OpenAIProvider(BaseLLMProvider):
         reasoning_effort: Optional[str] = None,
         parallel_tool_calls: bool = True,
         previous_response_id: Optional[str] = None,
+        flex_processing: bool = False,
         **kwargs,
     ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
         """
@@ -421,6 +424,9 @@ class OpenAIProvider(BaseLLMProvider):
         # If a previous response id is provided, add it for continuation
         if previous_response_id:
             request_params["previous_response_id"] = previous_response_id
+
+        if flex_processing:
+            request_params["service_tier"] = "flex"
 
         if tools:
             function_specs = get_function_specs(tools, "openai")
@@ -913,6 +919,7 @@ class OpenAIProvider(BaseLLMProvider):
         previous_response_id: Optional[str] = None,
         tool_phase_complete_message: str = "exploration done, generating answer",
         resume_tool_results: Optional[Dict[str, Any]] = None,
+        flex_processing: bool = False,
         **kwargs,
     ) -> LLMResponse:
         """Execute a chat completion with OpenAI."""
@@ -963,6 +970,7 @@ class OpenAIProvider(BaseLLMProvider):
                 response_format,
                 tool_handler,
                 preview_max_tokens,
+                flex_processing,
             )
         else:
             request_params, messages = self.build_params(
@@ -979,6 +987,7 @@ class OpenAIProvider(BaseLLMProvider):
                 timeout=timeout,
                 parallel_tool_calls=parallel_tool_calls,
                 previous_response_id=previous_response_id,
+                flex_processing=flex_processing,
             )
 
         # Build a tool dict if needed
