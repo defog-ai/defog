@@ -1,17 +1,26 @@
 """Tests for defog.llm.cost.calculator model matching and pricing."""
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 from defog.llm.cost.calculator import CostCalculator, _find_match
 from defog.llm.cost.models import MODEL_COSTS
 
 
-def _cost(model: str, input_t: int = 1000, output_t: int = 1000, cached: int = 0):
+def _cost(
+    model: str,
+    input_t: int = 1000,
+    output_t: int = 1000,
+    cached: int = 0,
+    calculation_time: datetime | None = None,
+):
     return CostCalculator.calculate_cost(
         model=model,
         input_tokens=input_t,
         output_tokens=output_t,
         cached_input_tokens=cached,
+        calculation_time=calculation_time,
     )
 
 
@@ -117,6 +126,44 @@ def test_gpt_5_6_pricing_matches_openai_rate_card():
     assert _cost("gpt-5.6-luna", cached=1000) == pytest.approx(0.142)
 
 
+@pytest.mark.parametrize("hour", [1, 2, 3, 6, 7, 8, 9])
+def test_deepseek_peak_pricing(hour: int):
+    calculation_time = datetime(2026, 8, 17, hour, tzinfo=timezone.utc)
+
+    # Per https://api-docs.deepseek.com/quick_start/pricing/ as of 2026-08-13.
+    # Pro peak: $1.32 input / $0.044 cached / $3.96 output per 1M tokens.
+    assert _cost(
+        "deepseek-v4-pro", cached=1000, calculation_time=calculation_time
+    ) == pytest.approx(0.5324)
+    # Flash peak: $0.44 input / $0.014 cached / $1.32 output per 1M tokens.
+    assert _cost(
+        "deepseek-v4-flash", cached=1000, calculation_time=calculation_time
+    ) == pytest.approx(0.1774)
+
+
+@pytest.mark.parametrize("hour", [0, 4, 5, 10, 16, 23])
+def test_deepseek_off_peak_pricing(hour: int):
+    calculation_time = datetime(2026, 8, 17, hour, tzinfo=timezone.utc)
+
+    # Off-peak prices are half of peak prices.
+    assert _cost(
+        "deepseek-v4-pro", cached=1000, calculation_time=calculation_time
+    ) == pytest.approx(0.2662)
+    assert _cost(
+        "deepseek-v4-flash", cached=1000, calculation_time=calculation_time
+    ) == pytest.approx(0.0887)
+
+
+def test_deepseek_pricing_converts_calculation_time_to_utc():
+    singapore = timezone(timedelta(hours=8))
+
+    # 09:00 Singapore is 01:00 UTC and therefore peak time.
+    assert _cost(
+        "deepseek-v4-pro",
+        calculation_time=datetime(2026, 8, 17, 9, tzinfo=singapore),
+    ) == pytest.approx(0.528)
+
+
 def test_is_model_supported():
     assert CostCalculator.is_model_supported("gpt-5-mini") is True
     assert CostCalculator.is_model_supported("gpt-5.4-mini") is True
@@ -164,6 +211,7 @@ def test_calculator_matches_models_json(model: str) -> None:
         output_tokens=output_t,
         cached_input_tokens=cached_t,
         cache_creation_input_tokens=cache_creation_t,
+        calculation_time=datetime(2026, 8, 17, 1, tzinfo=timezone.utc),
     )
     assert actual == pytest.approx(expected_cents), (
         f"calculate_cost for {model!r} disagreed with its MODEL_COSTS entry"

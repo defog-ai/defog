@@ -272,14 +272,23 @@ MODEL_COSTS = {
         "cached_input_cost_per1k": 0.00015,
     },
     "deepseek-v4-pro": {
-        "input_cost_per1k": 0.000435,
-        "cached_input_cost_per1k": 0.000003625,
-        "output_cost_per1k": 0.00087,
+        # Peak: 01:00-04:00 and 06:00-10:00 UTC. All other hours use the
+        # off-peak rates below. Effective 2026-08-16; used here immediately
+        # for forward-looking cost estimates.
+        "input_cost_per1k": 0.00132,
+        "cached_input_cost_per1k": 0.000044,
+        "output_cost_per1k": 0.00396,
+        "off_peak_input_cost_per1k": 0.00066,
+        "off_peak_cached_input_cost_per1k": 0.000022,
+        "off_peak_output_cost_per1k": 0.00198,
     },
     "deepseek-v4-flash": {
-        "input_cost_per1k": 0.00014,
-        "cached_input_cost_per1k": 0.0000028,
-        "output_cost_per1k": 0.00028,
+        "input_cost_per1k": 0.00044,
+        "cached_input_cost_per1k": 0.000014,
+        "output_cost_per1k": 0.00132,
+        "off_peak_input_cost_per1k": 0.00022,
+        "off_peak_cached_input_cost_per1k": 0.000007,
+        "off_peak_output_cost_per1k": 0.00066,
     },
     "glm-5.2": {
         "input_cost_per1k": 0.0014,
