@@ -1,4 +1,6 @@
+from datetime import datetime, timezone
 from typing import Optional
+
 from .models import MODEL_COSTS
 
 
@@ -6,6 +8,27 @@ from .models import MODEL_COSTS
 # A model ending in "-mini" must not fall back to a base-tier price,
 # since mini/nano tiers are dramatically cheaper (5-25x).
 _SIZE_SUFFIXES = ("mini", "nano", "flash", "lite", "pro")
+
+_DEEPSEEK_PEAK_WINDOWS_UTC = ((1, 4), (6, 10))
+
+
+def _is_deepseek_peak_time(calculation_time: Optional[datetime] = None) -> bool:
+    """Return whether a timestamp falls in a DeepSeek peak billing window.
+
+    DeepSeek's peak windows are 01:00-04:00 and 06:00-10:00 UTC. The end of
+    each window is exclusive. Naive datetimes are interpreted as UTC.
+    """
+    if calculation_time is None:
+        calculation_time = datetime.now(timezone.utc)
+    elif calculation_time.tzinfo is None:
+        calculation_time = calculation_time.replace(tzinfo=timezone.utc)
+    else:
+        calculation_time = calculation_time.astimezone(timezone.utc)
+
+    return any(
+        start_hour <= calculation_time.hour < end_hour
+        for start_hour, end_hour in _DEEPSEEK_PEAK_WINDOWS_UTC
+    )
 
 
 def _split_size_suffix(name: str) -> tuple[str, str]:
@@ -79,9 +102,14 @@ class CostCalculator:
         output_tokens: int,
         cached_input_tokens: Optional[int] = None,
         cache_creation_input_tokens: Optional[int] = None,
+        calculation_time: Optional[datetime] = None,
     ) -> Optional[float]:
         """
         Calculate cost in cents for the given token usage.
+
+        ``calculation_time`` selects the UTC peak or off-peak rate for models
+        with time-based pricing. It defaults to the current time. Naive
+        datetimes are treated as UTC.
 
         Returns:
             Cost in cents, or None if model pricing is not available
@@ -92,17 +120,22 @@ class CostCalculator:
 
         costs = MODEL_COSTS[model_name]
 
+        rate_prefix = ""
+        if "off_peak_input_cost_per1k" in costs and not _is_deepseek_peak_time(
+            calculation_time
+        ):
+            rate_prefix = "off_peak_"
+
         # Calculate base cost
         cost_in_cents = (
-            input_tokens / 1000 * costs["input_cost_per1k"]
-            + output_tokens / 1000 * costs["output_cost_per1k"]
+            input_tokens / 1000 * costs[f"{rate_prefix}input_cost_per1k"]
+            + output_tokens / 1000 * costs[f"{rate_prefix}output_cost_per1k"]
         ) * 100
 
         # Add cached input cost if available
-        if cached_input_tokens and "cached_input_cost_per1k" in costs:
-            cost_in_cents += (
-                cached_input_tokens / 1000 * costs["cached_input_cost_per1k"]
-            ) * 100
+        cached_rate_key = f"{rate_prefix}cached_input_cost_per1k"
+        if cached_input_tokens and cached_rate_key in costs:
+            cost_in_cents += (cached_input_tokens / 1000 * costs[cached_rate_key]) * 100
 
         # Add cache creation input cost if available
         if cache_creation_input_tokens and "cache_creation_input_cost_per1k" in costs:
