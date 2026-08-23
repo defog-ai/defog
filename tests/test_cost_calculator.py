@@ -4,7 +4,12 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from defog.llm.cost.calculator import CostCalculator, _find_match
+from defog.llm.cost import calculator
+from defog.llm.cost.calculator import (
+    CostCalculator,
+    _find_match,
+    _is_deepseek_peak_time,
+)
 from defog.llm.cost.models import MODEL_COSTS
 
 
@@ -152,6 +157,38 @@ def test_deepseek_off_peak_pricing(hour: int):
     assert _cost(
         "deepseek-v4-flash", cached=1000, calculation_time=calculation_time
     ) == pytest.approx(0.0887)
+
+
+@pytest.mark.parametrize("day", [29, 30])
+@pytest.mark.parametrize("hour", [1, 2, 3, 6, 7, 8, 9])
+def test_deepseek_weekend_pricing_is_off_peak(day: int, hour: int):
+    calculation_time = datetime(2026, 8, day, hour, tzinfo=timezone.utc)
+
+    assert _cost(
+        "deepseek-v4-pro", cached=1000, calculation_time=calculation_time
+    ) == pytest.approx(0.2662)
+    assert _cost(
+        "deepseek-v4-flash", cached=1000, calculation_time=calculation_time
+    ) == pytest.approx(0.0887)
+
+
+@pytest.mark.parametrize(
+    ("calculation_time", "expected"),
+    [
+        (datetime(2026, 8, 28, 16, 30, tzinfo=timezone.utc), False),
+        (datetime(2026, 8, 30, 16, 30, tzinfo=timezone.utc), True),
+    ],
+)
+def test_deepseek_weekday_uses_beijing_calendar(
+    monkeypatch: pytest.MonkeyPatch,
+    calculation_time: datetime,
+    expected: bool,
+):
+    # Use a hypothetical 16:00-17:00 UTC peak window to make the Beijing and
+    # UTC weekday classifications observable at the UTC date boundary.
+    monkeypatch.setattr(calculator, "_DEEPSEEK_PEAK_WINDOWS_UTC", ((16, 17),))
+
+    assert _is_deepseek_peak_time(calculation_time) is expected
 
 
 def test_deepseek_pricing_converts_calculation_time_to_utc():

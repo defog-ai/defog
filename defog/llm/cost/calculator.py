@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from .models import MODEL_COSTS
@@ -10,13 +10,15 @@ from .models import MODEL_COSTS
 _SIZE_SUFFIXES = ("mini", "nano", "flash", "lite", "pro")
 
 _DEEPSEEK_PEAK_WINDOWS_UTC = ((1, 4), (6, 10))
+_BEIJING_TIMEZONE = timezone(timedelta(hours=8))
 
 
 def _is_deepseek_peak_time(calculation_time: Optional[datetime] = None) -> bool:
     """Return whether a timestamp falls in a DeepSeek peak billing window.
 
-    DeepSeek's peak windows are 01:00-04:00 and 06:00-10:00 UTC. The end of
-    each window is exclusive. Naive datetimes are interpreted as UTC.
+    DeepSeek's peak windows are 01:00-04:00 and 06:00-10:00 UTC, Monday
+    through Friday in Beijing time. The end of each window is exclusive.
+    Naive datetimes are interpreted as UTC.
     """
     if calculation_time is None:
         calculation_time = datetime.now(timezone.utc)
@@ -24,6 +26,9 @@ def _is_deepseek_peak_time(calculation_time: Optional[datetime] = None) -> bool:
         calculation_time = calculation_time.replace(tzinfo=timezone.utc)
     else:
         calculation_time = calculation_time.astimezone(timezone.utc)
+
+    if calculation_time.astimezone(_BEIJING_TIMEZONE).isoweekday() > 5:
+        return False
 
     return any(
         start_hour <= calculation_time.hour < end_hour
