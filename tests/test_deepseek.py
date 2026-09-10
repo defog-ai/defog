@@ -1,7 +1,7 @@
 """Tests for the DeepSeek provider.
 
 The integration tests require a ``DEEPSEEK_API_KEY`` environment variable.
-The registration test is a pure unit test and runs without one.
+The registration and mocked request tests run without an API key.
 
 Run with:
     pytest tests/test_deepseek.py -v
@@ -9,7 +9,10 @@ Run with:
 
 import re
 import unittest
+from unittest.mock import AsyncMock
 
+import pytest
+from openai.types.chat import ChatCompletion
 from pydantic import BaseModel, Field
 
 from defog.llm.config import LLMConfig
@@ -57,6 +60,121 @@ acceptable_sql = [
 class SqlResponse(BaseModel):
     reasoning: str = Field(description="Your reasoning before writing the SQL.")
     sql: str = Field(description="The SQL query.")
+
+
+@pytest.mark.parametrize(
+    ("model", "api_model"),
+    [
+        ("deepseek-v4.1-flash", "deepseek-flash"),
+        ("deepseek-flash", "deepseek-flash"),
+        ("deepseek-v4-flash", "deepseek-v4-flash"),
+        ("deepseek-v4-flash-vision-exp", "deepseek-v4-flash-vision-exp"),
+        ("deepseek-v4-pro", "deepseek-v4-pro"),
+    ],
+)
+def test_deepseek_api_model_names(model, api_model):
+    provider = DeepSeekProvider(api_key="sk-test-not-real")
+    params, _ = provider.build_params(
+        messages=[{"role": "user", "content": "Hello"}],
+        model=model,
+    )
+    assert params["model"] == api_model
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("model", ["deepseek-v4.1-flash", "deepseek-flash"])
+@pytest.mark.parametrize("mode", ["chat", "structured", "repair"])
+async def test_flash_requests_and_cached_token_cost(monkeypatch, model, mode):
+    """Exercise public chat, schema injection, and model-driven JSON repair."""
+    structured_content = (
+        '{"reasoning": "Count orders", "sql": "SELECT COUNT(*) FROM orders"}'
+    )
+    raw_content = {
+        "chat": "Hello",
+        "structured": structured_content,
+        "repair": "not JSON",
+    }[mode]
+
+    def completion(content):
+        return ChatCompletion.model_validate(
+            {
+                "id": "deepseek-test",
+                "object": "chat.completion",
+                "created": 0,
+                "model": "deepseek-flash",
+                "choices": [
+                    {
+                        "index": 0,
+                        "finish_reason": "stop",
+                        "message": {"role": "assistant", "content": content},
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 1500,
+                    "prompt_tokens_details": {"cached_tokens": 500},
+                    "completion_tokens": 200,
+                    "total_tokens": 1700,
+                },
+            }
+        )
+
+    client = AsyncMock()
+    client.__aenter__.return_value = client
+    client.chat.completions.create.side_effect = [
+        completion(raw_content),
+        completion(structured_content),
+    ]
+    monkeypatch.setattr("openai.AsyncOpenAI", lambda **kwargs: client)
+    monkeypatch.setattr(DeepSeekProvider, "persist_conversation_history", AsyncMock())
+    monkeypatch.setattr(
+        "defog.llm.cost.calculator._is_deepseek_peak_time",
+        lambda *args: True,
+    )
+
+    response = await chat_async(
+        provider="deepseek",
+        model=model,
+        messages=[{"role": "user", "content": "Count the orders."}],
+        response_format=SqlResponse if mode != "chat" else None,
+        config=LLMConfig(api_keys={"deepseek": "sk-test-not-real"}),
+        max_retries=1,
+    )
+
+    calls = client.chat.completions.create.await_args_list
+    call_count = 2 if mode == "repair" else 1
+    assert len(calls) == call_count
+    assert all(call.kwargs["model"] == "deepseek-flash" for call in calls)
+    assert response.model == model
+    assert response.input_tokens == 1000 * call_count
+    assert response.cached_input_tokens == 500 * call_count
+    assert response.output_tokens == 200 * call_count
+    assert response.cost_in_cents == pytest.approx(0.0543 * call_count)
+    if mode == "chat":
+        assert response.content == "Hello"
+    else:
+        assert response.content == SqlResponse.model_validate_json(structured_content)
+        assert calls[0].kwargs["response_format"] == {"type": "json_object"}
+        assert "JSON schema:" in calls[0].kwargs["messages"][0]["content"]
+
+
+@pytest.mark.asyncio
+@skip_if_no_api_key("deepseek")
+@pytest.mark.parametrize("model", ["deepseek-v4.1-flash", "deepseek-flash"])
+@pytest.mark.parametrize("structured", [False, True])
+async def test_flash_live_chat(model, structured):
+    response = await chat_async(
+        provider="deepseek",
+        model=model,
+        messages=messages_sql,
+        response_format=SqlResponse if structured else None,
+        max_retries=1,
+    )
+    assert response.model == model
+    assert response.content
+    assert response.cost_in_cents > 0
+    if structured:
+        assert isinstance(response.content, SqlResponse)
+        assert response.content.sql
 
 
 class TestDeepSeekProviderRegistration(unittest.TestCase):
@@ -133,7 +251,10 @@ class TestDeepSeekProviderIntegration(unittest.IsolatedAsyncioTestCase):
             provider=LLMProvider.DEEPSEEK,
             model="deepseek-v4-pro",
             messages=[
-                {"role": "user", "content": "Return a greeting in not more than 2 words.\n"}
+                {
+                    "role": "user",
+                    "content": "Return a greeting in not more than 2 words.\n",
+                }
             ],
             temperature=0.0,
             max_retries=1,

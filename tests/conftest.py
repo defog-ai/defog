@@ -102,6 +102,8 @@ else:
 if os.getenv("DEEPSEEK_API_KEY"):
     AVAILABLE_PROVIDERS["deepseek"] = True
     AVAILABLE_MODELS["deepseek"] = [
+        "deepseek-flash",
+        "deepseek-v4.1-flash",
         "deepseek-v4-pro",
         "deepseek-v4-flash",
     ]

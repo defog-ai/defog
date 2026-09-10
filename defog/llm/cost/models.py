@@ -1,3 +1,17 @@
+# DeepSeek-V4.1-Flash rates in USD per 1K tokens, including legacy Flash
+# names now served by the same model. Peak hours are 01:00-04:00 and
+# 06:00-10:00 UTC on weekdays; all other times use the off-peak rates.
+# Source (2026-09-10): https://api-docs.deepseek.com/quick_start/pricing/
+_DEEPSEEK_FLASH_COSTS = {
+    "input_cost_per1k": 0.0003,
+    "cached_input_cost_per1k": 0.000006,
+    "output_cost_per1k": 0.0012,
+    "off_peak_input_cost_per1k": 0.00015,
+    "off_peak_cached_input_cost_per1k": 0.000003,
+    "off_peak_output_cost_per1k": 0.0006,
+}
+
+
 MODEL_COSTS = {
     "chatgpt-4o": {"input_cost_per1k": 0.0025, "output_cost_per1k": 0.01},
     "gpt-4o": {
@@ -282,14 +296,10 @@ MODEL_COSTS = {
         "off_peak_cached_input_cost_per1k": 0.000022,
         "off_peak_output_cost_per1k": 0.00198,
     },
-    "deepseek-v4-flash": {
-        "input_cost_per1k": 0.00044,
-        "cached_input_cost_per1k": 0.000014,
-        "output_cost_per1k": 0.00132,
-        "off_peak_input_cost_per1k": 0.00022,
-        "off_peak_cached_input_cost_per1k": 0.000007,
-        "off_peak_output_cost_per1k": 0.00066,
-    },
+    "deepseek-flash": _DEEPSEEK_FLASH_COSTS.copy(),
+    "deepseek-v4.1-flash": _DEEPSEEK_FLASH_COSTS.copy(),
+    "deepseek-v4-flash": _DEEPSEEK_FLASH_COSTS.copy(),
+    "deepseek-v4-flash-vision-exp": _DEEPSEEK_FLASH_COSTS.copy(),
     "glm-5.2": {
         "input_cost_per1k": 0.0014,
         "cached_input_cost_per1k": 0.00026,
