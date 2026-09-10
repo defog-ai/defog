@@ -216,6 +216,28 @@ Peak hours are 01:00–04:00 and 06:00–10:00 UTC, Monday through Friday.
 All other hours, including weekends, use off-peak rates. Defog selects the
 rate at cost calculation time and returns `response.cost_in_cents` in cents.
 
+Pass `reasoning_effort="low"`, `"high"`, or `"max"` to control DeepSeek's
+thinking effort, or `"none"` to disable thinking. Leaving it unset uses
+DeepSeek's default (`"high"`, thinking enabled). The setting also applies
+to tool follow-ups and structured-output repair calls. DeepSeek ignores
+`temperature` while thinking is enabled. See the
+[thinking-mode documentation](https://api-docs.deepseek.com/guides/thinking_mode/).
+
+```python
+response = await chat_async(
+    provider="deepseek",
+    model="deepseek-flash",
+    messages=messages,
+    reasoning_effort="low",
+)
+```
+
+Defog retains the API's `reasoning_content` in assistant messages that call
+tools and in cached replies, including replies without tool calls, so
+conversations continued with `previous_response_id` can use tools. When
+supplying your own assistant history, preserve `reasoning_content` from
+DeepSeek responses.
+
 **Structured output note:** DeepSeek does not support OpenAI's `json_schema`
 response-format mode (it returns `400 invalid_request_error`). When you pass a
 `response_format` Pydantic model to the native DeepSeek provider, it transparently

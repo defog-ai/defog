@@ -6,13 +6,19 @@ These exercise the cache semantics without hitting a real provider:
     - With no cache passed, behavior is identical to the pre-hook pickle-only path.
 """
 
-import asyncio
 from typing import Any, Dict, List, Optional
 
 import pytest
 
 from defog.llm.memory.conversation_cache import ConversationCache
 from defog.llm.providers.base import BaseLLMProvider
+
+
+@pytest.fixture(autouse=True)
+def fresh_config(monkeypatch):
+    # Each test sets a different cache directory. Reload the lazy config so
+    # earlier tests' environment snapshots cannot redirect these writes.
+    monkeypatch.setattr("defog.config._env_vars", None)
 
 
 class _DummyProvider(BaseLLMProvider):
