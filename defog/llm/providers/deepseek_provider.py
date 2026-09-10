@@ -11,6 +11,7 @@ from ..memory.conversation_cache import ConversationCache
 from ..cost import CostCalculator
 from ..utils_function_calling import get_function_specs, convert_tool_choice
 from ..image_utils import convert_to_openai_format
+from ..structured_output_repair import repair_structured_response
 from ..tools.handler import ToolHandler
 
 
@@ -135,13 +136,22 @@ class DeepSeekProvider(BaseLLMProvider):
         request_params: Optional[Dict[str, Any]] = None,
         repair_metadata: Optional[Dict[str, Any]] = None,
     ) -> Any:
-        return await super()._parse_with_repair(
-            raw_content,
-            response_format,
-            client,
-            _MODEL_ALIASES.get(model, model),
-            request_params,
-            repair_metadata=repair_metadata,
+        # Repairs are separate completions, so explicitly retain the caller's
+        # effort instead of falling back to DeepSeek's default thinking mode.
+        request_options = {}
+        if request_params and "reasoning_effort" in request_params:
+            request_options["reasoning_effort"] = request_params["reasoning_effort"]
+
+        return await repair_structured_response(
+            raw_content=raw_content,
+            response_format=response_format,
+            model=_MODEL_ALIASES.get(model, model),
+            create_completion=lambda params: self._run_structured_repair_completion(
+                client, params
+            ),
+            usage_calculator=self.calculate_token_usage,
+            metadata=repair_metadata,
+            request_options=request_options,
         )
 
     def build_params(
@@ -172,6 +182,11 @@ class DeepSeekProvider(BaseLLMProvider):
 
         # Default max_tokens so we do not exhaust the model's full output.
         request_params["max_tokens"] = max_completion_tokens or 4096
+
+        # DeepSeek accepts none (disable thinking), low, high, and max, plus
+        # compatibility aliases. Omit None to keep the API's default.
+        if reasoning_effort is not None:
+            request_params["reasoning_effort"] = reasoning_effort
 
         # Tools
         if tools:
@@ -242,7 +257,7 @@ class DeepSeekProvider(BaseLLMProvider):
         str,
         Optional[Dict[str, Any]],
     ]:
-        """Process Chat Completions response, handling tool call chaining."""
+        """Process a response and append assistant history, including reasoning."""
         if tool_handler is None:
             tool_handler = self.tool_handler
 
@@ -322,6 +337,9 @@ class DeepSeekProvider(BaseLLMProvider):
                             assistant_msg["content"] = message.content
                         else:
                             assistant_msg["content"] = None
+                        reasoning_content = getattr(message, "reasoning_content", None)
+                        if isinstance(reasoning_content, str):
+                            assistant_msg["reasoning_content"] = reasoning_content
                         assistant_msg["tool_calls"] = [
                             {
                                 "id": tc.id,
@@ -507,6 +525,19 @@ class DeepSeekProvider(BaseLLMProvider):
         total_cached_input_tokens += repair_metadata.get("cached_input_tokens", 0)
         total_output_tokens += repair_metadata.get("output_tokens", 0)
 
+        # Keep the final assistant's reasoning too: DeepSeek requires it on
+        # every prior assistant turn when a subsequent request uses tools.
+        # Update the shared message list so execute_chat persists this history.
+        history = self.append_assistant_message_to_history(
+            request_params["messages"], content
+        )
+        reasoning_content = getattr(
+            response.choices[0].message, "reasoning_content", None
+        )
+        if isinstance(reasoning_content, str):
+            history[-1]["reasoning_content"] = reasoning_content
+        request_params["messages"][:] = history
+
         return (
             content,
             tool_outputs,
@@ -643,10 +674,9 @@ class DeepSeekProvider(BaseLLMProvider):
         # Generate response ID for conversation continuation
         gen_response_id = self.generate_response_id()
 
-        # Persist conversation history for follow-up calls
-        history = self.append_assistant_message_to_history(messages, content)
+        # process_response already appended the final assistant and reasoning.
         await self.persist_conversation_history(
-            gen_response_id, history, conversation_cache
+            gen_response_id, messages, conversation_cache
         )
 
         cost = CostCalculator.calculate_cost(
