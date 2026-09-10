@@ -16,6 +16,9 @@ from ..tools.handler import ToolHandler
 
 DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
 
+# The release name is a Defog alias; DeepSeek's API uses deepseek-flash.
+_MODEL_ALIASES = {"deepseek-v4.1-flash": "deepseek-flash"}
+
 # DeepSeek serves the OpenAI-compatible Chat Completions wire format. The
 # "openai" provider string in utils_function_calling yields the standard
 # OpenAI Chat Completions tool/tool_choice shape, which DeepSeek accepts.
@@ -136,7 +139,7 @@ class DeepSeekProvider(BaseLLMProvider):
             raw_content,
             response_format,
             client,
-            model,
+            _MODEL_ALIASES.get(model, model),
             request_params,
             repair_metadata=repair_metadata,
         )
@@ -162,7 +165,7 @@ class DeepSeekProvider(BaseLLMProvider):
         messages = self.preprocess_messages(messages, model)
 
         request_params: Dict[str, Any] = {
-            "model": model,
+            "model": _MODEL_ALIASES.get(model, model),
             "messages": messages,
             "temperature": temperature,
         }

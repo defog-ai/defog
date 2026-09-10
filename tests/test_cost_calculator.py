@@ -13,6 +13,14 @@ from defog.llm.cost.calculator import (
 from defog.llm.cost.models import MODEL_COSTS
 
 
+DEEPSEEK_FLASH_MODELS = (
+    "deepseek-flash",
+    "deepseek-v4.1-flash",
+    "deepseek-v4-flash",
+    "deepseek-v4-flash-vision-exp",
+)
+
+
 def _cost(
     model: str,
     input_t: int = 1000,
@@ -132,44 +140,85 @@ def test_gpt_5_6_pricing_matches_openai_rate_card():
 
 
 @pytest.mark.parametrize("hour", [1, 2, 3, 6, 7, 8, 9])
-def test_deepseek_peak_pricing(hour: int):
-    calculation_time = datetime(2026, 8, 17, hour, tzinfo=timezone.utc)
+@pytest.mark.parametrize("flash_model", DEEPSEEK_FLASH_MODELS)
+def test_deepseek_peak_pricing(hour: int, flash_model: str):
+    calculation_time = datetime(2026, 9, 10, hour, tzinfo=timezone.utc)
 
-    # Per https://api-docs.deepseek.com/quick_start/pricing/ as of 2026-08-13.
+    # Per https://api-docs.deepseek.com/quick_start/pricing/ as of 2026-09-10.
     # Pro peak: $1.32 input / $0.044 cached / $3.96 output per 1M tokens.
     assert _cost(
         "deepseek-v4-pro", cached=1000, calculation_time=calculation_time
     ) == pytest.approx(0.5324)
-    # Flash peak: $0.44 input / $0.014 cached / $1.32 output per 1M tokens.
+    # V4.1 Flash peak: $0.30 input / $0.006 cached / $1.20 output per 1M tokens.
     assert _cost(
-        "deepseek-v4-flash", cached=1000, calculation_time=calculation_time
-    ) == pytest.approx(0.1774)
+        flash_model, cached=1000, calculation_time=calculation_time
+    ) == pytest.approx(0.1506)
 
 
 @pytest.mark.parametrize("hour", [0, 4, 5, 10, 16, 23])
-def test_deepseek_off_peak_pricing(hour: int):
-    calculation_time = datetime(2026, 8, 17, hour, tzinfo=timezone.utc)
+@pytest.mark.parametrize("flash_model", DEEPSEEK_FLASH_MODELS)
+def test_deepseek_off_peak_pricing(hour: int, flash_model: str):
+    calculation_time = datetime(2026, 9, 10, hour, tzinfo=timezone.utc)
 
     # Off-peak prices are half of peak prices.
     assert _cost(
         "deepseek-v4-pro", cached=1000, calculation_time=calculation_time
     ) == pytest.approx(0.2662)
     assert _cost(
-        "deepseek-v4-flash", cached=1000, calculation_time=calculation_time
-    ) == pytest.approx(0.0887)
+        flash_model, cached=1000, calculation_time=calculation_time
+    ) == pytest.approx(0.0753)
 
 
-@pytest.mark.parametrize("day", [29, 30])
+@pytest.mark.parametrize("day", [12, 13])
 @pytest.mark.parametrize("hour", [1, 2, 3, 6, 7, 8, 9])
-def test_deepseek_weekend_pricing_is_off_peak(day: int, hour: int):
-    calculation_time = datetime(2026, 8, day, hour, tzinfo=timezone.utc)
+@pytest.mark.parametrize("flash_model", DEEPSEEK_FLASH_MODELS)
+def test_deepseek_weekend_pricing_is_off_peak(day: int, hour: int, flash_model: str):
+    calculation_time = datetime(2026, 9, day, hour, tzinfo=timezone.utc)
 
     assert _cost(
         "deepseek-v4-pro", cached=1000, calculation_time=calculation_time
     ) == pytest.approx(0.2662)
     assert _cost(
-        "deepseek-v4-flash", cached=1000, calculation_time=calculation_time
-    ) == pytest.approx(0.0887)
+        flash_model, cached=1000, calculation_time=calculation_time
+    ) == pytest.approx(0.0753)
+
+
+@pytest.mark.parametrize("model", DEEPSEEK_FLASH_MODELS)
+def test_deepseek_flash_names_have_explicit_pricing(model: str):
+    assert model in MODEL_COSTS
+    assert _find_match(model) == model
+    assert CostCalculator.is_model_supported(model)
+
+
+@pytest.mark.parametrize("model", DEEPSEEK_FLASH_MODELS)
+@pytest.mark.parametrize(
+    ("input_t", "output_t", "cached", "peak_cents"),
+    [
+        (1_000_000, 0, 0, 30.0),
+        (0, 1_000_000, 0, 120.0),
+        (0, 0, 1_000_000, 0.6),
+        (0, 0, 0, 0.0),
+    ],
+)
+@pytest.mark.parametrize(("hour", "multiplier"), [(1, 1), (4, 0.5)])
+def test_deepseek_flash_token_rates(
+    model: str,
+    input_t: int,
+    output_t: int,
+    cached: int,
+    peak_cents: float,
+    hour: int,
+    multiplier: float,
+):
+    # Check each published USD-per-million rate independently, including
+    # cache-only requests and conversion to the calculator's cents unit.
+    assert _cost(
+        model,
+        input_t,
+        output_t,
+        cached,
+        calculation_time=datetime(2026, 9, 10, hour, tzinfo=timezone.utc),
+    ) == pytest.approx(peak_cents * multiplier)
 
 
 @pytest.mark.parametrize(

@@ -136,14 +136,14 @@ response = await chat_async(
 # DeepSeek (native, via api.deepseek.com)
 response = await chat_async(
     provider=LLMProvider.DEEPSEEK,  # or "deepseek"
-    model="deepseek-v4-pro",  # or "deepseek-v4-flash"
+    model="deepseek-v4.1-flash",  # or the API name "deepseek-flash"
     messages=messages
 )
 
 # DeepSeek with structured output
 response = await chat_async(
     provider="deepseek",
-    model="deepseek-v4-pro",
+    model="deepseek-v4.1-flash",
     messages=messages,
     response_format=MyPydanticModel,
 )
@@ -196,7 +196,25 @@ response = await chat_async(
 
 The DeepSeek provider (`provider="deepseek"`) talks directly to
 `api.deepseek.com` using a `DEEPSEEK_API_KEY`. Model ids are the bare DeepSeek
-names (`deepseek-v4-pro`, `deepseek-v4-flash`).
+names. For DeepSeek-V4.1-Flash, use `deepseek-flash` or Defog's
+`deepseek-v4.1-flash` alias, which is sent to the API as `deepseek-flash`.
+`response.model` retains the name you supplied. The legacy names
+`deepseek-v4-flash` and `deepseek-v4-flash-vision-exp` are still accepted by
+DeepSeek and now use V4.1-Flash pricing. `deepseek-v4-pro` is also supported.
+
+V4.1-Flash pricing in USD per million tokens, per the
+[DeepSeek rate card](https://api-docs.deepseek.com/quick_start/pricing/)
+(September 10, 2026):
+
+| Token type | Peak | Off-peak |
+| --- | ---: | ---: |
+| Input (cache miss) | $0.30 | $0.15 |
+| Input (cache hit) | $0.006 | $0.003 |
+| Output | $1.20 | $0.60 |
+
+Peak hours are 01:00–04:00 and 06:00–10:00 UTC, Monday through Friday.
+All other hours, including weekends, use off-peak rates. Defog selects the
+rate at cost calculation time and returns `response.cost_in_cents` in cents.
 
 **Structured output note:** DeepSeek does not support OpenAI's `json_schema`
 response-format mode (it returns `400 invalid_request_error`). When you pass a
