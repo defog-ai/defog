@@ -1,0 +1,61 @@
+name: Publish to PyPI
+
+# Every push to main that carries a new version in pyproject.toml is uploaded
+# to PyPI. A push whose version already exists on PyPI is skipped, so merging
+# a PR without a version bump never fails this workflow.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: publish-to-pypi
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Check version against PyPI
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      publish: ${{ steps.check.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Read version and compare with PyPI
+        id: check
+        run: |
+          version=$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          status=$(curl -sS -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/defog/$version/json")
+          case "$status" in
+            200) echo "defog $version is already on PyPI; nothing to publish"; echo "publish=false" >> "$GITHUB_OUTPUT" ;;
+            404) echo "defog $version is not on PyPI; publishing"; echo "publish=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "unexpected PyPI response $status for defog $version"; exit 1 ;;
+          esac
+
+  publish:
+    name: Build and upload
+    needs: version
+    if: needs.version.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/defog/${{ needs.version.outputs.version }}/
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
