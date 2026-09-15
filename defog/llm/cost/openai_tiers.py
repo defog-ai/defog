@@ -1,11 +1,16 @@
-"""OpenAI Flex and Batch prices in USD per 1K tokens.
+"""OpenAI Flex, Batch and long-context prices in USD per 1K tokens.
 
 Source: https://developers.openai.com/api/docs/pricing (2026-09-15).
-Each entry contains (input, cached input, output) rates for short context
-and, where published, for requests above 272,000 total input tokens.
-None means no separate cached-input discount or no long-context rate.
-Standard prices remain in models.py.
+Each OPENAI_TIER_COSTS entry contains (input, cached input, output) rates
+for short context and, where published, for requests above 272,000 total
+input tokens. None means no separate cached-input discount or no
+long-context rate. Standard short-context prices remain in models.py;
+OPENAI_LONG_CONTEXT_COSTS holds the standard rates above 272,000 tokens.
 """
+
+# Threshold in total input tokens (uncached plus cached) of one request
+# above which OpenAI bills the long-context rates.
+LONG_CONTEXT_TOKENS = 272_000
 
 OPENAI_TIER_COSTS = {
     "batch": {
@@ -49,6 +54,27 @@ OPENAI_TIER_COSTS = {
     },
 }
 
+# Standard-tier (input, cached input, output) rates for one request above
+# LONG_CONTEXT_TOKENS total input tokens. Models without a published
+# long-context price are absent and keep their standard price; gpt-5.5-pro
+# publishes none (https://developers.openai.com/api/docs/models/gpt-5.5-pro).
+# Sources (2026-09-15): the pricing page's long-context table (gpt-5.6-sol)
+# and the model pages, which state that prompts above 272K input tokens
+# are priced at 2x input and 1.5x output:
+#   https://developers.openai.com/api/docs/models/gpt-5.6-terra
+#   https://developers.openai.com/api/docs/models/gpt-5.6-luna
+#   https://developers.openai.com/api/docs/models/gpt-5.5
+#   https://developers.openai.com/api/docs/models/gpt-5.4 (GPT-5.4 and GPT-5.4 Pro)
+OPENAI_LONG_CONTEXT_COSTS = {
+    "gpt-5.6-sol": (0.008, 0.0008, 0.03),
+    "gpt-5.6-terra": (0.004, 0.0004, 0.018),
+    "gpt-5.6-luna": (0.0004, 0.00004, 0.0018),
+    "gpt-5.5": (0.01, 0.001, 0.045),
+    "gpt-5.4": (0.005, 0.0005, 0.0225),
+    "gpt-5.4-pro": (0.06, None, 0.27),
+}
+
 # Public alias used by the provider.
 for _rates in OPENAI_TIER_COSTS.values():
     _rates["gpt-5.6"] = _rates["gpt-5.6-sol"]
+OPENAI_LONG_CONTEXT_COSTS["gpt-5.6"] = OPENAI_LONG_CONTEXT_COSTS["gpt-5.6-sol"]

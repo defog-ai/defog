@@ -55,15 +55,16 @@ MODEL_COSTS = {
         "output_cost_per1k": 0.0004,
     },
     # gpt-5.6 is an alias for gpt-5.6-sol.
+    # Source (2026-09-15): https://developers.openai.com/api/docs/pricing
     "gpt-5.6": {
-        "input_cost_per1k": 0.005,
-        "cached_input_cost_per1k": 0.0005,
-        "output_cost_per1k": 0.03,
+        "input_cost_per1k": 0.004,
+        "cached_input_cost_per1k": 0.0004,
+        "output_cost_per1k": 0.02,
     },
     "gpt-5.6-sol": {
-        "input_cost_per1k": 0.005,
-        "cached_input_cost_per1k": 0.0005,
-        "output_cost_per1k": 0.03,
+        "input_cost_per1k": 0.004,
+        "cached_input_cost_per1k": 0.0004,
+        "output_cost_per1k": 0.02,
     },
     "gpt-5.6-terra": {
         "input_cost_per1k": 0.002,

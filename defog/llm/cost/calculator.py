@@ -3,7 +3,11 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from .models import MODEL_COSTS
-from .openai_tiers import OPENAI_TIER_COSTS
+from .openai_tiers import (
+    LONG_CONTEXT_TOKENS,
+    OPENAI_LONG_CONTEXT_COSTS,
+    OPENAI_TIER_COSTS,
+)
 
 # Size-tier suffixes that should route to same-tier pricing entries.
 # A model ending in "-mini" must not fall back to a base-tier price,
@@ -98,6 +102,36 @@ def _find_match(model: str) -> Optional[str]:
     return None
 
 
+def _openai_price_name(model: str, table: dict) -> Optional[str]:
+    """Return the key of ``table`` that prices ``model``, or None.
+
+    Only exact names and their dated snapshots (``-YYYY-MM-DD``) qualify.
+    """
+    if model in table:
+        return model
+    snapshot_free = re.sub(r"-\d{4}-\d{2}-\d{2}$", "", model)
+    return snapshot_free if snapshot_free in table else None
+
+
+def _cost_from_rates(
+    rates: tuple,
+    input_tokens: int,
+    cached_input_tokens: Optional[int],
+    output_tokens: int,
+) -> float:
+    """Price one request in cents from (input, cached input, output) USD per 1K."""
+    input_rate, cached_rate, output_rate = rates
+    # Models without a cache discount still bill cached tokens as input;
+    # they must not disappear from the total.
+    if cached_rate is None:
+        cached_rate = input_rate
+    return (
+        input_tokens * input_rate
+        + (cached_input_tokens or 0) * cached_rate
+        + output_tokens * output_rate
+    ) / 10
+
+
 class CostCalculator:
     """Handles cost calculation for LLM usage."""
 
@@ -126,6 +160,11 @@ class CostCalculator:
         Other tiers and providers keep their existing prices. Unlisted
         OpenAI Flex/Batch prices return None instead of guessing a discount.
 
+        Token counts describe one provider request. OpenAI requests whose
+        input plus cached input exceeds 272,000 tokens use the published
+        long-context rates on every tier; price separate requests
+        separately rather than pricing their summed token counts.
+
         Returns:
             Cost in cents, or None if model pricing is not available
         """
@@ -135,30 +174,35 @@ class CostCalculator:
 
         costs = MODEL_COSTS[model_name]
 
-        if (batch or service_tier == "flex") and model_name.startswith(
-            ("gpt-", "chatgpt-", "o3", "o4")
-        ):
+        is_openai = model_name.startswith(("gpt-", "chatgpt-", "o3", "o4"))
+        total_input = input_tokens + (cached_input_tokens or 0)
+
+        if (batch or service_tier == "flex") and is_openai:
             tier_costs = OPENAI_TIER_COSTS["batch" if batch else "flex"]
             # Only known names and their dated snapshots qualify. Do not
             # give a different model a discount through a loose name match.
-            tier_model = (
-                model if model in tier_costs else re.sub(r"-\d{4}-\d{2}-\d{2}$", "", model)
-            )
-            if tier_model not in tier_costs:
+            tier_model = _openai_price_name(model, tier_costs)
+            if tier_model is None:
                 return None
             rates, long_rates = tier_costs[tier_model]
-            if long_rates and input_tokens + (cached_input_tokens or 0) > 272_000:
+            if long_rates and total_input > LONG_CONTEXT_TOKENS:
                 rates = long_rates
-            input_rate, cached_rate, output_rate = rates
-            # Batch models without a cache discount still bill cached tokens
-            # as input; they must not disappear from the total.
-            if cached_rate is None:
-                cached_rate = input_rate
-            return (
-                input_tokens * input_rate
-                + (cached_input_tokens or 0) * cached_rate
-                + output_tokens * output_rate
-            ) / 10
+            return _cost_from_rates(
+                rates, input_tokens, cached_input_tokens, output_tokens
+            )
+
+        if is_openai and total_input > LONG_CONTEXT_TOKENS:
+            # Standard requests above the long-context threshold use the
+            # published long-context rates. Models with no such price keep
+            # their standard price.
+            long_model = _openai_price_name(model, OPENAI_LONG_CONTEXT_COSTS)
+            if long_model is not None:
+                return _cost_from_rates(
+                    OPENAI_LONG_CONTEXT_COSTS[long_model],
+                    input_tokens,
+                    cached_input_tokens,
+                    output_tokens,
+                )
 
         rate_prefix = ""
         if "off_peak_input_cost_per1k" in costs and not _is_deepseek_peak_time(
@@ -172,10 +216,16 @@ class CostCalculator:
             + output_tokens / 1000 * costs[f"{rate_prefix}output_cost_per1k"]
         ) * 100
 
-        # Add cached input cost if available
+        # Add cached input cost if available. An OpenAI model with no cached
+        # input discount (gpt-5.5-pro, gpt-5.4-pro) bills cached input at
+        # the regular input rate.
         cached_rate_key = f"{rate_prefix}cached_input_cost_per1k"
         if cached_input_tokens and cached_rate_key in costs:
             cost_in_cents += (cached_input_tokens / 1000 * costs[cached_rate_key]) * 100
+        elif cached_input_tokens and is_openai:
+            cost_in_cents += (
+                cached_input_tokens / 1000 * costs[f"{rate_prefix}input_cost_per1k"]
+            ) * 100
 
         # Add cache creation input cost if available
         if cache_creation_input_tokens and "cache_creation_input_cost_per1k" in costs:
