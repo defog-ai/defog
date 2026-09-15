@@ -1,8 +1,9 @@
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from .models import MODEL_COSTS
-
+from .openai_tiers import OPENAI_TIER_COSTS
 
 # Size-tier suffixes that should route to same-tier pricing entries.
 # A model ending in "-mini" must not fall back to a base-tier price,
@@ -108,6 +109,9 @@ class CostCalculator:
         cached_input_tokens: Optional[int] = None,
         cache_creation_input_tokens: Optional[int] = None,
         calculation_time: Optional[datetime] = None,
+        *,
+        service_tier: str | None = None,
+        batch: bool = False,
     ) -> Optional[float]:
         """
         Calculate cost in cents for the given token usage.
@@ -115,6 +119,12 @@ class CostCalculator:
         ``calculation_time`` selects the UTC peak or off-peak rate for models
         with time-based pricing. It defaults to the current time. Naive
         datetimes are treated as UTC.
+
+        ``input_tokens`` excludes ``cached_input_tokens``. For OpenAI,
+        ``service_tier="flex"`` selects Flex prices; ``batch=True`` selects
+        Batch API prices and takes precedence without stacking discounts.
+        Other tiers and providers keep their existing prices. Unlisted
+        OpenAI Flex/Batch prices return None instead of guessing a discount.
 
         Returns:
             Cost in cents, or None if model pricing is not available
@@ -124,6 +134,31 @@ class CostCalculator:
             return None
 
         costs = MODEL_COSTS[model_name]
+
+        if (batch or service_tier == "flex") and model_name.startswith(
+            ("gpt-", "chatgpt-", "o3", "o4")
+        ):
+            tier_costs = OPENAI_TIER_COSTS["batch" if batch else "flex"]
+            # Only known names and their dated snapshots qualify. Do not
+            # give a different model a discount through a loose name match.
+            tier_model = (
+                model if model in tier_costs else re.sub(r"-\d{4}-\d{2}-\d{2}$", "", model)
+            )
+            if tier_model not in tier_costs:
+                return None
+            rates, long_rates = tier_costs[tier_model]
+            if long_rates and input_tokens + (cached_input_tokens or 0) > 272_000:
+                rates = long_rates
+            input_rate, cached_rate, output_rate = rates
+            # Batch models without a cache discount still bill cached tokens
+            # as input; they must not disappear from the total.
+            if cached_rate is None:
+                cached_rate = input_rate
+            return (
+                input_tokens * input_rate
+                + (cached_input_tokens or 0) * cached_rate
+                + output_tokens * output_rate
+            ) / 10
 
         rate_prefix = ""
         if "off_peak_input_cost_per1k" in costs and not _is_deepseek_peak_time(
