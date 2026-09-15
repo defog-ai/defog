@@ -235,6 +235,9 @@ See the [full documentation](docs/README.md).
 2. Format code: `ruff format`
 3. Update documentation when adding features
 
+### Releasing
+Bump `version` in `pyproject.toml` in the PR that should ship. When the PR merges, the `Publish to PyPI` workflow (`.github/workflows/publish.yml`) builds the package with `uv build` and uploads it to PyPI through trusted publishing. Merges that leave the version unchanged, or whose version is already on PyPI, are skipped.
+
 ## Using our MCP Server
 
 1. Run `defog serve` once to complete your setup, and `defog db` to update your database credentials
