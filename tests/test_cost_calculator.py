@@ -127,10 +127,13 @@ def test_gpt_5_5_pricing_matches_openai_rate_card():
 
 
 def test_gpt_5_6_pricing_matches_openai_rate_card():
-    # Per https://developers.openai.com/api/docs/pricing as of 2026-07-30.
-    # Sol (and its gpt-5.6 alias): $5 / $0.50 cached / $30 per 1M tokens.
-    assert _cost("gpt-5.6") == pytest.approx(3.5)
-    assert _cost("gpt-5.6-sol", cached=1000) == pytest.approx(3.55)
+    # Per https://developers.openai.com/api/docs/pricing as of 2026-09-15.
+    # Sol (and its gpt-5.6 alias): $4 / $0.40 cached / $20 per 1M tokens
+    # (not the Flex rate doubled).
+    assert _cost("gpt-5.6") == pytest.approx(2.4)
+    assert _cost("gpt-5.6-sol") == pytest.approx(2.4)
+    assert _cost("gpt-5.6-sol", cached=1000) == pytest.approx(2.44)
+    assert _cost("gpt-5.6", cached=1000) == pytest.approx(2.44)
     # Terra: $2 / $0.20 cached / $12 per 1M tokens.
     assert _cost("gpt-5.6-terra") == pytest.approx(1.4)
     assert _cost("gpt-5.6-terra", cached=1000) == pytest.approx(1.42)

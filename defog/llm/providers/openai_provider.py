@@ -100,6 +100,8 @@ class OpenAIProvider(BaseLLMProvider):
         start_time: float,
         *,
         cost_in_cents: float | None,
+        list_cost_in_cents: float | None = None,
+        service_tier: str | None = None,
     ) -> LLMResponse:
         """Build the LLMResponse returned to the caller when a tool pauses."""
         return LLMResponse(
@@ -115,6 +117,8 @@ class OpenAIProvider(BaseLLMProvider):
             pause_payload=pause.payload,
             messages=pause.messages,
             response_id=pause.response_id,
+            list_cost_in_cents=list_cost_in_cents,
+            service_tier=service_tier,
         )
 
     def _build_resume_params(
@@ -581,6 +585,8 @@ class OpenAIProvider(BaseLLMProvider):
         tool_result_preview_max_tokens: Optional[int] = None,
         tool_phase_complete_message: str = "exploration done, generating answer",
         response_costs: list[float | None] | None = None,
+        response_list_costs: list[float | None] | None = None,
+        response_tiers: list[str] | None = None,
         **kwargs,
     ) -> Tuple[
         Any,
@@ -636,12 +642,16 @@ class OpenAIProvider(BaseLLMProvider):
             total_input_tokens += billable_input
             total_cached_input_tokens += cached_tokens
             total_output_tokens += output_tokens
+            # Each provider response is priced on its own usage, so the
+            # long-context threshold applies to each request and never to
+            # the sum of separate requests.
+            # The response tier is authoritative. Older responses may omit
+            # it, in which case use the tier actually requested, else the
+            # standard ("default") tier.
+            tier = getattr(current_response, "service_tier", None)
+            if tier is None:
+                tier = request_params.get("service_tier") or "default"
             if response_costs is not None:
-                # The response tier is authoritative. Older responses may
-                # omit it, in which case use the tier actually requested.
-                tier = getattr(current_response, "service_tier", None)
-                if tier is None:
-                    tier = request_params.get("service_tier")
                 response_costs.append(
                     CostCalculator.calculate_cost(
                         model,
@@ -651,6 +661,14 @@ class OpenAIProvider(BaseLLMProvider):
                         service_tier=tier,
                     )
                 )
+            if response_list_costs is not None:
+                response_list_costs.append(
+                    CostCalculator.calculate_cost(
+                        model, billable_input, output_tokens, cached_tokens
+                    )
+                )
+            if response_tiers is not None:
+                response_tiers.append(str(tier))
 
         tool_calls_executed = False
         if tools:
@@ -1010,11 +1028,25 @@ class OpenAIProvider(BaseLLMProvider):
             tool_dict = tool_handler.build_tool_dict(tools)
 
         response_costs: list[float | None] = []
+        response_list_costs: list[float | None] = []
+        response_tiers: list[str] = []
+
+        def _total(costs: list[float | None]) -> float | None:
+            if any(cost is None for cost in costs):
+                return None
+            return sum(costs)
 
         def total_cost():
-            if any(cost is None for cost in response_costs):
+            return _total(response_costs)
+
+        def total_list_cost():
+            return _total(response_list_costs)
+
+        def served_tier() -> str | None:
+            tiers = set(response_tiers)
+            if not tiers:
                 return None
-            return sum(response_costs)
+            return tiers.pop() if len(tiers) == 1 else "mixed"
 
         try:
             # Close the underlying HTTPX connection pool deterministically,
@@ -1066,13 +1098,20 @@ class OpenAIProvider(BaseLLMProvider):
                     tool_result_preview_max_tokens=preview_max_tokens,
                     tool_phase_complete_message=tool_phase_complete_message,
                     response_costs=response_costs,
+                    response_list_costs=response_list_costs,
+                    response_tiers=response_tiers,
                 )
         except PauseToolExecution as pause:
             # A tool suspended the loop; return a paused LLMResponse. The caller
             # persists response.messages + response.response_id and resumes via
             # resume_tool_results (with previous_response_id=response.response_id).
             return self._build_paused_response(
-                pause, model, t, cost_in_cents=total_cost()
+                pause,
+                model,
+                t,
+                cost_in_cents=total_cost(),
+                list_cost_in_cents=total_list_cost(),
+                service_tier=served_tier(),
             )
         except Exception as e:
             raise ProviderError(self.get_provider_name(), f"API call failed: {e}", e)
@@ -1088,4 +1127,6 @@ class OpenAIProvider(BaseLLMProvider):
             cost_in_cents=total_cost(),
             tool_outputs=tool_outputs,
             response_id=response_id,
+            list_cost_in_cents=total_list_cost(),
+            service_tier=served_tier(),
         )

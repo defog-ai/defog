@@ -49,6 +49,13 @@ class LLMResponse:
     pause_payload: Optional[Any] = None
     messages: Optional[List[Dict[str, Any]]] = None
     structured_output_repairs: Optional[Dict[str, Any]] = None
+    # Price metadata (OpenAI). ``list_cost_in_cents`` is the standard-tier
+    # price of the same usage, so callers can compare it with the amount
+    # paid; ``service_tier`` is the tier OpenAI actually served ("default",
+    # "flex", ...), or "mixed" when the requests behind one response used
+    # different tiers. Both stay None for providers that do not report them.
+    list_cost_in_cents: Optional[float] = None
+    service_tier: Optional[str] = None
 
 
 class BaseLLMProvider(ABC):

@@ -279,7 +279,13 @@ class LLMResponse:
     cost_in_cents: Optional[float] = None
     tool_outputs: Optional[List[Dict[str, Any]]] = None
     citations: Optional[List[Dict[str, Any]]] = None
+    ...
+    list_cost_in_cents: Optional[float] = None  # OpenAI: standard-tier price of the same usage
+    service_tier: Optional[str] = None          # OpenAI: tier served ("default", "flex", ... or "mixed")
 ```
+
+`list_cost_in_cents` and `service_tier` are set by the OpenAI provider (see
+[Cost Tracking](llm/cost-tracking.md)) and stay `None` for other providers.
 
 Each entry in `tool_outputs` contains the full tool `result`, and when sampling/truncation is enabled it also includes a `result_for_llm` preview plus `result_truncated_for_llm` and `sampling_applied` flags.
 
