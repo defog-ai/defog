@@ -94,12 +94,14 @@ class OpenAIProvider(BaseLLMProvider):
         return pause
 
     def _build_paused_response(
-        self, pause: PauseToolExecution, model: str, start_time: float
+        self,
+        pause: PauseToolExecution,
+        model: str,
+        start_time: float,
+        *,
+        cost_in_cents: float | None,
     ) -> LLMResponse:
         """Build the LLMResponse returned to the caller when a tool pauses."""
-        cost = CostCalculator.calculate_cost(
-            model, pause.input_tokens, pause.output_tokens, pause.cached_input_tokens
-        )
         return LLMResponse(
             model=model,
             content=None,
@@ -107,7 +109,7 @@ class OpenAIProvider(BaseLLMProvider):
             input_tokens=pause.input_tokens,
             cached_input_tokens=pause.cached_input_tokens,
             output_tokens=pause.output_tokens,
-            cost_in_cents=cost,
+            cost_in_cents=cost_in_cents,
             status="paused",
             pending_tool_use=pause.pending_tool_use,
             pause_payload=pause.payload,
@@ -578,6 +580,7 @@ class OpenAIProvider(BaseLLMProvider):
         tool_sample_functions: Optional[Dict[str, Callable]] = None,
         tool_result_preview_max_tokens: Optional[int] = None,
         tool_phase_complete_message: str = "exploration done, generating answer",
+        response_costs: list[float | None] | None = None,
         **kwargs,
     ) -> Tuple[
         Any,
@@ -624,6 +627,31 @@ class OpenAIProvider(BaseLLMProvider):
         total_input_tokens = 0
         total_cached_input_tokens = 0
         total_output_tokens = 0
+
+        def record_usage(current_response):
+            nonlocal total_input_tokens, total_cached_input_tokens, total_output_tokens
+            billable_input, cached_tokens, output_tokens = _extract_usage(
+                current_response.usage
+            )
+            total_input_tokens += billable_input
+            total_cached_input_tokens += cached_tokens
+            total_output_tokens += output_tokens
+            if response_costs is not None:
+                # The response tier is authoritative. Older responses may
+                # omit it, in which case use the tier actually requested.
+                tier = getattr(current_response, "service_tier", None)
+                if tier is None:
+                    tier = request_params.get("service_tier")
+                response_costs.append(
+                    CostCalculator.calculate_cost(
+                        model,
+                        billable_input,
+                        output_tokens,
+                        cached_tokens,
+                        service_tier=tier,
+                    )
+                )
+
         tool_calls_executed = False
         if tools:
             # this is important, as tools might go to 0 if we run out of tool budget
@@ -631,13 +659,7 @@ class OpenAIProvider(BaseLLMProvider):
             iteration_count = 0
 
             while True:
-                # Token usage for Responses API
-                billable_input, cached_tokens, output_tokens = _extract_usage(
-                    response.usage
-                )
-                total_input_tokens += billable_input
-                total_cached_input_tokens += cached_tokens
-                total_output_tokens += output_tokens
+                record_usage(response)
 
                 # Post-response hook
                 await self.call_post_response_hook(
@@ -857,10 +879,12 @@ class OpenAIProvider(BaseLLMProvider):
                     **final_params,
                     text_format=response_format,
                 )
+                record_usage(response)
                 content = response.output_parsed
             else:
                 content = getattr(response, "output_text", "") or ""
         else:
+            record_usage(response)
             await self.call_post_response_hook(
                 post_response_hook=post_response_hook,
                 response=response,
@@ -873,17 +897,7 @@ class OpenAIProvider(BaseLLMProvider):
             else:
                 content = response.output_text or ""
 
-        # Final token calculation for Responses API
-        billable_input, cached_tokens, output_tokens = _extract_usage(response.usage)
-        input_tokens = billable_input
         output_tokens_details = None
-
-        # When tools were used, usage for the final response has already been aggregated
-        # inside the tool-chaining loop. Only add usage here for the no-tools path.
-        if not tools and response.usage:
-            total_input_tokens += input_tokens
-            total_cached_input_tokens += cached_tokens
-            total_output_tokens += output_tokens
 
         return (
             content,
@@ -995,6 +1009,13 @@ class OpenAIProvider(BaseLLMProvider):
         if tools and len(tools) > 0 and "tools" in request_params:
             tool_dict = tool_handler.build_tool_dict(tools)
 
+        response_costs: list[float | None] = []
+
+        def total_cost():
+            if any(cost is None for cost in response_costs):
+                return None
+            return sum(response_costs)
+
         try:
             # Close the underlying HTTPX connection pool deterministically,
             # including when the request is cancelled or processing raises.
@@ -1044,19 +1065,17 @@ class OpenAIProvider(BaseLLMProvider):
                     tool_sample_functions=sample_functions,
                     tool_result_preview_max_tokens=preview_max_tokens,
                     tool_phase_complete_message=tool_phase_complete_message,
+                    response_costs=response_costs,
                 )
         except PauseToolExecution as pause:
             # A tool suspended the loop; return a paused LLMResponse. The caller
             # persists response.messages + response.response_id and resumes via
             # resume_tool_results (with previous_response_id=response.response_id).
-            return self._build_paused_response(pause, model, t)
+            return self._build_paused_response(
+                pause, model, t, cost_in_cents=total_cost()
+            )
         except Exception as e:
             raise ProviderError(self.get_provider_name(), f"API call failed: {e}", e)
-
-        # Calculate cost
-        cost = CostCalculator.calculate_cost(
-            model, input_tokens, output_tokens, cached_input_tokens
-        )
 
         return LLMResponse(
             model=model,
@@ -1066,7 +1085,7 @@ class OpenAIProvider(BaseLLMProvider):
             cached_input_tokens=cached_input_tokens,
             output_tokens=output_tokens,
             output_tokens_details=completion_token_details,
-            cost_in_cents=cost,
+            cost_in_cents=total_cost(),
             tool_outputs=tool_outputs,
             response_id=response_id,
         )
