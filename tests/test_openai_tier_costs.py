@@ -108,6 +108,10 @@ def test_long_context_prices(tokens, tier, batch, expected):
 @pytest.mark.parametrize(
     "model,expected",
     [
+        # 2x input, 1.5x output above 272K input tokens.
+        ("gpt-6-astra", 607.5),
+        ("gpt-6-sol", 121.5),
+        ("gpt-6-luna", 6.075),
         ("gpt-5.6-luna-2026-05-01", 12.18),
         ("gpt-5.6", 243.0),
         ("gpt-5.6-sol", 243.0),
@@ -596,3 +600,21 @@ def test_other_providers_leave_the_new_fields_unset():
     )
     assert plain.list_cost_in_cents is None
     assert plain.service_tier is None
+
+
+@pytest.mark.parametrize(
+    "model,tier,batch,expected",
+    [
+        # Batch and Flex are 50% of Standard at both context lengths.
+        ("gpt-6-astra", "flex", False, 3.0),
+        ("gpt-6-astra", None, True, 3.0),
+        ("gpt-6-sol", "flex", False, 0.6),
+        ("gpt-6-sol", None, True, 0.6),
+        ("gpt-6-luna", "flex", False, 0.03),
+        ("gpt-6-luna", None, True, 0.03),
+    ],
+)
+def test_gpt_6_flex_and_batch_prices(model, tier, batch, expected):
+    assert CostCalculator.calculate_cost(
+        model, 1000, 1000, service_tier=tier, batch=batch
+    ) == pytest.approx(expected)

@@ -54,6 +54,22 @@ MODEL_COSTS = {
         "cached_input_cost_per1k": 0.000005,
         "output_cost_per1k": 0.0004,
     },
+    # Source (2026-09-23): https://developers.openai.com/api/docs/pricing
+    "gpt-6-astra": {
+        "input_cost_per1k": 0.01,
+        "cached_input_cost_per1k": 0.001,
+        "output_cost_per1k": 0.05,
+    },
+    "gpt-6-sol": {
+        "input_cost_per1k": 0.002,
+        "cached_input_cost_per1k": 0.0002,
+        "output_cost_per1k": 0.01,
+    },
+    "gpt-6-luna": {
+        "input_cost_per1k": 0.0001,
+        "cached_input_cost_per1k": 0.00001,
+        "output_cost_per1k": 0.0005,
+    },
     # gpt-5.6 is an alias for gpt-5.6-sol.
     # Source (2026-09-15): https://developers.openai.com/api/docs/pricing
     "gpt-5.6": {
@@ -144,6 +160,14 @@ MODEL_COSTS = {
         "input_cost_per1k": 0.0025,
         "output_cost_per1k": 0.01,
     },
+    # Cache reads on Fable 5.1 are 2.5% of the input price, not 10%.
+    # Source (2026-09-23): https://platform.claude.com/docs/en/about-claude/pricing
+    "claude-fable-5-1": {
+        "input_cost_per1k": 0.010,
+        "cached_input_cost_per1k": 0.00025,
+        "cache_creation_input_cost_per1k": 0.0125,
+        "output_cost_per1k": 0.050,
+    },
     "claude-fable-5": {
         "input_cost_per1k": 0.010,
         "cached_input_cost_per1k": 0.001,
@@ -218,6 +242,14 @@ MODEL_COSTS = {
         "cached_input_cost_per1k": 0.0005,
         "cache_creation_input_cost_per1k": 0.00625,
         "output_cost_per1k": 0.025,
+    },
+    # Released 2026-09-22. Cache reads are 5% of the input price.
+    # Source: https://platform.claude.com/docs/en/models/opus-5-5/overview
+    "claude-opus-5-5": {
+        "input_cost_per1k": 0.004,
+        "cached_input_cost_per1k": 0.0002,
+        "cache_creation_input_cost_per1k": 0.005,
+        "output_cost_per1k": 0.02,
     },
     "claude-haiku-4-5": {
         "input_cost_per1k": 0.001,

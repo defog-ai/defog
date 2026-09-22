@@ -99,6 +99,10 @@ async def code_interpreter_tool(
         elif provider in [LLMProvider.ANTHROPIC, LLMProvider.ANTHROPIC.value]:
             from anthropic import AsyncAnthropic
 
+            from defog.llm.providers.anthropic_provider import (
+                rejects_forced_tool_choice,
+            )
+
             client = AsyncAnthropic(
                 api_key=config.get("ANTHROPIC_API_KEY"),
                 default_headers={"anthropic-beta": "code-execution-2025-05-22"},
@@ -134,7 +138,9 @@ async def code_interpreter_tool(
                     }
                 ],
                 tools=[{"type": "code_execution_20250522", "name": "code_execution"}],
-                tool_choice={"type": "any"},
+                tool_choice={
+                    "type": "auto" if rejects_forced_tool_choice(model) else "any"
+                },
             )
             tracker.update(80, "Processing results")
             subtask_logger.log_subtask("Extracting code and output", "processing")

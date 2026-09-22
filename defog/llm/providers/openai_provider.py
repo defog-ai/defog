@@ -463,13 +463,13 @@ class OpenAIProvider(BaseLLMProvider):
                 request_params["parallel_tool_calls"] = parallel_tool_calls
 
         # Temperature not supported by reasoning models; keep for others
-        if model.startswith("o") or model.startswith("gpt-5"):
+        if model.startswith(("o", "gpt-5", "gpt-6")):
             pass
         else:
             request_params["temperature"] = temperature
 
         # Reasoning effort
-        if model.startswith("o") or model.startswith("gpt-5"):
+        if model.startswith(("o", "gpt-5", "gpt-6")):
             if reasoning_effort is not None:
                 request_params["reasoning"] = {
                     "effort": reasoning_effort,

@@ -71,3 +71,17 @@ async def test_chat_async_rejects_flex_processing_for_non_openai_provider():
             messages=[{"role": "user", "content": "Hello"}],
             flex_processing=True,
         )
+
+
+@pytest.mark.parametrize("model", ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna"])
+def test_build_params_treats_gpt_6_as_reasoning_model(model):
+    provider = OpenAIProvider(api_key="sk-test")
+
+    request_params, _ = provider.build_params(
+        messages=[{"role": "user", "content": "Hello"}],
+        model=model,
+        reasoning_effort="high",
+    )
+
+    assert "temperature" not in request_params
+    assert request_params["reasoning"]["effort"] == "high"

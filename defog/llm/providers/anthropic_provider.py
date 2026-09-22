@@ -20,6 +20,14 @@ from ..tools.handler import ToolHandler
 logger = logging.getLogger(__name__)
 
 
+def rejects_forced_tool_choice(model: str) -> bool:
+    """True for Claude models that return a 400 on tool_choice "any"/"tool".
+
+    Claude Opus 5.5 and Claude Fable 5.1 accept only "auto" and "none".
+    """
+    return any(p in model for p in ("opus-5-5", "fable-5-1"))
+
+
 class AnthropicProvider(BaseLLMProvider):
     """Anthropic Claude provider implementation."""
 
@@ -748,6 +756,15 @@ class AnthropicProvider(BaseLLMProvider):
                 tool_choice = convert_tool_choice(
                     tool_choice, tool_names_list, self.get_provider_name()
                 )
+                if tool_choice.get("type") in (
+                    "any",
+                    "tool",
+                ) and rejects_forced_tool_choice(model):
+                    logger.warning(
+                        f"{model} does not support forced tool use; sending "
+                        f"tool_choice 'auto' instead of {tool_choice!r}."
+                    )
+                    tool_choice = {"type": "auto"}
                 params["tool_choice"] = tool_choice
             else:
                 params["tool_choice"] = {"type": "auto"}

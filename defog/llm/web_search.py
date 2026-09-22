@@ -33,10 +33,10 @@ async def web_search_tool(
         response_format: Optional Pydantic model class for structured output.
             When provided, search_results will contain a parsed instance of this model.
         reasoning_effort: Optional reasoning effort level for models that support it.
-            - OpenAI (o-series, gpt-5): "low", "medium", "high"
+            - OpenAI (o-series, gpt-5, gpt-6): "low", "medium", "high"
             - Gemini (gemini-3): "minimal", "low", "medium", "high" (gemini-3-pro only supports "low", "high")
             - Anthropic (claude-3-7, claude-4): "low", "medium", "high"
-              ("max" for Opus 4.6/4.7, "xhigh" for Opus 4.7 only)
+              ("max" for Opus 4.6+ and Fable, "xhigh" for Opus 4.7+ and Fable)
 
     Returns:
         dict with keys:
@@ -83,10 +83,8 @@ async def web_search_tool(
                         }
                     }
 
-                # Add reasoning effort for o-series and gpt-5 models
-                if reasoning_effort and (
-                    model.startswith("o") or model.startswith("gpt-5")
-                ):
+                # Add reasoning effort for o-series, gpt-5 and gpt-6 models
+                if reasoning_effort and model.startswith(("o", "gpt-5", "gpt-6")):
                     request_params["reasoning"] = {
                         "effort": reasoning_effort,
                         "summary": "auto",
@@ -141,6 +139,10 @@ async def web_search_tool(
             from anthropic import AsyncAnthropic
             from anthropic.types import TextBlock
 
+            from defog.llm.providers.anthropic_provider import (
+                rejects_forced_tool_choice,
+            )
+
             client = AsyncAnthropic(api_key=config.get("ANTHROPIC_API_KEY"))
 
             tracker.update(20, "Initiating web search")
@@ -158,7 +160,9 @@ async def web_search_tool(
                         "max_uses": 5,
                     }
                 ],
-                "tool_choice": {"type": "any"},
+                "tool_choice": {
+                    "type": "auto" if rejects_forced_tool_choice(model) else "any"
+                },
             }
 
             # Add system message for structured output if provided
@@ -170,24 +174,34 @@ async def web_search_tool(
                     f"Output ONLY the JSON object, no other text."
                 )
 
-            # Add reasoning effort for claude-3-7 and claude-4 models.
+            # Add reasoning effort for claude-3-7, claude-4 and claude-5 models.
             # Use "-4" (not "-4-") so "claude-sonnet-4" (no date) is matched.
-            if reasoning_effort and ("3-7" in model or "-4" in model):
+            if reasoning_effort and ("3-7" in model or "-4" in model or "-5" in model):
                 # "any" tool_choice conflicts with thinking, use "auto" instead
                 request_params["tool_choice"] = {"type": "auto"}
                 request_params["temperature"] = 1.0
 
                 # Claude 4.6+ models support adaptive thinking, which
                 # replaces the deprecated budget_tokens approach.
-                _is_adaptive = (
-                    "opus-4-6" in model or "opus-4-7" in model or "sonnet-4-6" in model
+                _is_adaptive = any(
+                    p in model
+                    for p in (
+                        "opus-4-6",
+                        "opus-4-7",
+                        "opus-4-8",
+                        "opus-5",
+                        "sonnet-4-6",
+                        "fable",
+                    )
                 )
                 if _is_adaptive:
                     request_params["thinking"] = {"type": "adaptive"}
                     effort = reasoning_effort
-                    _is_opus = "opus-4-6" in model or "opus-4-7" in model
-                    # "xhigh" is only on Opus 4.7; cap down otherwise.
-                    if effort == "xhigh" and "opus-4-7" not in model:
+                    _is_opus = "sonnet" not in model
+                    # "xhigh" is on Opus 4.7+ and Fable; cap down otherwise.
+                    if effort == "xhigh" and (
+                        "opus-4-6" in model or "sonnet-4-6" in model
+                    ):
                         effort = "max" if _is_opus else "high"
                     # "max" is only on Opus; cap to "high" for Sonnet.
                     if effort == "max" and not _is_opus:
