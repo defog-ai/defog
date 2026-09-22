@@ -75,6 +75,15 @@ def test_gpt_5_6_entries_are_explicit():
     assert _find_match("gpt-5.6-terra-2026-07-09") == "gpt-5.6-terra"
 
 
+def test_gpt_6_and_opus_5_5_entries_are_explicit():
+    # Without their own entries, claude-opus-5-5 would fall back to
+    # claude-opus-5 pricing through the family-prefix match.
+    assert _find_match("gpt-6-sol") == "gpt-6-sol"
+    assert _find_match("gpt-6-luna") == "gpt-6-luna"
+    assert _find_match("claude-opus-5-5") == "claude-opus-5-5"
+    assert _find_match("claude-opus-5") == "claude-opus-5"
+
+
 def test_unknown_mini_does_not_fall_back_to_base_pricing():
     # Regression: previously `gpt-5.4-mini` fell back to `gpt-5` (full) pricing
     # via loose substring match, inflating cost ~5x. With size-suffix parity,
@@ -140,6 +149,26 @@ def test_gpt_5_6_pricing_matches_openai_rate_card():
     # Luna: $0.20 / $0.02 cached / $1.20 per 1M tokens.
     assert _cost("gpt-5.6-luna") == pytest.approx(0.14)
     assert _cost("gpt-5.6-luna", cached=1000) == pytest.approx(0.142)
+
+
+def test_gpt_6_pricing_matches_openai_rate_card():
+    # Per https://developers.openai.com/api/docs/pricing as of 2026-09-23.
+    # Sol: $2 / $0.20 cached / $10 per 1M tokens.
+    assert _cost("gpt-6-sol") == pytest.approx(1.2)
+    assert _cost("gpt-6-sol", cached=1000) == pytest.approx(1.22)
+    # Luna: $0.10 / $0.01 cached / $0.50 per 1M tokens.
+    assert _cost("gpt-6-luna") == pytest.approx(0.06)
+    assert _cost("gpt-6-luna", cached=1000) == pytest.approx(0.061)
+
+
+def test_claude_opus_5_5_pricing():
+    # Per https://platform.claude.com/docs/en/models/opus-5-5/overview:
+    # $4 input, $0.20 cache read, $5 5m cache write, $20 output per 1M tokens.
+    assert _cost("claude-opus-5-5") == pytest.approx(2.4)
+    assert _cost("claude-opus-5-5", cached=1000) == pytest.approx(2.42)
+    assert CostCalculator.calculate_cost(
+        "claude-opus-5-5", 0, 0, cache_creation_input_tokens=1000
+    ) == pytest.approx(0.5)
 
 
 @pytest.mark.parametrize("hour", [1, 2, 3, 6, 7, 8, 9])
@@ -262,6 +291,9 @@ def test_is_model_supported():
     assert CostCalculator.is_model_supported("gpt-5.6-sol") is True
     assert CostCalculator.is_model_supported("gpt-5.6-terra") is True
     assert CostCalculator.is_model_supported("gpt-5.6-luna") is True
+    assert CostCalculator.is_model_supported("gpt-6-sol") is True
+    assert CostCalculator.is_model_supported("gpt-6-luna") is True
+    assert CostCalculator.is_model_supported("claude-opus-5-5") is True
     assert CostCalculator.is_model_supported("gpt-5.9-mini") is True
     assert CostCalculator.is_model_supported("claude-sonnet-4-6") is True
     assert CostCalculator.is_model_supported("totally-made-up-xyz") is False

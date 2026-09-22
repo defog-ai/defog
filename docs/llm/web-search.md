@@ -61,7 +61,7 @@ print(result["search_results"].key_facts)
 For models that support extended reasoning, you can control the reasoning effort:
 
 ```python
-# OpenAI (o-series, gpt-5 models)
+# OpenAI (o-series, gpt-5 and gpt-6 models)
 result = await web_search_tool(
     question="Analyze the impact of AI on healthcare",
     model="o3",
@@ -77,14 +77,16 @@ result = await web_search_tool(
     reasoning_effort="medium"  # "minimal", "low", "medium", "high"
 )
 
-# Anthropic (claude-3-7, claude-4 models)
+# Anthropic (claude-3-7, claude-4, claude-5 models)
 # Claude 4.6+ models use adaptive thinking automatically.
 result = await web_search_tool(
     question="Analyze the impact of AI on healthcare",
     model="claude-sonnet-4-6",
     provider=LLMProvider.ANTHROPIC,
     reasoning_effort="medium"  # "low", "medium", "high"
-    # "max" also available on Opus 4.6/4.7; "xhigh" on Opus 4.7 only.
+    # "max" also available on Opus 4.6+ and Fable; "xhigh" on Opus 4.7+ and Fable.
+    # Claude Opus 5.5 and Fable 5.1 accept only tool_choice "auto"/"none", so
+    # the search tool is offered with "auto" on those models.
 )
 ```
 

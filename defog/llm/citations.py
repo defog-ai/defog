@@ -240,16 +240,26 @@ async def citations_tool(
             if reasoning_effort:
                 # Claude 4.6+ models support adaptive thinking, which
                 # replaces the deprecated budget_tokens approach.
-                _is_adaptive = (
-                    "opus-4-6" in model or "opus-4-7" in model or "sonnet-4-6" in model
+                _is_adaptive = any(
+                    p in model
+                    for p in (
+                        "opus-4-6",
+                        "opus-4-7",
+                        "opus-4-8",
+                        "opus-5",
+                        "sonnet-4-6",
+                        "fable",
+                    )
                 )
                 if _is_adaptive:
                     payload["thinking"] = {"type": "adaptive"}
                     payload["temperature"] = 1.0
                     effort = reasoning_effort
-                    _is_opus = "opus-4-6" in model or "opus-4-7" in model
-                    # "xhigh" is only on Opus 4.7; cap down otherwise.
-                    if effort == "xhigh" and "opus-4-7" not in model:
+                    _is_opus = "sonnet" not in model
+                    # "xhigh" is on Opus 4.7+ and Fable; cap down otherwise.
+                    if effort == "xhigh" and (
+                        "opus-4-6" in model or "sonnet-4-6" in model
+                    ):
                         effort = "max" if _is_opus else "high"
                     # "max" is only on Opus; cap to "high" for Sonnet.
                     if effort == "max" and not _is_opus:
