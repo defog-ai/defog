@@ -55,6 +55,11 @@ MODEL_COSTS = {
         "output_cost_per1k": 0.0004,
     },
     # Source (2026-09-23): https://developers.openai.com/api/docs/pricing
+    "gpt-6-astra": {
+        "input_cost_per1k": 0.01,
+        "cached_input_cost_per1k": 0.001,
+        "output_cost_per1k": 0.05,
+    },
     "gpt-6-sol": {
         "input_cost_per1k": 0.002,
         "cached_input_cost_per1k": 0.0002,
@@ -154,6 +159,14 @@ MODEL_COSTS = {
     "gpt-4o-transcribe-diarize": {
         "input_cost_per1k": 0.0025,
         "output_cost_per1k": 0.01,
+    },
+    # Cache reads on Fable 5.1 are 2.5% of the input price, not 10%.
+    # Source (2026-09-23): https://platform.claude.com/docs/en/about-claude/pricing
+    "claude-fable-5-1": {
+        "input_cost_per1k": 0.010,
+        "cached_input_cost_per1k": 0.00025,
+        "cache_creation_input_cost_per1k": 0.0125,
+        "output_cost_per1k": 0.050,
     },
     "claude-fable-5": {
         "input_cost_per1k": 0.010,

@@ -52,7 +52,7 @@ ordinary requests concurrently does not make them Batch API requests. This
 library does not submit Batch API jobs.
 
 Flex and Batch rates come from the [official OpenAI pricing page](https://developers.openai.com/api/docs/pricing),
-checked on 2026-09-15 (gpt-6-sol and gpt-6-luna on 2026-09-23). Rates include input, cached input, and output, with
+checked on 2026-09-15 (GPT-6 models on 2026-09-23). Rates include input, cached input, and output, with
 the published long-context prices where available. For Batch models with
 no separate cached-input price, all input uses the Batch input price.
 
@@ -61,7 +61,7 @@ no separate cached-input price, all input uses the Batch input price.
 One OpenAI request whose input tokens plus cached input tokens exceed
 272,000 is billed at the model's published long-context rates. The
 calculator applies those rates on the standard tier as well as on Flex
-and Batch, for the models that publish them (gpt-6-sol, gpt-6-luna,
+and Batch, for the models that publish them (gpt-6-astra, gpt-6-sol, gpt-6-luna,
 gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna, gpt-5.5, gpt-5.4, gpt-5.4-pro, and their dated snapshots).
 A model with no published long-context price, such as gpt-5.5-pro, keeps
 its standard price. For gpt-5.6-luna with 300,000 uncached input tokens and

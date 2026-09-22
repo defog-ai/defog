@@ -109,6 +109,7 @@ def test_long_context_prices(tokens, tier, batch, expected):
     "model,expected",
     [
         # 2x input, 1.5x output above 272K input tokens.
+        ("gpt-6-astra", 607.5),
         ("gpt-6-sol", 121.5),
         ("gpt-6-luna", 6.075),
         ("gpt-5.6-luna-2026-05-01", 12.18),
@@ -605,6 +606,8 @@ def test_other_providers_leave_the_new_fields_unset():
     "model,tier,batch,expected",
     [
         # Batch and Flex are 50% of Standard at both context lengths.
+        ("gpt-6-astra", "flex", False, 3.0),
+        ("gpt-6-astra", None, True, 3.0),
         ("gpt-6-sol", "flex", False, 0.6),
         ("gpt-6-sol", None, True, 0.6),
         ("gpt-6-luna", "flex", False, 0.03),

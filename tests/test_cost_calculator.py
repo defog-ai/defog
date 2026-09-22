@@ -76,12 +76,16 @@ def test_gpt_5_6_entries_are_explicit():
 
 
 def test_gpt_6_and_opus_5_5_entries_are_explicit():
-    # Without their own entries, claude-opus-5-5 would fall back to
-    # claude-opus-5 pricing through the family-prefix match.
+    # Without their own entries, claude-opus-5-5 and claude-fable-5-1 would
+    # fall back to claude-opus-5 / claude-fable-5 pricing through the
+    # family-prefix match.
+    assert _find_match("gpt-6-astra") == "gpt-6-astra"
     assert _find_match("gpt-6-sol") == "gpt-6-sol"
     assert _find_match("gpt-6-luna") == "gpt-6-luna"
     assert _find_match("claude-opus-5-5") == "claude-opus-5-5"
     assert _find_match("claude-opus-5") == "claude-opus-5"
+    assert _find_match("claude-fable-5-1") == "claude-fable-5-1"
+    assert _find_match("claude-fable-5") == "claude-fable-5"
 
 
 def test_unknown_mini_does_not_fall_back_to_base_pricing():
@@ -153,6 +157,9 @@ def test_gpt_5_6_pricing_matches_openai_rate_card():
 
 def test_gpt_6_pricing_matches_openai_rate_card():
     # Per https://developers.openai.com/api/docs/pricing as of 2026-09-23.
+    # Astra: $10 / $1 cached / $50 per 1M tokens.
+    assert _cost("gpt-6-astra") == pytest.approx(6.0)
+    assert _cost("gpt-6-astra", cached=1000) == pytest.approx(6.1)
     # Sol: $2 / $0.20 cached / $10 per 1M tokens.
     assert _cost("gpt-6-sol") == pytest.approx(1.2)
     assert _cost("gpt-6-sol", cached=1000) == pytest.approx(1.22)
@@ -169,6 +176,18 @@ def test_claude_opus_5_5_pricing():
     assert CostCalculator.calculate_cost(
         "claude-opus-5-5", 0, 0, cache_creation_input_tokens=1000
     ) == pytest.approx(0.5)
+
+
+def test_claude_fable_5_1_pricing():
+    # Per https://platform.claude.com/docs/en/about-claude/pricing:
+    # $10 input, $0.25 cache read (2.5% of input), $12.50 5m cache write,
+    # $50 output per 1M tokens. Fable 5 cache reads stay at $1.
+    assert _cost("claude-fable-5-1") == pytest.approx(6.0)
+    assert _cost("claude-fable-5-1", cached=1000) == pytest.approx(6.025)
+    assert _cost("claude-fable-5", cached=1000) == pytest.approx(6.1)
+    assert CostCalculator.calculate_cost(
+        "claude-fable-5-1", 0, 0, cache_creation_input_tokens=1000
+    ) == pytest.approx(1.25)
 
 
 @pytest.mark.parametrize("hour", [1, 2, 3, 6, 7, 8, 9])
@@ -291,9 +310,11 @@ def test_is_model_supported():
     assert CostCalculator.is_model_supported("gpt-5.6-sol") is True
     assert CostCalculator.is_model_supported("gpt-5.6-terra") is True
     assert CostCalculator.is_model_supported("gpt-5.6-luna") is True
+    assert CostCalculator.is_model_supported("gpt-6-astra") is True
     assert CostCalculator.is_model_supported("gpt-6-sol") is True
     assert CostCalculator.is_model_supported("gpt-6-luna") is True
     assert CostCalculator.is_model_supported("claude-opus-5-5") is True
+    assert CostCalculator.is_model_supported("claude-fable-5-1") is True
     assert CostCalculator.is_model_supported("gpt-5.9-mini") is True
     assert CostCalculator.is_model_supported("claude-sonnet-4-6") is True
     assert CostCalculator.is_model_supported("totally-made-up-xyz") is False

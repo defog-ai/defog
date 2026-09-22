@@ -15,6 +15,7 @@ LONG_CONTEXT_TOKENS = 272_000
 
 OPENAI_TIER_COSTS = {
     "batch": {
+        "gpt-6-astra": ((0.005, 0.0005, 0.025), (0.01, 0.001, 0.0375)),
         "gpt-6-sol": ((0.001, 0.0001, 0.005), (0.002, 0.0002, 0.0075)),
         "gpt-6-luna": ((0.00005, 0.000005, 0.00025), (0.0001, 0.00001, 0.000375)),
         "gpt-5.6-sol": ((0.002, 0.0002, 0.01), (0.004, 0.0004, 0.015)),
@@ -40,6 +41,7 @@ OPENAI_TIER_COSTS = {
         "o3-mini": ((0.00055, None, 0.0022), None),
     },
     "flex": {
+        "gpt-6-astra": ((0.005, 0.0005, 0.025), (0.01, 0.001, 0.0375)),
         "gpt-6-sol": ((0.001, 0.0001, 0.005), (0.002, 0.0002, 0.0075)),
         "gpt-6-luna": ((0.00005, 0.000005, 0.00025), (0.0001, 0.00001, 0.000375)),
         "gpt-5.6-sol": ((0.002, 0.0002, 0.01), (0.004, 0.0004, 0.015)),
@@ -66,6 +68,7 @@ OPENAI_TIER_COSTS = {
 # Sources (2026-09-15): the pricing page's long-context table (gpt-5.6-sol)
 # and the model pages, which state that prompts above 272K input tokens
 # are priced at 2x input and 1.5x output:
+#   https://developers.openai.com/api/docs/models/gpt-6-astra (2026-09-23)
 #   https://developers.openai.com/api/docs/models/gpt-6-sol (2026-09-23)
 #   https://developers.openai.com/api/docs/models/gpt-6-luna (2026-09-23)
 #   https://developers.openai.com/api/docs/models/gpt-5.6-terra
@@ -73,6 +76,7 @@ OPENAI_TIER_COSTS = {
 #   https://developers.openai.com/api/docs/models/gpt-5.5
 #   https://developers.openai.com/api/docs/models/gpt-5.4 (GPT-5.4 and GPT-5.4 Pro)
 OPENAI_LONG_CONTEXT_COSTS = {
+    "gpt-6-astra": (0.02, 0.002, 0.075),
     "gpt-6-sol": (0.004, 0.0004, 0.015),
     "gpt-6-luna": (0.0002, 0.00002, 0.00075),
     "gpt-5.6-sol": (0.008, 0.0008, 0.03),
