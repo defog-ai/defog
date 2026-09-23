@@ -42,7 +42,7 @@ response = await chat_async(
     temperature=0.7,
     
     # Advanced parameters
-    reasoning_effort="high",          # low, medium, high; max on Opus 4.6/4.7/4.8; xhigh on Opus 4.7/4.8
+    reasoning_effort="high",          # Provider-specific; see Claude Sonnet 5 below
     response_format=MyPydanticModel,  # Structured output
     tools=[...],                      # Function calling
     tool_choice="auto",               # auto, none, required, or specific tool
@@ -57,6 +57,43 @@ response = await chat_async(
     return_usage=True,                # Include token usage
 )
 ```
+
+## Claude Sonnet 5 thinking
+
+In `chat_async`, `claude-sonnet-5` accepts `reasoning_effort` values `"low"`, `"medium"`, `"high"`,
+`"xhigh"`, and `"max"`. Defog sends `thinking={"type": "adaptive"}` and places
+the requested effort in `output_config.effort`, without `budget_tokens`.
+Pydantic structured output stays in `output_config.format` in the same request:
+
+```python
+from pydantic import BaseModel
+from defog.llm import chat_async
+
+class Answer(BaseModel):
+    text: str
+
+response = await chat_async(
+    provider="anthropic",
+    model="claude-sonnet-5",
+    messages=[{"role": "user", "content": "Say hello."}],
+    reasoning_effort="low",
+    response_format=Answer,
+)
+```
+
+Omitting `reasoning_effort`, passing `None`, or passing `"none"` preserves defog's
+existing thinking-off behavior: `thinking={"type": "disabled"}` and no effort
+field. Anthropic's API defaults to adaptive thinking when the `thinking` field
+is omitted; defog explicitly sends it. Defog omits `temperature` for Sonnet 5,
+including caller-supplied values, because the model rejects non-default sampling
+parameters. Legacy thinking budgets and other models' effort handling are unchanged.
+
+This support is limited to the chat API. `web_search_tool` builds its requests
+separately and still sends legacy thinking parameters for Sonnet 5 when an effort
+is supplied; those requests remain unsupported.
+
+See Anthropic's [effort reference](https://platform.claude.com/docs/en/build-with-claude/effort)
+and [Sonnet 5 migration guide](https://platform.claude.com/docs/en/models/sonnet-5/migration-guide).
 
 ## Custom Base URLs
 
