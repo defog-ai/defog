@@ -14,6 +14,35 @@ class RoutingRepairOutput(BaseModel):
     value: str
 
 
+@pytest.mark.parametrize("effort", ["none", "low", "high"])
+def test_build_params_sends_reasoning_effort(effort):
+    provider = OpenRouterProvider(api_key="sk-test")
+
+    request_params, _ = provider.build_params(
+        messages=[{"role": "user", "content": "Hello"}],
+        model="anthropic/claude-sonnet-4.6",
+        reasoning_effort=effort,
+        providers=["anthropic"],
+    )
+
+    assert request_params["extra_body"] == {
+        "reasoning": {"effort": effort},
+        "provider": {"only": ["anthropic"]},
+        "cache_control": {"type": "ephemeral"},
+    }
+
+
+def test_build_params_leaves_reasoning_unset_by_default():
+    provider = OpenRouterProvider(api_key="sk-test")
+
+    request_params, _ = provider.build_params(
+        messages=[{"role": "user", "content": "Hello"}],
+        model="openai/gpt-5-mini",
+    )
+
+    assert "extra_body" not in request_params
+
+
 def test_build_params_providers_list_maps_to_only():
     provider = OpenRouterProvider(api_key="sk-test")
 
@@ -99,7 +128,10 @@ async def test_chat_async_rejects_providers_for_non_openrouter():
 @pytest.mark.asyncio
 async def test_structured_repair_forwards_provider_extra_body():
     provider = OpenRouterProvider(api_key="sk-test")
-    extra_body = {"provider": {"only": ["azure"]}}
+    extra_body = {
+        "provider": {"only": ["azure"]},
+        "reasoning": {"effort": "high"},
+    }
     response = SimpleNamespace(
         choices=[
             SimpleNamespace(message=SimpleNamespace(content='{"value": "fixed"}'))
