@@ -248,6 +248,9 @@ class OpenRouterProvider(BaseLLMProvider):
         # Extra body for OpenRouter-specific features
         extra_body: Dict[str, Any] = {}
 
+        if reasoning_effort is not None:
+            extra_body["reasoning"] = {"effort": reasoning_effort}
+
         provider_routing = self._build_provider_routing(providers)
         if provider_routing:
             extra_body["provider"] = provider_routing

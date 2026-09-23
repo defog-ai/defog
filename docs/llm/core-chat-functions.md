@@ -174,6 +174,14 @@ response = await chat_async(
     response_format=MyPydanticModel
 )
 
+# Control reasoning for a model that supports it
+response = await chat_async(
+    provider="openrouter",
+    model="openai/gpt-5-mini",
+    messages=messages,
+    reasoning_effort="high",  # sends OpenRouter reasoning.effort
+)
+
 # Restrict OpenRouter to specific upstream providers
 response = await chat_async(
     provider="openrouter",
