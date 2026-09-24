@@ -78,17 +78,24 @@ result = await web_search_tool(
 )
 
 # Anthropic (claude-3-7, claude-4, claude-5 models)
-# Claude 4.6+ models use adaptive thinking automatically.
+# Opus 4.6+, Sonnet 4.6, and Fable use adaptive thinking.
 result = await web_search_tool(
     question="Analyze the impact of AI on healthcare",
     model="claude-sonnet-4-6",
     provider=LLMProvider.ANTHROPIC,
     reasoning_effort="medium"  # "low", "medium", "high"
-    # "max" also available on Opus 4.6+ and Fable; "xhigh" on Opus 4.7+ and Fable.
+    # "max" also available on Opus 4.6+ and Fable;
+    # "xhigh" on Opus 4.7+ and Fable.
     # Claude Opus 5.5 and Fable 5.1 accept only tool_choice "auto"/"none", so
     # the search tool is offered with "auto" on those models.
 )
 ```
+
+Sonnet 5 reasoning effort is supported by `chat_async`, but not by
+`web_search_tool`. The latter still sends legacy `thinking.type="enabled"`
+parameters when an effort is supplied, which Sonnet 5 rejects. See the
+[chat documentation](core-chat-functions.md#claude-sonnet-5-thinking) for the
+supported chat usage.
 
 ### Parameters
 
