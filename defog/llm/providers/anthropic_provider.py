@@ -29,6 +29,36 @@ def rejects_forced_tool_choice(model: str) -> bool:
     return any(p in model for p in ("opus-5-5", "sonnet-5-5", "fable-5-1"))
 
 
+def adaptive_thinking_config(model: str, reasoning_effort: str):
+    """Thinking config for adaptive-thinking models, or None for other models.
+
+    Returns ``(thinking, output_config)`` for the raw Messages API calls made
+    by web search and citations. ``output_config`` is None when no effort
+    applies. Sonnet 5.x accepts every effort level, and rejects both
+    ``budget_tokens`` and (on 5.5) ``disabled``; ``reasoning_effort="none"``
+    therefore maps to its thinking-off setting.
+    """
+    if "sonnet-5" in model:
+        if reasoning_effort == "none":
+            off = "between_tools" if "sonnet-5-5" in model else "disabled"
+            return {"type": off}, None
+        return {"type": "adaptive"}, {"effort": reasoning_effort}
+    if not any(
+        p in model
+        for p in ("opus-4-6", "opus-4-7", "opus-4-8", "opus-5", "sonnet-4-6", "fable")
+    ):
+        return None
+    effort = reasoning_effort
+    is_opus = "sonnet" not in model
+    # "xhigh" is on Opus 4.7+ and Fable; cap down otherwise.
+    if effort == "xhigh" and ("opus-4-6" in model or "sonnet-4-6" in model):
+        effort = "max" if is_opus else "high"
+    # "max" is only on Opus; cap to "high" for Sonnet.
+    if effort == "max" and not is_opus:
+        effort = "high"
+    return {"type": "adaptive"}, {"effort": effort}
+
+
 class AnthropicProvider(BaseLLMProvider):
     """Anthropic Claude provider implementation."""
 

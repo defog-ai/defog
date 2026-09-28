@@ -5,6 +5,7 @@ import pytest
 from defog.llm.cost.calculator import CostCalculator
 from defog.llm.providers.anthropic_provider import (
     AnthropicProvider,
+    adaptive_thinking_config,
     rejects_forced_tool_choice,
 )
 
@@ -59,3 +60,32 @@ def test_forced_tool_choice_becomes_auto(tool_choice):
 def test_pricing():
     cost = CostCalculator.calculate_cost(SONNET_55, 1_000_000, 1_000_000, 0)
     assert cost == pytest.approx(1200.0)  # cents: $2 in + $10 out
+
+
+@pytest.mark.parametrize("effort", ["low", "high", "xhigh", "max"])
+@pytest.mark.parametrize("model", ["claude-sonnet-5", SONNET_55])
+def test_adaptive_thinking_config_sonnet_5(model, effort):
+    assert adaptive_thinking_config(model, effort) == (
+        {"type": "adaptive"},
+        {"effort": effort},
+    )
+
+
+def test_adaptive_thinking_config_none_effort():
+    assert adaptive_thinking_config(SONNET_55, "none") == (
+        {"type": "between_tools"},
+        None,
+    )
+    assert adaptive_thinking_config("claude-sonnet-5", "none") == (
+        {"type": "disabled"},
+        None,
+    )
+
+
+def test_adaptive_thinking_config_other_models_unchanged():
+    assert adaptive_thinking_config("claude-sonnet-4-6", "max")[1] == {"effort": "high"}
+    assert adaptive_thinking_config("claude-opus-4-6", "xhigh")[1] == {"effort": "max"}
+    assert adaptive_thinking_config("claude-opus-5-5", "xhigh")[1] == {
+        "effort": "xhigh"
+    }
+    assert adaptive_thinking_config("claude-haiku-4-5", "high") is None

@@ -99,10 +99,6 @@ parameters. Legacy thinking budgets and other models' effort handling are unchan
 - Forced tool use is rejected, so `tool_choice` values that would map to
   `"any"` or `"tool"` are sent as `"auto"` (with a logged warning).
 
-This support is limited to the chat API. `web_search_tool` builds its requests
-separately and still sends legacy thinking parameters for Sonnet 5 when an effort
-is supplied; those requests remain unsupported.
-
 See Anthropic's [effort reference](https://platform.claude.com/docs/en/build-with-claude/effort)
 and [Sonnet 5 migration guide](https://platform.claude.com/docs/en/models/sonnet-5/migration-guide).
 

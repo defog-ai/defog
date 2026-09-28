@@ -191,6 +191,9 @@ async def citations_tool(
 
         elif provider in [LLMProvider.ANTHROPIC, LLMProvider.ANTHROPIC.value]:
             from anthropic import AsyncAnthropic
+            from defog.llm.providers.anthropic_provider import (
+                adaptive_thinking_config,
+            )
 
             client = AsyncAnthropic(api_key=config.get("ANTHROPIC_API_KEY"))
 
@@ -240,31 +243,11 @@ async def citations_tool(
             if reasoning_effort:
                 # Claude 4.6+ models support adaptive thinking, which
                 # replaces the deprecated budget_tokens approach.
-                _is_adaptive = any(
-                    p in model
-                    for p in (
-                        "opus-4-6",
-                        "opus-4-7",
-                        "opus-4-8",
-                        "opus-5",
-                        "sonnet-4-6",
-                        "fable",
-                    )
-                )
-                if _is_adaptive:
-                    payload["thinking"] = {"type": "adaptive"}
-                    payload["temperature"] = 1.0
-                    effort = reasoning_effort
-                    _is_opus = "sonnet" not in model
-                    # "xhigh" is on Opus 4.7+ and Fable; cap down otherwise.
-                    if effort == "xhigh" and (
-                        "opus-4-6" in model or "sonnet-4-6" in model
-                    ):
-                        effort = "max" if _is_opus else "high"
-                    # "max" is only on Opus; cap to "high" for Sonnet.
-                    if effort == "max" and not _is_opus:
-                        effort = "high"
-                    payload["output_config"] = {"effort": effort}
+                _adaptive = adaptive_thinking_config(model, reasoning_effort)
+                if _adaptive:
+                    payload["thinking"], _output_config = _adaptive
+                    if _output_config:
+                        payload["output_config"] = _output_config
                 else:
                     if reasoning_effort == "low":
                         budget_tokens = 4096

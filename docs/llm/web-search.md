@@ -86,16 +86,17 @@ result = await web_search_tool(
     reasoning_effort="medium"  # "low", "medium", "high"
     # "max" also available on Opus 4.6+ and Fable;
     # "xhigh" on Opus 4.7+ and Fable.
-    # Claude Opus 5.5 and Fable 5.1 accept only tool_choice "auto"/"none", so
+    # Claude Opus 5.5, Sonnet 5.5 and Fable 5.1 accept only tool_choice "auto"/"none", so
     # the search tool is offered with "auto" on those models.
 )
 ```
 
-Sonnet 5 reasoning effort is supported by `chat_async`, but not by
-`web_search_tool`. The latter still sends legacy `thinking.type="enabled"`
-parameters when an effort is supplied, which Sonnet 5 rejects. See the
-[chat documentation](core-chat-functions.md#claude-sonnet-5-thinking) for the
-supported chat usage.
+Sonnet 5 and Sonnet 5.5 use adaptive thinking here as well: any
+`reasoning_effort` (including `"xhigh"` and `"max"`) is sent as
+`output_config.effort`, and `"none"` turns thinking off (`between_tools` on
+Sonnet 5.5). The same applies to `citations_tool`. See the
+[chat documentation](core-chat-functions.md#claude-sonnet-5-thinking) for
+details.
 
 ### Parameters
 
