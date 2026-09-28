@@ -23,9 +23,10 @@ logger = logging.getLogger(__name__)
 def rejects_forced_tool_choice(model: str) -> bool:
     """True for Claude models that return a 400 on tool_choice "any"/"tool".
 
-    Claude Opus 5.5 and Claude Fable 5.1 accept only "auto" and "none".
+    Claude Opus 5.5, Claude Sonnet 5.5 and Claude Fable 5.1 accept only "auto"
+    and "none".
     """
-    return any(p in model for p in ("opus-5-5", "fable-5-1"))
+    return any(p in model for p in ("opus-5-5", "sonnet-5-5", "fable-5-1"))
 
 
 class AnthropicProvider(BaseLLMProvider):
@@ -588,6 +589,7 @@ class AnthropicProvider(BaseLLMProvider):
         # "claude-sonnet-4" (no date suffix) is also matched.
         supports_thinking = "3-7" in model or "-4" in model or "-5" in model
         is_sonnet_5 = "sonnet-5" in model
+        is_sonnet_5_5 = "sonnet-5-5" in model
         # Claude 4.6+ models use adaptive thinking (type: "adaptive") with
         # effort via output_config, replacing the deprecated budget_tokens
         # param. Update this tuple when new models add adaptive support.
@@ -664,6 +666,11 @@ class AnthropicProvider(BaseLLMProvider):
             thinking = {
                 "type": "disabled",
             }
+
+        # Sonnet 5.5 rejects thinking type "disabled"; "between_tools" is its
+        # lowest setting (no up-front thinking) and takes no other fields.
+        if is_sonnet_5_5 and thinking["type"] == "disabled":
+            thinking = {"type": "between_tools"}
 
         # Anthropic does not allow `None` as a value for max_completion_tokens
         if max_completion_tokens is None:

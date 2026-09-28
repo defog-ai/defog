@@ -206,6 +206,14 @@ MODEL_COSTS = {
         "cache_creation_input_cost_per1k": 0.0025,
         "output_cost_per1k": 0.01,
     },
+    # Released 2026-09-28 at the same prices as Sonnet 5.
+    # Source: https://platform.claude.com/docs/en/models/sonnet-5-5/overview
+    "claude-sonnet-5-5": {
+        "input_cost_per1k": 0.002,
+        "cached_input_cost_per1k": 0.0002,
+        "cache_creation_input_cost_per1k": 0.0025,
+        "output_cost_per1k": 0.01,
+    },
     "claude-opus-4-1": {
         "input_cost_per1k": 0.015,
         "cached_input_cost_per1k": 0.0015,
