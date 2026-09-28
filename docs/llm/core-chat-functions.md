@@ -88,9 +88,16 @@ is omitted; defog explicitly sends it. Defog omits `temperature` for Sonnet 5,
 including caller-supplied values, because the model rejects non-default sampling
 parameters. Legacy thinking budgets and other models' effort handling are unchanged.
 
-This support is limited to the chat API. `web_search_tool` builds its requests
-separately and still sends legacy thinking parameters for Sonnet 5 when an effort
-is supplied; those requests remain unsupported.
+### Claude Sonnet 5.5
+
+`claude-sonnet-5-5` follows the same rules as Sonnet 5 (adaptive thinking with
+`output_config.effort`, no `temperature`), with two differences:
+
+- The API rejects `thinking={"type": "disabled"}`, so when no reasoning effort is
+  requested (omitted, `None`, or `"none"`) defog sends
+  `thinking={"type": "between_tools"}`, which turns off up-front thinking.
+- Forced tool use is rejected, so `tool_choice` values that would map to
+  `"any"` or `"tool"` are sent as `"auto"` (with a logged warning).
 
 See Anthropic's [effort reference](https://platform.claude.com/docs/en/build-with-claude/effort)
 and [Sonnet 5 migration guide](https://platform.claude.com/docs/en/models/sonnet-5/migration-guide).

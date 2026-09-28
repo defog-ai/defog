@@ -22,7 +22,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "defog"
-version = "1.6.21"
+version = "1.6.22"
 description = "Defog is a Python library that helps you generate data queries from natural language questions."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -31,7 +31,7 @@ license-files = ["LICENSE"]
 authors = [{ name = "Full Stack Data Pte. Ltd.", email = "founders@defog.ai" }]
 dependencies = [
     "aiofiles",
-    "anthropic>=0.83.0",
+    "anthropic>=1.9.0",
     "beautifulsoup4>=4.12.0",
     "bleach>=6.0.0",
     "fastmcp",
