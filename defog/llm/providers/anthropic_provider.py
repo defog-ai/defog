@@ -36,8 +36,13 @@ def adaptive_thinking_config(model: str, reasoning_effort: str):
     by web search and citations. ``output_config`` is None when no effort
     applies. Sonnet 5.x accepts every effort level, and rejects both
     ``budget_tokens`` and (on 5.5) ``disabled``; ``reasoning_effort="none"``
-    therefore maps to its thinking-off setting.
+    therefore maps to its thinking-off setting. Haiku 5.5 also accepts every
+    effort level and rejects ``budget_tokens``; it accepts ``disabled``.
     """
+    if "haiku-5-5" in model:
+        if reasoning_effort == "none":
+            return {"type": "disabled"}, None
+        return {"type": "adaptive"}, {"effort": reasoning_effort}
     if "sonnet-5" in model:
         if reasoning_effort == "none":
             off = "between_tools" if "sonnet-5-5" in model else "disabled"
@@ -620,6 +625,7 @@ class AnthropicProvider(BaseLLMProvider):
         supports_thinking = "3-7" in model or "-4" in model or "-5" in model
         is_sonnet_5 = "sonnet-5" in model
         is_sonnet_5_5 = "sonnet-5-5" in model
+        is_haiku_5_5 = "haiku-5-5" in model
         # Claude 4.6+ models use adaptive thinking (type: "adaptive") with
         # effort via output_config, replacing the deprecated budget_tokens
         # param. Update this tuple when new models add adaptive support.
@@ -632,28 +638,30 @@ class AnthropicProvider(BaseLLMProvider):
                 "opus-5",
                 "sonnet-4-6",
                 "sonnet-5",
+                "haiku-5-5",
                 "fable",
             )
         )
-        # Sonnet 5 supports both max and xhigh. Keep the existing effort caps
+        # Sonnet 5 and Haiku 5.5 support both max and xhigh. Keep the existing effort caps
         # for older models.
-        supports_max_effort = is_sonnet_5 or any(
+        supports_max_effort = is_sonnet_5 or is_haiku_5_5 or any(
             p in model for p in ("opus-4-6", "opus-4-7", "opus-4-8", "opus-5", "fable")
         )
-        supports_xhigh_effort = is_sonnet_5 or any(
+        supports_xhigh_effort = is_sonnet_5 or is_haiku_5_5 or any(
             p in model for p in ("opus-4-7", "opus-4-8", "opus-5", "fable")
         )
         # Opus and Fable models require adaptive thinking always on. For other
         # adaptive models, only enable it when reasoning_effort is explicitly
-        # requested. Preserve defog's thinking-off default on Sonnet 5 even
-        # though the API defaults to adaptive when thinking is omitted.
+        # requested. Preserve defog's thinking-off default on Sonnet 5 and
+        # Haiku 5.5 even though the API defaults to adaptive when thinking is
+        # omitted.
         requires_adaptive = any(
             p in model for p in ("opus-4-6", "opus-4-7", "opus-4-8", "opus-5", "fable")
         )
         use_adaptive = requires_adaptive or (
             supports_adaptive
             and reasoning_effort is not None
-            and not (is_sonnet_5 and reasoning_effort == "none")
+            and not ((is_sonnet_5 or is_haiku_5_5) and reasoning_effort == "none")
         )
 
         if use_adaptive:
@@ -715,9 +723,10 @@ class AnthropicProvider(BaseLLMProvider):
             "timeout": timeout,
             "thinking": thinking,
         }
-        # Sonnet 5 rejects non-default sampling values, including defog's
-        # default temperature=0. Omit temperature in both thinking modes.
-        if is_sonnet_5:
+        # Sonnet 5 and Haiku 5.5 reject non-default sampling values, including
+        # defog's default temperature=0. Omit temperature in both thinking
+        # modes.
+        if is_sonnet_5 or is_haiku_5_5:
             params.pop("temperature")
 
         # Build output_config: may include adaptive thinking effort and/or

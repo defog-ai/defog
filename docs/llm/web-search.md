@@ -91,7 +91,7 @@ result = await web_search_tool(
 )
 ```
 
-Sonnet 5 and Sonnet 5.5 use adaptive thinking here as well: any
+Sonnet 5, Sonnet 5.5 and Haiku 5.5 use adaptive thinking here as well: any
 `reasoning_effort` (including `"xhigh"` and `"max"`) is sent as
 `output_config.effort`, and `"none"` turns thinking off (`between_tools` on
 Sonnet 5.5). The same applies to `citations_tool`. See the
