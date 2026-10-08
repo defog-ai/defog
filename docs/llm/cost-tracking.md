@@ -96,7 +96,7 @@ of that request, output included.
 
 | Model           | Limit (prompt tokens) | Input / cached input / output per 1M tokens, over the limit |
 | --------------- | --------------------- | ------------------------------------------------------------ |
-| claude-haiku-5-5 | 100,000              | $0.50 / $0.05 / $2.50 (cache writes $0.625)                   |
+| claude-haiku-5-5 | 100,000              | $0.50 / $0.05 / $2.50 (cache writes $0.625 for 5 minutes, $1 for 1 hour) |
 | gemini-3.1-pro  | 200,000               | $4 / $0.40 / $18                                              |
 | gemini-2.5-pro  | 200,000               | $2.50 / none / $15                                            |
 
@@ -125,6 +125,37 @@ CostCalculator.calculate_requests_cost(
 `calculate_cost` takes an optional `prompt_tokens` argument. Pass it when
 your input token count already includes cached tokens, as Gemini's does.
 Batch discounts for these providers are not applied.
+
+### Anthropic 1-hour cache writes
+
+Anthropic charges more to write to the 1-hour prompt cache
+(`cache_control: {"type": "ephemeral", "ttl": "1h"}`) than to the 5-minute
+cache: 2x the base input price instead of 1.25x. Each response reports how its
+cache writes split between the two in `usage.cache_creation`. `chat_async`
+prices the 1-hour writes of each request at the 1-hour rate and the rest at the
+5-minute rate. `response.cache_creation_input_tokens` still reports all cache
+writes together. When a response has no split, all of its cache writes use the
+5-minute rate, as before.
+
+The 1-hour rates come from [Anthropic's pricing page](https://platform.claude.com/docs/en/about-claude/pricing),
+checked on 2026-10-08. Older models that the page no longer lists
+(claude-3-5-sonnet, claude-3-5-haiku, claude-3-opus, claude-3-sonnet,
+claude-3-haiku) have no 1-hour rate and keep the 5-minute rate.
+
+To price one request yourself, pass the 1-hour part of the cache writes:
+
+```python
+from defog.llm.cost import CostCalculator
+
+cost = CostCalculator.calculate_cost(
+    "claude-haiku-5-5",
+    input_tokens=1_000,                     # usage.input_tokens
+    output_tokens=500,                      # usage.output_tokens
+    cached_input_tokens=2_000,              # usage.cache_read_input_tokens
+    cache_creation_input_tokens=30_000,     # usage.cache_creation_input_tokens
+    cache_creation_1h_input_tokens=20_000,  # usage.cache_creation.ephemeral_1h_input_tokens
+)  # 0.562 cents; 0.412 cents if all 30,000 writes were 5-minute writes
+```
 
 ### OpenAI list price and served tier
 

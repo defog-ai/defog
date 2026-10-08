@@ -147,6 +147,7 @@ class CostCalculator:
         service_tier: str | None = None,
         batch: bool = False,
         prompt_tokens: int | None = None,
+        cache_creation_1h_input_tokens: int | None = None,
     ) -> Optional[float]:
         """
         Calculate cost in cents for the given token usage.
@@ -173,6 +174,12 @@ class CostCalculator:
         ``cached_input_tokens`` plus ``cache_creation_input_tokens``.
         ``prompt_tokens`` replaces that sum for a provider whose input count
         already includes the cached tokens.
+
+        ``cache_creation_1h_input_tokens`` is the part of
+        ``cache_creation_input_tokens`` written to Anthropic's 1-hour cache.
+        It is priced at the model's 1-hour cache write rate and the rest of
+        the cache writes at the 5-minute rate. When it is not given, or the
+        model lists no 1-hour rate, all cache writes use the 5-minute rate.
 
         Returns:
             Cost in cents, or None if model pricing is not available
@@ -247,12 +254,17 @@ class CostCalculator:
                 cached_input_tokens / 1000 * costs[f"{rate_prefix}input_cost_per1k"]
             ) * 100
 
-        # Add cache creation input cost if available
+        # Add cache creation input cost if available. Writes to the 1-hour
+        # cache use their own rate when the model lists one.
         if cache_creation_input_tokens and "cache_creation_input_cost_per1k" in costs:
+            write_rate = costs["cache_creation_input_cost_per1k"]
+            one_hour_tokens = min(
+                cache_creation_1h_input_tokens or 0, cache_creation_input_tokens
+            )
+            one_hour_rate = costs.get("cache_creation_1h_input_cost_per1k", write_rate)
             cost_in_cents += (
-                cache_creation_input_tokens
-                / 1000
-                * costs["cache_creation_input_cost_per1k"]
+                (cache_creation_input_tokens - one_hour_tokens) / 1000 * write_rate
+                + one_hour_tokens / 1000 * one_hour_rate
             ) * 100
 
         return cost_in_cents
@@ -265,8 +277,8 @@ class CostCalculator:
 
         Each item holds ``calculate_cost`` keyword arguments for one provider
         request (``input_tokens``, ``output_tokens`` and optionally
-        ``cached_input_tokens``, ``cache_creation_input_tokens`` and
-        ``prompt_tokens``). A price that depends on the prompt length must
+        ``cached_input_tokens``, ``cache_creation_input_tokens``,
+        ``cache_creation_1h_input_tokens`` and ``prompt_tokens``). A price that depends on the prompt length must
         see one request at a time: three requests of 60,000 tokens are three
         short prompts, not one prompt of 180,000 tokens.
 

@@ -164,18 +164,24 @@ MODEL_COSTS = {
         "input_cost_per1k": 0.0025,
         "output_cost_per1k": 0.01,
     },
+    # Claude rows that list "cache_creation_1h_input_cost_per1k" price writes
+    # to the 1-hour cache. Rows without it price all cache writes at the
+    # 5-minute rate. Source for the 1-hour rates (2026-10-08):
+    # https://platform.claude.com/docs/en/about-claude/pricing
     # Cache reads on Fable 5.1 are 2.5% of the input price, not 10%.
     # Source (2026-09-23): https://platform.claude.com/docs/en/about-claude/pricing
     "claude-fable-5-1": {
         "input_cost_per1k": 0.010,
         "cached_input_cost_per1k": 0.00025,
         "cache_creation_input_cost_per1k": 0.0125,
+        "cache_creation_1h_input_cost_per1k": 0.020,
         "output_cost_per1k": 0.050,
     },
     "claude-fable-5": {
         "input_cost_per1k": 0.010,
         "cached_input_cost_per1k": 0.001,
         "cache_creation_input_cost_per1k": 0.0125,
+        "cache_creation_1h_input_cost_per1k": 0.020,
         "output_cost_per1k": 0.050,
     },
     "claude-3-5-sonnet": {
@@ -188,18 +194,21 @@ MODEL_COSTS = {
         "input_cost_per1k": 0.003,
         "cached_input_cost_per1k": 0.0003,
         "cache_creation_input_cost_per1k": 0.00375,
+        "cache_creation_1h_input_cost_per1k": 0.006,
         "output_cost_per1k": 0.015,
     },
     "claude-sonnet-4-5": {
         "input_cost_per1k": 0.003,
         "cached_input_cost_per1k": 0.0003,
         "cache_creation_input_cost_per1k": 0.00375,
+        "cache_creation_1h_input_cost_per1k": 0.006,
         "output_cost_per1k": 0.015,
     },
     "claude-sonnet-4-6": {
         "input_cost_per1k": 0.003,
         "cached_input_cost_per1k": 0.0003,
         "cache_creation_input_cost_per1k": 0.00375,
+        "cache_creation_1h_input_cost_per1k": 0.006,
         "output_cost_per1k": 0.015,
     },
     # Introductory pricing through 2026-08-31; becomes $3/$15 per MTok
@@ -208,6 +217,7 @@ MODEL_COSTS = {
         "input_cost_per1k": 0.002,
         "cached_input_cost_per1k": 0.0002,
         "cache_creation_input_cost_per1k": 0.0025,
+        "cache_creation_1h_input_cost_per1k": 0.004,
         "output_cost_per1k": 0.01,
     },
     # Released 2026-09-28 at the same prices as Sonnet 5.
@@ -216,36 +226,42 @@ MODEL_COSTS = {
         "input_cost_per1k": 0.002,
         "cached_input_cost_per1k": 0.0002,
         "cache_creation_input_cost_per1k": 0.0025,
+        "cache_creation_1h_input_cost_per1k": 0.004,
         "output_cost_per1k": 0.01,
     },
     "claude-opus-4-1": {
         "input_cost_per1k": 0.015,
         "cached_input_cost_per1k": 0.0015,
         "cache_creation_input_cost_per1k": 0.01875,
+        "cache_creation_1h_input_cost_per1k": 0.030,
         "output_cost_per1k": 0.075,
     },
     "claude-opus-4-5": {
         "input_cost_per1k": 0.005,
         "cached_input_cost_per1k": 0.0005,
         "cache_creation_input_cost_per1k": 0.00625,
+        "cache_creation_1h_input_cost_per1k": 0.010,
         "output_cost_per1k": 0.025,
     },
     "claude-opus-4-6": {
         "input_cost_per1k": 0.005,
         "cached_input_cost_per1k": 0.0005,
         "cache_creation_input_cost_per1k": 0.00625,
+        "cache_creation_1h_input_cost_per1k": 0.010,
         "output_cost_per1k": 0.025,
     },
     "claude-opus-4-7": {
         "input_cost_per1k": 0.005,
         "cached_input_cost_per1k": 0.0005,
         "cache_creation_input_cost_per1k": 0.00625,
+        "cache_creation_1h_input_cost_per1k": 0.010,
         "output_cost_per1k": 0.025,
     },
     "claude-opus-4-8": {
         "input_cost_per1k": 0.005,
         "cached_input_cost_per1k": 0.0005,
         "cache_creation_input_cost_per1k": 0.00625,
+        "cache_creation_1h_input_cost_per1k": 0.010,
         "output_cost_per1k": 0.025,
     },
     # Launched 2026-07-24 at unchanged Opus-generation pricing.
@@ -253,6 +269,7 @@ MODEL_COSTS = {
         "input_cost_per1k": 0.005,
         "cached_input_cost_per1k": 0.0005,
         "cache_creation_input_cost_per1k": 0.00625,
+        "cache_creation_1h_input_cost_per1k": 0.010,
         "output_cost_per1k": 0.025,
     },
     # Released 2026-09-22. Cache reads are 5% of the input price.
@@ -261,6 +278,7 @@ MODEL_COSTS = {
         "input_cost_per1k": 0.004,
         "cached_input_cost_per1k": 0.0002,
         "cache_creation_input_cost_per1k": 0.005,
+        "cache_creation_1h_input_cost_per1k": 0.008,
         "output_cost_per1k": 0.02,
     },
     # Released 2026-10-07. A prompt of over 100,000 tokens pays five times
@@ -270,12 +288,14 @@ MODEL_COSTS = {
         "input_cost_per1k": 0.0001,
         "cached_input_cost_per1k": 0.00001,
         "cache_creation_input_cost_per1k": 0.000125,
+        "cache_creation_1h_input_cost_per1k": 0.0002,
         "output_cost_per1k": 0.0005,
         "long_prompt": {
             "above_prompt_tokens": 100_000,
             "input_cost_per1k": 0.0005,
             "cached_input_cost_per1k": 0.00005,
             "cache_creation_input_cost_per1k": 0.000625,
+            "cache_creation_1h_input_cost_per1k": 0.001,
             "output_cost_per1k": 0.0025,
         },
     },
@@ -283,6 +303,7 @@ MODEL_COSTS = {
         "input_cost_per1k": 0.001,
         "cached_input_cost_per1k": 0.0001,
         "cache_creation_input_cost_per1k": 0.00125,
+        "cache_creation_1h_input_cost_per1k": 0.002,
         "output_cost_per1k": 0.005,
     },
     "claude-3-5-haiku": {

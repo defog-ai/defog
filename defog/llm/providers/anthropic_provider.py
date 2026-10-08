@@ -1149,6 +1149,15 @@ class AnthropicProvider(BaseLLMProvider):
                     getattr(usage_obj, "cache_creation_input_tokens", 0) or 0
                 ),
             }
+            # Writes to the 1-hour cache cost more than writes to the
+            # 5-minute cache. Older responses and mocks have no split.
+            one_hour_writes = getattr(
+                getattr(usage_obj, "cache_creation", None),
+                "ephemeral_1h_input_tokens",
+                None,
+            )
+            if isinstance(one_hour_writes, int) and one_hour_writes:
+                usage["cache_creation_1h_input_tokens"] = one_hour_writes
             total_input_tokens += usage["input_tokens"]
             total_output_tokens += usage["output_tokens"]
             cached_input_tokens += usage["cached_input_tokens"]
