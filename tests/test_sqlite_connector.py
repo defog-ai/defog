@@ -1,3 +1,4 @@
+import importlib.util
 import os
 import tempfile
 import unittest
@@ -168,6 +169,7 @@ class SQLiteConnectorTestCase(unittest.TestCase):
         self.assertIn("products", tables)
 
 
+@unittest.skipUnless(importlib.util.find_spec("aiosqlite"), "needs aiosqlite")
 class AsyncSQLiteConnectorTestCase(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         # Create a temporary SQLite database for testing

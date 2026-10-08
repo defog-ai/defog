@@ -9,7 +9,9 @@ import pytest
 import base64
 import logging
 from io import BytesIO
-from PIL import Image, ImageDraw
+
+pytest.importorskip("PIL", reason="needs Pillow")
+from PIL import Image, ImageDraw  # noqa: E402
 from typing import Optional
 from pydantic import BaseModel, Field
 

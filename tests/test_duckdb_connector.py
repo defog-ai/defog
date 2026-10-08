@@ -1,7 +1,10 @@
 import os
 import tempfile
 import unittest
-import duckdb
+
+import pytest
+
+duckdb = pytest.importorskip("duckdb", reason="needs the duckdb extra")
 
 from defog.query import execute_query_once, async_execute_query_once
 from defog import Defog, AsyncDefog
