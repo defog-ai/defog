@@ -88,6 +88,44 @@ which earlier versions left out of the standard price. Other providers'
 prices are unchanged. These estimates do not include regional surcharges,
 provider-hosted tool fees, or separate cache-write charges.
 
+### Prompt-length prices
+
+Some Anthropic and Gemini models charge more when the prompt of one
+request is longer than a limit. The higher rates then apply to every token
+of that request, output included.
+
+| Model           | Limit (prompt tokens) | Input / cached input / output per 1M tokens, over the limit |
+| --------------- | --------------------- | ------------------------------------------------------------ |
+| claude-haiku-5-5 | 100,000              | $0.50 / $0.05 / $2.50 (cache writes $0.625)                   |
+| gemini-3.1-pro  | 200,000               | $4 / $0.40 / $18                                              |
+| gemini-2.5-pro  | 200,000               | $2.50 / none / $15                                            |
+
+For Anthropic, the prompt length is the uncached input plus cache reads
+plus cache writes. For Gemini, it is the input token count that Gemini
+reports, which already includes the cached part.
+
+```python
+from defog.llm.cost import CostCalculator
+
+CostCalculator.calculate_cost("claude-haiku-5-5", 100_000, 1_000)  # 1.05 cents
+CostCalculator.calculate_cost("claude-haiku-5-5", 150_000, 1_000)  # 7.75 cents
+```
+
+As with the OpenAI long-context prices, `chat_async` prices each request
+of a tool loop on its own prompt and adds the amounts. To price several
+requests yourself, pass one dict of token counts per request:
+
+```python
+CostCalculator.calculate_requests_cost(
+    "claude-haiku-5-5",
+    [{"input_tokens": 60_000, "output_tokens": 1_000}] * 3,
+)  # 1.95 cents; one 180,000-token request with 3,000 output tokens costs 9.75
+```
+
+`calculate_cost` takes an optional `prompt_tokens` argument. Pass it when
+your input token count already includes cached tokens, as Gemini's does.
+Batch discounts for these providers are not applied.
+
 ### OpenAI list price and served tier
 
 An OpenAI response also reports the standard-tier price of the same usage

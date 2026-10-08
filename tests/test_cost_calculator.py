@@ -358,3 +358,82 @@ def test_calculator_matches_models_json(model: str) -> None:
     assert actual == pytest.approx(expected_cents), (
         f"calculate_cost for {model!r} disagreed with its MODEL_COSTS entry"
     )
+
+
+LONG_PROMPT_MODELS = sorted(
+    model for model, costs in MODEL_COSTS.items() if "long_prompt" in costs
+)
+
+
+@pytest.mark.parametrize("model", LONG_PROMPT_MODELS)
+def test_long_prompt_rates_cover_the_same_token_types(model: str) -> None:
+    """A long prompt must not lose a rate that a short prompt has."""
+    costs = MODEL_COSTS[model]
+    base_rates = {key for key in costs if key.endswith("_cost_per1k")}
+    long_rates = {key for key in costs["long_prompt"] if key.endswith("_cost_per1k")}
+    assert long_rates == base_rates
+    assert costs["long_prompt"]["above_prompt_tokens"] > 0
+
+
+@pytest.mark.parametrize("model", LONG_PROMPT_MODELS)
+def test_prompt_at_the_limit_uses_the_standard_rates(model: str) -> None:
+    costs = MODEL_COSTS[model]
+    limit = costs["long_prompt"]["above_prompt_tokens"]
+    expected = (
+        limit / 1000 * costs["input_cost_per1k"]
+        + 1000 / 1000 * costs["output_cost_per1k"]
+    ) * 100
+    assert _cost(model, input_t=limit) == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("model", LONG_PROMPT_MODELS)
+def test_prompt_over_the_limit_uses_the_long_prompt_rates(model: str) -> None:
+    long_prompt = MODEL_COSTS[model]["long_prompt"]
+    tokens = long_prompt["above_prompt_tokens"] + 1
+    expected = (
+        tokens / 1000 * long_prompt["input_cost_per1k"]
+        + 1000 / 1000 * long_prompt["output_cost_per1k"]
+    ) * 100
+    assert _cost(model, input_t=tokens) == pytest.approx(expected)
+
+
+def test_gemini_3_1_pro_long_prompt_pricing():
+    # $4 input, $18 output, $0.40 cached per 1M tokens above 200,000.
+    cost = _cost("gemini-3.1-pro-preview", input_t=250_000, output_t=1_000)
+    assert cost == pytest.approx((250_000 * 4 + 1_000 * 18) / 1_000_000 * 100)
+
+
+def test_gemini_2_5_pro_long_prompt_pricing():
+    # $2.50 input, $15 output per 1M tokens above 200,000.
+    cost = _cost("gemini-2.5-pro", input_t=200_001, output_t=1_000)
+    assert cost == pytest.approx((200_001 * 2.5 + 1_000 * 15) / 1_000_000 * 100)
+
+
+def test_prompt_tokens_overrides_the_sum_of_token_counts():
+    # Gemini reports cached tokens inside the prompt count, so the provider
+    # passes the prompt size itself instead of letting the calculator add.
+    short = CostCalculator.calculate_cost(
+        "gemini-3.1-pro-preview",
+        150_000,
+        0,
+        cached_input_tokens=100_000,
+        prompt_tokens=150_000,
+    )
+    assert short == pytest.approx((150_000 * 2 + 100_000 * 0.2) / 1_000_000 * 100)
+
+
+def test_requests_cost_prices_each_request_on_its_own_prompt():
+    # Three 60,000-token prompts are three short prompts, not one of 180,000.
+    request = {"input_tokens": 60_000, "output_tokens": 1_000}
+    cost = CostCalculator.calculate_requests_cost("claude-haiku-5-5", [request] * 3)
+    assert cost == pytest.approx(3 * (60_000 * 0.10 + 1_000 * 0.50) / 1_000_000 * 100)
+
+    one_long = CostCalculator.calculate_cost("claude-haiku-5-5", 180_000, 3_000)
+    assert one_long == pytest.approx((180_000 * 0.50 + 3_000 * 2.50) / 1_000_000 * 100)
+
+
+def test_requests_cost_is_none_for_an_unknown_model():
+    requests = [{"input_tokens": 10, "output_tokens": 10}]
+    assert (
+        CostCalculator.calculate_requests_cost("totally-made-up-xyz", requests) is None
+    )

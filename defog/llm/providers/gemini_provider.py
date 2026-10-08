@@ -400,11 +400,17 @@ class GeminiProvider(BaseLLMProvider):
         tool_sample_functions: Optional[Dict[str, Callable]] = None,
         tool_result_preview_max_tokens: Optional[int] = None,
         tool_phase_complete_message: str = "exploration done, generating answer",
+        request_usages: list[dict[str, int]] | None = None,
         **kwargs,
     ) -> Tuple[
         Any, List[Dict[str, Any]], int, int, Optional[int], Optional[Dict[str, int]]
     ]:
-        """Process the response from the Interactions API."""
+        """Process the response from the Interactions API.
+
+        When ``request_usages`` is given, the token counts of each model
+        request are appended to it, so that each request can be priced on
+        its own prompt length.
+        """
 
         if tool_handler is None:
             tool_handler = self.tool_handler
@@ -414,28 +420,47 @@ class GeminiProvider(BaseLLMProvider):
         total_cached_tokens = 0
         total_reasoning_tokens = 0
 
-        if hasattr(response, "usage"):
-            usage = response.usage
+        def add_usage(usage: Any) -> None:
+            """Add the token counts of one model request to the totals."""
+            nonlocal total_input_tokens, total_output_tokens
+            nonlocal total_cached_tokens, total_reasoning_tokens
             # Try new fields first, then fallback to old ones
             input_tokens = getattr(usage, "total_input_tokens", None)
             if input_tokens is None:
                 input_tokens = getattr(usage, "prompt_token_count", 0)
+            input_tokens = input_tokens or 0
 
             output_tokens = getattr(usage, "total_output_tokens", None)
             if output_tokens is None:
                 output_tokens = getattr(usage, "candidates_token_count", 0)
-
-            total_input_tokens += input_tokens or 0
-            total_output_tokens += output_tokens or 0
-            total_cached_tokens += getattr(usage, "total_cached_tokens", 0) or 0
             # SDK >= 2.0 renamed reasoning usage to ``total_thought_tokens``.
-            total_reasoning_tokens += (
+            reasoning_tokens = (
                 getattr(usage, "total_thought_tokens", None)
                 or getattr(usage, "total_reasoning_tokens", 0)
                 or 0
             )
             # also add reasoning tokens to output tokens for cost calculation
-            total_output_tokens += total_reasoning_tokens
+            output_tokens = (output_tokens or 0) + reasoning_tokens
+            cached_tokens = getattr(usage, "total_cached_tokens", 0) or 0
+
+            total_input_tokens += input_tokens
+            total_output_tokens += output_tokens
+            total_cached_tokens += cached_tokens
+            total_reasoning_tokens += reasoning_tokens
+            if request_usages is not None:
+                request_usages.append(
+                    {
+                        "input_tokens": input_tokens,
+                        "output_tokens": output_tokens,
+                        "cached_input_tokens": cached_tokens,
+                        # Gemini's input count is the whole prompt, cached
+                        # part included.
+                        "prompt_tokens": input_tokens,
+                    }
+                )
+
+        if hasattr(response, "usage"):
+            add_usage(response.usage)
 
         tool_outputs = []
         tool_calls_executed = False
@@ -598,22 +623,7 @@ class GeminiProvider(BaseLLMProvider):
 
                     # Update usage
                     if hasattr(response, "usage"):
-                        usage = response.usage
-                        input_tokens = getattr(usage, "total_input_tokens", None)
-
-                        output_tokens = getattr(usage, "total_output_tokens", None)
-
-                        total_input_tokens += input_tokens or 0
-                        total_output_tokens += output_tokens or 0
-                        total_cached_tokens += (
-                            getattr(usage, "total_cached_tokens", 0) or 0
-                        )
-                        total_reasoning_tokens += (
-                            getattr(usage, "total_thought_tokens", None)
-                            or getattr(usage, "total_reasoning_tokens", 0)
-                            or 0
-                        )
-                        total_output_tokens += total_reasoning_tokens
+                        add_usage(response.usage)
 
                 except Exception as e:
                     raise ProviderError(
@@ -730,6 +740,7 @@ class GeminiProvider(BaseLLMProvider):
         if tools:
             tool_dict = tool_handler.build_tool_dict(tools)
 
+        request_usages: list[dict[str, int]] = []
         try:
             response = await client.aio.interactions.create(**request_params)
 
@@ -756,6 +767,7 @@ class GeminiProvider(BaseLLMProvider):
                 tool_sample_functions=sample_functions,
                 tool_result_preview_max_tokens=preview_max_tokens,
                 tool_phase_complete_message=tool_phase_complete_message,
+                request_usages=request_usages,
             )
         except (ProviderError, ToolError):
             raise
@@ -766,10 +778,14 @@ class GeminiProvider(BaseLLMProvider):
         # Handle ID and caching
         api_response_id = getattr(response, "id", None)
         response_id = api_response_id
-        # Calculate cost
-        cost = CostCalculator.calculate_cost(
-            model, input_toks, output_toks, cached_toks
-        )
+        # Price each request on its own, so that a price that depends on the
+        # prompt length (Gemini 2.5 Pro and 3.1 Pro) sees one prompt at a time.
+        if request_usages:
+            cost = CostCalculator.calculate_requests_cost(model, request_usages)
+        else:
+            cost = CostCalculator.calculate_cost(
+                model, input_toks, output_toks, cached_toks
+            )
 
         return LLMResponse(
             model=model,

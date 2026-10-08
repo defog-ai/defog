@@ -258,6 +258,28 @@ class AnthropicProvider(BaseLLMProvider):
 
         return messages
 
+    @staticmethod
+    def _requests_cost(
+        model: str,
+        request_usages: list[dict[str, int]] | None,
+        input_tokens: int,
+        output_tokens: int,
+        cached_input_tokens: int | None,
+        cache_creation_input_tokens: int | None,
+    ) -> float | None:
+        """Price each request on its own, so that a price that depends on
+        the prompt length (Claude Haiku 5.5) sees one prompt at a time.
+        Without per-request counts, price the totals."""
+        if request_usages:
+            return CostCalculator.calculate_requests_cost(model, request_usages)
+        return CostCalculator.calculate_cost(
+            model,
+            input_tokens,
+            output_tokens,
+            cached_input_tokens,
+            cache_creation_input_tokens,
+        )
+
     def _capture_pause(
         self,
         pause: PauseToolExecution,
@@ -323,11 +345,16 @@ class AnthropicProvider(BaseLLMProvider):
         return pause
 
     def _build_paused_response(
-        self, pause: PauseToolExecution, model: str, start_time: float
+        self,
+        pause: PauseToolExecution,
+        model: str,
+        start_time: float,
+        request_usages: list[dict[str, int]] | None = None,
     ) -> LLMResponse:
         """Build the LLMResponse returned to the caller when a tool pauses."""
-        cost = CostCalculator.calculate_cost(
+        cost = self._requests_cost(
             model,
+            request_usages,
             pause.input_tokens,
             pause.output_tokens,
             pause.cached_input_tokens,
@@ -905,6 +932,7 @@ class AnthropicProvider(BaseLLMProvider):
         tool_phase_complete_message: str = "exploration done, generating answer",
         server_tools: Optional[List[Dict[str, Any]]] = None,
         programmatic_tool_calling: bool = False,
+        request_usages: list[dict[str, int]] | None = None,
         **kwargs,
     ) -> Tuple[
         Any,
@@ -935,6 +963,10 @@ class AnthropicProvider(BaseLLMProvider):
             server_tool_usage,
             container_id,
             container_expires_at,
+
+        When ``request_usages`` is given, the token counts of each model
+        request are appended to it, so that each request can be priced on
+        its own prompt length.
         """
         # Use provided tool_handler or fall back to self.tool_handler
         if tool_handler is None:
@@ -1107,12 +1139,22 @@ class AnthropicProvider(BaseLLMProvider):
                 cache_creation_input_tokens
             # Anthropic sometimes returns ``None`` for cache fields (e.g. when
             # the response did not interact with the cache), so we coerce.
-            total_input_tokens += getattr(usage_obj, "input_tokens", 0) or 0
-            total_output_tokens += getattr(usage_obj, "output_tokens", 0) or 0
-            cached_input_tokens += getattr(usage_obj, "cache_read_input_tokens", 0) or 0
-            cache_creation_input_tokens += (
-                getattr(usage_obj, "cache_creation_input_tokens", 0) or 0
-            )
+            usage = {
+                "input_tokens": getattr(usage_obj, "input_tokens", 0) or 0,
+                "output_tokens": getattr(usage_obj, "output_tokens", 0) or 0,
+                "cached_input_tokens": (
+                    getattr(usage_obj, "cache_read_input_tokens", 0) or 0
+                ),
+                "cache_creation_input_tokens": (
+                    getattr(usage_obj, "cache_creation_input_tokens", 0) or 0
+                ),
+            }
+            total_input_tokens += usage["input_tokens"]
+            total_output_tokens += usage["output_tokens"]
+            cached_input_tokens += usage["cached_input_tokens"]
+            cache_creation_input_tokens += usage["cache_creation_input_tokens"]
+            if request_usages is not None:
+                request_usages.append(usage)
 
         # Handle tool processing for both local tools and MCP server tools.
         # We also enter this branch when ``server_tools`` are present (so we
@@ -1807,6 +1849,7 @@ class AnthropicProvider(BaseLLMProvider):
             tool_dict = tool_handler.build_tool_dict(tools)
 
         func_to_call = client.messages.create
+        request_usages: list[dict[str, int]] = []
 
         try:
             await self._apply_pre_model_call_hook(
@@ -1846,13 +1889,14 @@ class AnthropicProvider(BaseLLMProvider):
                 tool_phase_complete_message=tool_phase_complete_message,
                 server_tools=normalized_server_tools or None,
                 programmatic_tool_calling=programmatic_tool_calling,
+                request_usages=request_usages,
                 **kwargs,
             )
         except PauseToolExecution as pause:
             # A tool suspended the loop; return a paused LLMResponse instead of
             # raising. The caller persists response.messages + pending_tool_use
             # and resumes later via resume_tool_results.
-            return self._build_paused_response(pause, model, t)
+            return self._build_paused_response(pause, model, t, request_usages)
         except Exception as e:
             traceback.print_exc()
             raise ProviderError(self.get_provider_name(), f"API call failed: {e}", e)
@@ -1870,8 +1914,13 @@ class AnthropicProvider(BaseLLMProvider):
             response_id = cache_response_id
 
         # Calculate cost
-        cost = CostCalculator.calculate_cost(
-            model, input_toks, output_toks, cached_toks, cache_creation_toks
+        cost = self._requests_cost(
+            model,
+            request_usages,
+            input_toks,
+            output_toks,
+            cached_toks,
+            cache_creation_toks,
         )
 
         return LLMResponse(

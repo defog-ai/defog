@@ -49,13 +49,27 @@ def test_forced_tool_choice_is_kept():
 
 
 def test_pricing():
-    cost = CostCalculator.calculate_cost(HAIKU_55, 1_000_000, 1_000_000, 0)
-    assert cost == pytest.approx(60.0)  # cents: $0.10 in + $0.50 out
+    cost = CostCalculator.calculate_cost(HAIKU_55, 100_000, 100_000, 0)
+    assert cost == pytest.approx(6.0)  # cents: $0.10 in + $0.50 out per 1M
 
 
 def test_pricing_cache_rates():
-    cost = CostCalculator.calculate_cost(HAIKU_55, 0, 0, 1_000_000, 1_000_000)
-    assert cost == pytest.approx(13.5)  # cents: $0.01 read + $0.125 write
+    cost = CostCalculator.calculate_cost(HAIKU_55, 0, 0, 50_000, 50_000)
+    assert cost == pytest.approx(0.675)  # cents: $0.01 read + $0.125 write per 1M
+
+
+def test_pricing_long_prompt():
+    # Over 100,000 prompt tokens, every token of the request costs five times as much.
+    cost = CostCalculator.calculate_cost(HAIKU_55, 100_001, 100_000, 0)
+    assert cost == pytest.approx((100_001 * 0.50 + 100_000 * 2.50) / 1_000_000 * 100)
+
+
+def test_pricing_long_prompt_counts_cache_tokens():
+    # Cache reads and cache writes are part of the prompt.
+    cost = CostCalculator.calculate_cost(HAIKU_55, 20_000, 0, 80_000, 1)
+    assert cost == pytest.approx(
+        (20_000 * 0.50 + 80_000 * 0.05 + 1 * 0.625) / 1_000_000 * 100
+    )
 
 
 def test_dated_model_id_matches():

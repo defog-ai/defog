@@ -146,6 +146,7 @@ class CostCalculator:
         *,
         service_tier: str | None = None,
         batch: bool = False,
+        prompt_tokens: int | None = None,
     ) -> Optional[float]:
         """
         Calculate cost in cents for the given token usage.
@@ -164,6 +165,14 @@ class CostCalculator:
         input plus cached input exceeds 272,000 tokens use the published
         long-context rates on every tier; price separate requests
         separately rather than pricing their summed token counts.
+
+        The same holds for models whose MODEL_COSTS entry has a
+        ``long_prompt`` price (Claude Haiku 5.5, Gemini 2.5 Pro and 3.1 Pro):
+        a request whose prompt is longer than its limit pays the higher price
+        on every token. The prompt length is ``input_tokens`` plus
+        ``cached_input_tokens`` plus ``cache_creation_input_tokens``.
+        ``prompt_tokens`` replaces that sum for a provider whose input count
+        already includes the cached tokens.
 
         Returns:
             Cost in cents, or None if model pricing is not available
@@ -204,6 +213,17 @@ class CostCalculator:
                     output_tokens,
                 )
 
+        long_prompt = costs.get("long_prompt")
+        if long_prompt is not None:
+            if prompt_tokens is None:
+                prompt_tokens = (
+                    input_tokens
+                    + (cached_input_tokens or 0)
+                    + (cache_creation_input_tokens or 0)
+                )
+            if prompt_tokens > long_prompt["above_prompt_tokens"]:
+                costs = long_prompt
+
         rate_prefix = ""
         if "off_peak_input_cost_per1k" in costs and not _is_deepseek_peak_time(
             calculation_time
@@ -236,6 +256,29 @@ class CostCalculator:
             ) * 100
 
         return cost_in_cents
+
+    @staticmethod
+    def calculate_requests_cost(
+        model: str, requests: list[dict[str, int]]
+    ) -> Optional[float]:
+        """Price each request on its own token counts and add the costs.
+
+        Each item holds ``calculate_cost`` keyword arguments for one provider
+        request (``input_tokens``, ``output_tokens`` and optionally
+        ``cached_input_tokens``, ``cache_creation_input_tokens`` and
+        ``prompt_tokens``). A price that depends on the prompt length must
+        see one request at a time: three requests of 60,000 tokens are three
+        short prompts, not one prompt of 180,000 tokens.
+
+        Returns None when the model has no price.
+        """
+        total = 0.0
+        for request in requests:
+            cost = CostCalculator.calculate_cost(model, **request)
+            if cost is None:
+                return None
+            total += cost
+        return total
 
     @staticmethod
     def is_model_supported(model: str) -> bool:
