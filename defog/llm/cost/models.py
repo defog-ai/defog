@@ -12,6 +12,10 @@ _DEEPSEEK_FLASH_COSTS = {
 }
 
 
+# Prices in USD per 1K tokens. An entry may hold a "long_prompt" dict: when
+# the prompt of one request (uncached input, cache reads and cache writes)
+# has more than "above_prompt_tokens" tokens, its rates replace the rates
+# above for every token of that request, output included.
 MODEL_COSTS = {
     "chatgpt-4o": {"input_cost_per1k": 0.0025, "output_cost_per1k": 0.01},
     "gpt-4o": {
@@ -259,16 +263,21 @@ MODEL_COSTS = {
         "cache_creation_input_cost_per1k": 0.005,
         "output_cost_per1k": 0.02,
     },
-    # Released 2026-10-07. These are the prices for prompts of up to 100,000
-    # tokens. Longer prompts cost five times as much ($0.50 input, $2.50
-    # output, $0.05 cache read, $0.625 5-minute cache write per MTok); this
-    # table does not apply that higher rate.
+    # Released 2026-10-07. A prompt of over 100,000 tokens pays five times
+    # the price on every token of the request, output included.
     # Source: https://platform.claude.com/docs/en/models/haiku-5-5/overview
     "claude-haiku-5-5": {
         "input_cost_per1k": 0.0001,
         "cached_input_cost_per1k": 0.00001,
         "cache_creation_input_cost_per1k": 0.000125,
         "output_cost_per1k": 0.0005,
+        "long_prompt": {
+            "above_prompt_tokens": 100_000,
+            "input_cost_per1k": 0.0005,
+            "cached_input_cost_per1k": 0.00005,
+            "cache_creation_input_cost_per1k": 0.000625,
+            "output_cost_per1k": 0.0025,
+        },
     },
     "claude-haiku-4-5": {
         "input_cost_per1k": 0.001,
@@ -308,9 +317,16 @@ MODEL_COSTS = {
         "input_cost_per1k": 0.0003,
         "output_cost_per1k": 0.0025,
     },
+    # Gemini 2.5 Pro and 3.1 Pro charge more for prompts of over 200,000
+    # tokens. Source (2026-10-08): https://ai.google.dev/gemini-api/docs/pricing
     "gemini-2.5-pro": {
         "input_cost_per1k": 0.00125,
         "output_cost_per1k": 0.01,
+        "long_prompt": {
+            "above_prompt_tokens": 200_000,
+            "input_cost_per1k": 0.0025,
+            "output_cost_per1k": 0.015,
+        },
     },
     "gemini-3-flash": {
         "input_cost_per1k": 0.0005,
@@ -331,6 +347,12 @@ MODEL_COSTS = {
         "input_cost_per1k": 0.002,
         "output_cost_per1k": 0.012,
         "cached_input_cost_per1k": 0.0002,
+        "long_prompt": {
+            "above_prompt_tokens": 200_000,
+            "input_cost_per1k": 0.004,
+            "output_cost_per1k": 0.018,
+            "cached_input_cost_per1k": 0.0004,
+        },
     },
     "gemini-3.5-flash": {
         "input_cost_per1k": 0.0015,

@@ -118,9 +118,12 @@ and [Sonnet 5 migration guide](https://platform.claude.com/docs/en/models/sonnet
 With thinking disabled, the effort level cannot change later in the same
 conversation. Keep one `reasoning_effort` for all turns of a conversation.
 
-The cost table uses the prices for prompts of up to 100,000 tokens ($0.10
-input and $0.50 output per million tokens). Anthropic charges five times these
-prices for longer prompts, and defog does not apply that higher rate.
+A prompt of up to 100,000 tokens costs $0.10 input and $0.50 output per
+million tokens. A longer prompt costs five times as much on every token of the
+request, output included. The prompt length is the uncached input plus cache
+reads plus cache writes. defog applies the higher rate to each request
+separately, so a tool loop of several 60,000-token requests pays the lower
+rate on each of them. See [Prompt-length prices](cost-tracking.md#prompt-length-prices).
 
 See Anthropic's [Haiku 5.5 overview](https://platform.claude.com/docs/en/models/haiku-5-5/overview)
 and [migration guide](https://platform.claude.com/docs/en/models/haiku-5-5/migration-guide).
