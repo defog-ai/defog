@@ -180,7 +180,7 @@ async def web_search_tool(
             if reasoning_effort and ("3-7" in model or "-4" in model or "-5" in model):
                 # "any" tool_choice conflicts with thinking, use "auto" instead
                 request_params["tool_choice"] = {"type": "auto"}
-                request_params["temperature"] = 1.0
+                # No temperature: the Anthropic SDK removed it in 1.9.0.
 
                 # Claude 4.6+ models support adaptive thinking, which
                 # replaces the deprecated budget_tokens approach.

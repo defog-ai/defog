@@ -93,7 +93,7 @@ def test_haiku_4_5_unchanged():
     assert adaptive_thinking_config("claude-haiku-4-5", "high") is None
     params = _params("claude-haiku-4-5")
     assert params["thinking"] == {"type": "disabled"}
-    assert params["temperature"] == 0.0
+    assert "temperature" not in params
     params = _params("claude-haiku-4-5", reasoning_effort="high")
     assert params["thinking"] == {"type": "enabled", "budget_tokens": 8192}
-    assert params["temperature"] == 1.0
+    assert "temperature" not in params
