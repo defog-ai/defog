@@ -139,8 +139,8 @@ writes together. When a response has no split, all of its cache writes use the
 
 The 1-hour rates come from [Anthropic's pricing page](https://platform.claude.com/docs/en/about-claude/pricing),
 checked on 2026-10-08. Older models that the page no longer lists
-(claude-3-5-sonnet, claude-3-5-haiku, claude-3-opus, claude-3-sonnet,
-claude-3-haiku) have no 1-hour rate and keep the 5-minute rate.
+(claude-3-5-sonnet, claude-3-opus, claude-3-sonnet, claude-3-haiku) have no
+1-hour rate and keep the 5-minute rate.
 
 To price one request yourself, pass the 1-hour part of the cache writes:
 

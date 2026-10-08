@@ -220,11 +220,12 @@ MODEL_COSTS = {
         "cache_creation_1h_input_cost_per1k": 0.004,
         "output_cost_per1k": 0.01,
     },
-    # Released 2026-09-28 at the same prices as Sonnet 5.
+    # Released 2026-09-28. Same input, output and cache-write prices as Sonnet 5,
+    # but cache reads cost 0.05x the input price ($0.10 per million tokens).
     # Source: https://platform.claude.com/docs/en/models/sonnet-5-5/overview
     "claude-sonnet-5-5": {
         "input_cost_per1k": 0.002,
-        "cached_input_cost_per1k": 0.0002,
+        "cached_input_cost_per1k": 0.0001,
         "cache_creation_input_cost_per1k": 0.0025,
         "cache_creation_1h_input_cost_per1k": 0.004,
         "output_cost_per1k": 0.01,
@@ -306,11 +307,13 @@ MODEL_COSTS = {
         "cache_creation_1h_input_cost_per1k": 0.002,
         "output_cost_per1k": 0.005,
     },
+    # Claude Haiku 3.5 is retired but the pricing page still lists it.
     "claude-3-5-haiku": {
-        "input_cost_per1k": 0.00025,
-        "output_cost_per1k": 0.00125,
-        "cached_input_cost_per1k": 0.000025,
-        "cache_creation_input_cost_per1k": 0.0003125,
+        "input_cost_per1k": 0.0008,
+        "output_cost_per1k": 0.004,
+        "cached_input_cost_per1k": 0.00008,
+        "cache_creation_input_cost_per1k": 0.001,
+        "cache_creation_1h_input_cost_per1k": 0.0016,
     },
     "claude-3-opus": {
         "input_cost_per1k": 0.015,

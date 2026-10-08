@@ -117,15 +117,34 @@ def test_model_without_a_one_hour_rate_keeps_the_five_minute_rate():
 
 
 def test_every_listed_one_hour_rate_is_twice_the_input_rate():
-    checked = 0
+    checked = set()
     for model, rates in MODEL_COSTS.items():
         for table in (rates, rates.get("long_prompt") or {}):
             if "cache_creation_1h_input_cost_per1k" in table:
                 assert table["cache_creation_1h_input_cost_per1k"] == pytest.approx(
                     2 * table["input_cost_per1k"]
                 ), model
-                checked += 1
-    assert checked == 17  # 16 Claude rows plus Haiku 5.5's long-prompt rates
+                checked.add(model)
+    assert checked, "no model has a 1-hour cache write rate"
+
+
+def test_only_claude_models_missing_from_the_pricing_page_lack_a_one_hour_rate():
+    # Anthropic's pricing page no longer lists these four models, so they have
+    # no 1-hour write price and keep the 5-minute rate for every cache write.
+    missing = {
+        model
+        for model, rates in MODEL_COSTS.items()
+        if model.startswith("claude-")
+        and "cache_creation_1h_input_cost_per1k" not in rates
+    }
+    assert missing == {
+        "claude-3-5-sonnet",
+        "claude-3-opus",
+        "claude-3-sonnet",
+        "claude-3-haiku",
+    }
+    long_prompt = MODEL_COSTS["claude-haiku-5-5"]["long_prompt"]
+    assert "cache_creation_1h_input_cost_per1k" in long_prompt
 
 
 @pytest.mark.parametrize("model", ["gpt-4o", "gpt-5.4", "gemini-2.5-flash"])
