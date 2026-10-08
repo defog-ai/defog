@@ -1,3 +1,4 @@
+import importlib.util
 import os
 import shutil
 import unittest
@@ -101,6 +102,9 @@ class ExecuteAsyncQueryOnceTestCase(unittest.IsolatedAsyncioTestCase):
             print("Moving logs back to ~/.defog")
             shutil.move(os.path.join(self.tmp_dir, "logs"), self.logs_path)
 
+    @unittest.skipUnless(
+        importlib.util.find_spec("asyncpg"), "needs the async-postgres extra"
+    )
     @mock.patch("asyncpg.connect")
     async def test_async_execute_query_once_success(self, mock_connect):
         # Mock the asyncpg.connect function
