@@ -246,7 +246,53 @@ class OpenAIProvider(BaseLLMProvider):
         description: str = "Tool generated image",
         image_detail: str = "low",
     ) -> Dict[str, Any]:
-        return convert_to_openai_format(image_base64)
+        """
+        Create a message with image content in OpenAI's format with validation.
+
+        Args:
+            image_base64: Base64-encoded image data - can be single string or list of strings
+            description: Description of the image(s)
+            image_detail: Level of detail for image analysis - "low" or "high" (default: "low")
+
+        Returns:
+            Message dict in OpenAI's format
+
+        Raises:
+            ValueError: If no valid images are provided or validation fails
+        """
+        from ..utils_image_support import (
+            validate_and_process_image_data,
+            safe_extract_media_type_and_data,
+        )
+
+        if image_detail not in ["low", "high"]:
+            raise ValueError(
+                f"Invalid image_detail value: {image_detail}. Must be 'low' or 'high'"
+            )
+
+        valid_images, errors = validate_and_process_image_data(image_base64)
+
+        if not valid_images:
+            error_summary = "; ".join(errors) if errors else "No valid images provided"
+            raise ValueError(f"Cannot create image message: {error_summary}")
+
+        for error in errors:
+            logger.warning(f"Skipping invalid image: {error}")
+
+        content = [{"type": "text", "text": description}]
+        for img_data in valid_images:
+            media_type, clean_data = safe_extract_media_type_and_data(img_data)
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:{media_type};base64,{clean_data}",
+                        "detail": image_detail,
+                    },
+                }
+            )
+
+        return {"role": "user", "content": content}
 
     def preprocess_messages(
         self, messages: List[Dict[str, Any]], model: str
@@ -316,6 +362,8 @@ class OpenAIProvider(BaseLLMProvider):
                     else:
                         # Fallback to raw structure if unexpected
                         conv["image_url"] = img
+                    if isinstance(img, dict) and img.get("detail"):
+                        conv["detail"] = img["detail"]
                     converted.append(conv)
                 elif btype and btype.startswith("input_"):
                     # Already in Responses format (e.g., input_file)

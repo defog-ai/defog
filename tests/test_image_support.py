@@ -473,7 +473,11 @@ class TestImageValidationEdgeCases:
         """Test base64 with incorrect padding."""
         is_valid, error = validate_base64_image("YWJjZGVmZ2hp=")  # Missing padding
         assert is_valid is False
-        assert "Invalid" in error  # Will fail format check
+        # Some Python versions reject the padding, others decode it and then
+        # fail the format check
+        assert (
+            "Invalid base64 encoding" in error or "Unrecognized image format" in error
+        )
 
     def test_valid_base64_but_not_image(self):
         """Test valid base64 that doesn't contain image data."""

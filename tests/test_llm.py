@@ -789,10 +789,6 @@ async def test_gemini_previous_response_uses_conversation_cache(monkeypatch):
     monkeypatch.setattr(
         "defog.llm.providers.gemini_provider.genai.Client", FakeGeminiClient
     )
-    monkeypatch.setattr(
-        "defog.llm.providers.gemini_provider.types.GenerationConfig",
-        lambda **kwargs: kwargs,
-    )
 
     base_messages = [
         {"role": "system", "content": "You are Gemini."},

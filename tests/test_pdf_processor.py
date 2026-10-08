@@ -2,15 +2,25 @@
 Tests for PDF processing functionality.
 """
 
+import importlib.util
+
 import pytest
 import asyncio
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 import base64
 
-from defog.llm.pdf_processor import PDFAnalysisInput, ClaudePDFProcessor, analyze_pdf
+from defog.llm.pdf_processor import PDFAnalysisInput, ClaudePDFProcessor
 from defog.llm.pdf_utils import PDFProcessor
 
 from pydantic import BaseModel
+
+needs_pymupdf = pytest.mark.skipif(
+    importlib.util.find_spec("fitz") is None, reason="needs PyMuPDF"
+)
+
+
+def _claude_processor() -> ClaudePDFProcessor:
+    return ClaudePDFProcessor(provider="anthropic", model="claude-sonnet-4-20250514")
 
 
 class TestPDFProcessor:
@@ -37,6 +47,7 @@ class TestPDFProcessor:
         decoded = base64.b64decode(encoded)
         assert decoded == mock_pdf_content
 
+    @needs_pymupdf
     @patch("fitz.open")
     def test_get_pdf_metadata(self, mock_fitz_open, pdf_processor, mock_pdf_content):
         """Test PDF metadata extraction."""
@@ -70,6 +81,7 @@ class TestPDFProcessor:
         large_size_metadata = {"page_count": 50, "size_bytes": 40 * 1024 * 1024}  # 40MB
         assert pdf_processor.should_split_pdf(large_size_metadata)
 
+    @needs_pymupdf
     @patch("fitz.open")
     def test_split_pdf_by_pages(self, mock_fitz_open, pdf_processor, mock_pdf_content):
         """Test PDF splitting by pages."""
@@ -100,7 +112,7 @@ class TestClaudePDFProcessor:
     @pytest.fixture
     def claude_processor(self):
         """Create ClaudePDFProcessor instance."""
-        return ClaudePDFProcessor()
+        return _claude_processor()
 
     def test_create_pdf_message(self, claude_processor):
         """Test PDF message creation for Claude API."""
@@ -108,21 +120,19 @@ class TestClaudePDFProcessor:
         task = "Analyze this PDF"
 
         messages = asyncio.run(
-            claude_processor._create_pdf_message(pdf_chunks, task, 0, 1)
+            claude_processor._create_api_input(pdf_chunks, task, 0, 1)
         )
 
-        assert len(messages) == 2
-        assert messages[0]["role"] == "system"
-        assert messages[1]["role"] == "user"
+        # One user message: the PDF, then the instructions and the task.
+        assert len(messages) == 1
+        assert messages[0]["role"] == "user"
 
-        # Check cache control
-        system_content = messages[0]["content"][0]
-        assert system_content["cache_control"]["type"] == "ephemeral"
-
-        user_content = messages[1]["content"]
-        pdf_content = next(item for item in user_content if item["type"] == "document")
+        pdf_content, text_content = messages[0]["content"]
+        assert pdf_content["type"] == "document"
         assert pdf_content["cache_control"]["type"] == "ephemeral"
         assert pdf_content["source"]["data"] == "base64_encoded_pdf"
+        assert text_content["type"] == "text"
+        assert "Analyze this PDF" in text_content["text"]
 
     @patch("defog.llm.pdf_processor.chat_async")
     @pytest.mark.asyncio
@@ -189,54 +199,50 @@ class TestClaudePDFProcessor:
 
 
 class TestPDFAnalysisTool:
-    """Test the main PDF analysis tool function."""
+    """Test ClaudePDFProcessor.analyze_pdf from download to result."""
 
     @patch("defog.llm.pdf_processor.download_and_process_pdf")
-    @patch("defog.llm.pdf_processor._default_processor.analyze_pdf")
     @pytest.mark.asyncio
-    async def test_analyze_pdf_success(self, mock_analyze_pdf, mock_download):
+    async def test_analyze_pdf_success(self, mock_download):
         """Test successful PDF analysis."""
-        # Mock download and processing
-        mock_download.return_value = (["base64_chunk"], {"page_count": 10})
-
-        # Mock analysis result
-        mock_result = MagicMock()
-        mock_result.success = True
-        mock_result.result = "Analysis complete"
-        mock_result.metadata = {"total_cost_in_cents": 15}
-        mock_result.error = None
-        mock_result.chunks_processed = 1
-        mock_analyze_pdf.return_value = mock_result
-
-        input_data = PDFAnalysisInput(
-            url="https://example.com/test.pdf",
-            task="Analyze this PDF",
-            response_format=BaseModel,
+        mock_download.return_value = (
+            ["base64_chunk"],
+            {"page_count": 10, "chunk_count": 1},
+        )
+        processor = _claude_processor()
+        processor._process_single_chunk = AsyncMock(
+            return_value={
+                "success": True,
+                "content": "Analysis complete",
+                "input_tokens": 100,
+                "output_tokens": 20,
+                "cost_in_cents": 15,
+            }
         )
 
-        result = await analyze_pdf(input_data)
+        result = await processor.analyze_pdf(
+            "https://example.com/test.pdf", "Analyze this PDF"
+        )
 
-        assert result["success"] is True
-        assert result["result"] == "Analysis complete"
-        assert result["chunks_processed"] == 1
-        assert result["error"] is None
+        assert result.success is True
+        assert "Analysis complete" in result.result
+        assert result.chunks_processed == 1
+        assert result.error is None
+        assert result.metadata["total_cost_in_cents"] == 15
 
     @patch("defog.llm.pdf_processor.download_and_process_pdf")
     @pytest.mark.asyncio
     async def test_analyze_pdf_download_failure(self, mock_download):
         """Test PDF analysis with download failure."""
-        # Mock download failure
         mock_download.side_effect = Exception("Download failed")
 
-        input_data = PDFAnalysisInput(
-            url="https://example.com/invalid.pdf", task="Analyze this PDF"
+        result = await _claude_processor().analyze_pdf(
+            "https://example.com/invalid.pdf", "Analyze this PDF"
         )
 
-        result = await analyze_pdf(input_data)
-
-        assert result["success"] is False
-        assert "Download failed" in result["error"]
-        assert result["chunks_processed"] == 0
+        assert result.success is False
+        assert "Download failed" in result.error
+        assert result.chunks_processed == 0
 
 
 class TestPDFAnalysisInput:
