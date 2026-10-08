@@ -698,22 +698,18 @@ class AnthropicProvider(BaseLLMProvider):
             thinking = {
                 "type": "adaptive",
             }
-            temperature = 1.0
         elif reasoning_effort is not None and supports_thinking:
             if reasoning_effort == "low":
-                temperature = 1.0
                 thinking = {
                     "type": "enabled",
                     "budget_tokens": 2048,
                 }
             elif reasoning_effort == "medium":
-                temperature = 1.0
                 thinking = {
                     "type": "enabled",
                     "budget_tokens": 4096,
                 }
             elif reasoning_effort in ("high", "max", "xhigh"):
-                temperature = 1.0
                 thinking = {
                     "type": "enabled",
                     "budget_tokens": 8192,
@@ -746,15 +742,13 @@ class AnthropicProvider(BaseLLMProvider):
             "messages": messages,
             "model": model,
             "max_tokens": max_completion_tokens,
-            "temperature": temperature,
             "timeout": timeout,
             "thinking": thinking,
         }
-        # Sonnet 5 and Haiku 5.5 reject non-default sampling values, including
-        # defog's default temperature=0. Omit temperature in both thinking
-        # modes.
-        if is_sonnet_5 or is_haiku_5_5:
-            params.pop("temperature")
+        # `temperature` is never sent. The Anthropic SDK removed it from
+        # messages.create() in 1.9.0, so passing it raises a TypeError, and
+        # the API uses its default sampling for all current models. The
+        # argument stays in this signature so existing callers keep working.
 
         # Build output_config: may include adaptive thinking effort and/or
         # structured output format (json_schema).

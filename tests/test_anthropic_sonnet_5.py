@@ -76,7 +76,7 @@ def test_sonnet_5_omits_sampling_parameters(temperature):
 def test_legacy_thinking_budgets_unchanged(model, effort, budget):
     params = _params(model, reasoning_effort=effort)
     assert params["thinking"] == {"type": "enabled", "budget_tokens": budget}
-    assert params["temperature"] == 1.0
+    assert "temperature" not in params
     assert "output_config" not in params
 
 
