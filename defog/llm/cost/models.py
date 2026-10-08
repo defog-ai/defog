@@ -259,6 +259,17 @@ MODEL_COSTS = {
         "cache_creation_input_cost_per1k": 0.005,
         "output_cost_per1k": 0.02,
     },
+    # Released 2026-10-07. These are the prices for prompts of up to 100,000
+    # tokens. Longer prompts cost five times as much ($0.50 input, $2.50
+    # output, $0.05 cache read, $0.625 5-minute cache write per MTok); this
+    # table does not apply that higher rate.
+    # Source: https://platform.claude.com/docs/en/models/haiku-5-5/overview
+    "claude-haiku-5-5": {
+        "input_cost_per1k": 0.0001,
+        "cached_input_cost_per1k": 0.00001,
+        "cache_creation_input_cost_per1k": 0.000125,
+        "output_cost_per1k": 0.0005,
+    },
     "claude-haiku-4-5": {
         "input_cost_per1k": 0.001,
         "cached_input_cost_per1k": 0.0001,

@@ -102,6 +102,29 @@ parameters. Legacy thinking budgets and other models' effort handling are unchan
 See Anthropic's [effort reference](https://platform.claude.com/docs/en/build-with-claude/effort)
 and [Sonnet 5 migration guide](https://platform.claude.com/docs/en/models/sonnet-5/migration-guide).
 
+### Claude Haiku 5.5
+
+`claude-haiku-5-5` follows the same rules as Sonnet 5:
+
+- Any `reasoning_effort` (`"low"`, `"medium"`, `"high"`, `"xhigh"` or `"max"`)
+  is sent as adaptive thinking with that value in `output_config.effort`.
+- When no reasoning effort is requested (omitted, `None`, or `"none"`), defog
+  sends `thinking={"type": "disabled"}`. The model would otherwise think by
+  default.
+- `temperature` is not sent, because the model rejects any value other than 1.
+- Forced tool use (`tool_choice` of `"any"` or a named tool) is accepted. The
+  response to a forced call has no thinking block.
+
+With thinking disabled, the effort level cannot change later in the same
+conversation. Keep one `reasoning_effort` for all turns of a conversation.
+
+The cost table uses the prices for prompts of up to 100,000 tokens ($0.10
+input and $0.50 output per million tokens). Anthropic charges five times these
+prices for longer prompts, and defog does not apply that higher rate.
+
+See Anthropic's [Haiku 5.5 overview](https://platform.claude.com/docs/en/models/haiku-5-5/overview)
+and [migration guide](https://platform.claude.com/docs/en/models/haiku-5-5/migration-guide).
+
 ## Custom Base URLs
 
 You can point any provider at a custom endpoint (e.g. a proxy, self-hosted model, or Azure deployment) using the `base_url` parameter:
