@@ -384,22 +384,43 @@ async def sql_answer_tool(
 ) -> dict
 ```
 
-#### analyze_pdf
+#### ClaudePDFProcessor / OpenAIPDFProcessor
 ```python
-async def analyze_pdf(
-    pdf_input: PDFAnalysisInput
-) -> dict
+class ClaudePDFProcessor:
+    def __init__(
+        self,
+        provider: Union[str, LLMProvider],
+        model: str,
+        temperature: float = 0.0,
+    )
 
-class PDFAnalysisInput(BaseModel):
-    url: str
-    task: str
+class OpenAIPDFProcessor:
+    def __init__(
+        self,
+        provider: Union[str, LLMProvider] = "openai",
+        model: str = "gpt-4o",
+        temperature: float = 0.0,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+    )
+
+# Both processors
+async def analyze_pdf(
+    self,
+    url: str,
+    task: str,
     response_format: Optional[Type[BaseModel]] = None
-    max_pages_per_chunk: int = 40
-    enable_caching: bool = True
-    cache_duration_minutes: int = 5
-    parallel_chunks: bool = True
-    include_metadata: bool = False
+) -> PDFAnalysisResult
+
+class PDFAnalysisResult(BaseModel):
+    success: bool
+    result: Any  # text, or an instance of response_format
+    metadata: Dict[str, Any]  # page count, chunk count, tokens, cost
+    error: Optional[str] = None
+    chunks_processed: int
 ```
+
+Both processors need PyMuPDF (`pip install pymupdf`) to read and split the PDF.
 
 ## Agent Orchestration
 

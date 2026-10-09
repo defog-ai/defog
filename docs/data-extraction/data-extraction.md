@@ -90,22 +90,33 @@ if "revenue_table" in data_dict["data"]:
 
 ## PDF Analysis Tool
 
-Analyze PDFs from URLs with Claude's advanced capabilities, including input caching and smart chunking.
+Analyze PDFs from URLs with Claude, including input caching and automatic splitting of large PDFs. `OpenAIPDFProcessor` has the same `analyze_pdf` method for OpenAI models.
+
+The processor needs PyMuPDF to read and split the PDF:
+
+```bash
+pip install pymupdf
+```
 
 ### Basic Usage
 
 ```python
-from defog.llm.pdf_processor import analyze_pdf, PDFAnalysisInput
+from defog.llm.pdf_processor import ClaudePDFProcessor
+
+processor = ClaudePDFProcessor(
+    provider="anthropic",
+    model="claude-sonnet-4-20250514"
+)
 
 # Simple analysis
-pdf_input = PDFAnalysisInput(
+result = await processor.analyze_pdf(
     url="https://arxiv.org/pdf/2301.07041.pdf",
     task="Summarize this research paper"
 )
-
-result = await analyze_pdf(pdf_input)
-print(result["result"])
+print(result.result)
 ```
+
+`analyze_pdf` returns a `PDFAnalysisResult` with the fields `success`, `result`, `metadata`, `error` and `chunks_processed`. It does not raise on a failed download or API call; check `result.success` and `result.error`.
 
 ### Structured Output with Pydantic
 
@@ -123,15 +134,13 @@ class ResearchPaperSummary(BaseModel):
     limitations: List[str] = Field(description="Stated limitations")
 
 # Analyze with structured response
-pdf_input = PDFAnalysisInput(
+result = await processor.analyze_pdf(
     url="https://arxiv.org/pdf/2301.07041.pdf",
     task="Extract detailed information about this research paper",
     response_format=ResearchPaperSummary
 )
-
-result = await analyze_pdf(pdf_input)
-if result["success"]:
-    summary: ResearchPaperSummary = result["result"]
+if result.success:
+    summary: ResearchPaperSummary = result.result
     print(f"Title: {summary.title}")
     print(f"Authors: {', '.join(summary.authors)}")
     print(f"\nMain Contributions:")
@@ -139,42 +148,44 @@ if result["success"]:
         print(f"- {contrib}")
 ```
 
+`result.result` is an instance of `response_format` only when the PDF fits in one chunk. When a large PDF is split, `result.result` is text that combines the answer for each chunk.
+
 ### Cost Optimization with Caching
 
-The PDF analysis tool uses Anthropic's input caching for 5-minute cache windows:
+`ClaudePDFProcessor` marks the PDF for Anthropic's input caching, which keeps it for 5 minutes:
 
 ```python
 # First analysis - full cost
-result1 = await analyze_pdf(PDFAnalysisInput(
+result1 = await processor.analyze_pdf(
     url="https://example.com/large_report.pdf",
     task="Summarize the executive summary"
-))
-print(f"Cost: ${result1['metadata']['total_cost_in_cents'] / 100:.4f}")
-print(f"Cached tokens: {result1['metadata']['cached_tokens']}")  # 0 on first run
+)
+print(f"Cost: ${result1.metadata['total_cost_in_cents'] / 100:.4f}")
+print(f"Cached tokens: {result1.metadata['cached_tokens']}")  # 0 on first run
 
-# Second analysis within 5 minutes - dramatically reduced cost
-result2 = await analyze_pdf(PDFAnalysisInput(
+# Second analysis within 5 minutes - much lower cost
+result2 = await processor.analyze_pdf(
     url="https://example.com/large_report.pdf",  # Same PDF
     task="Extract all financial tables"  # Different task
-))
-print(f"Cost: ${result2['metadata']['total_cost_in_cents'] / 100:.4f}")  # Much lower!
-print(f"Cached tokens: {result2['metadata']['cached_tokens']}")  # Most tokens cached
+)
+print(f"Cost: ${result2.metadata['total_cost_in_cents'] / 100:.4f}")
+print(f"Cached tokens: {result2.metadata['cached_tokens']}")  # Most tokens cached
 ```
 
 ### Handling Large PDFs
 
-PDFs are automatically chunked if they exceed size limits:
+PDFs are split automatically if they exceed size limits:
 
 ```python
-# Large PDFs (>80 pages or >24MB) are automatically split
-result = await analyze_pdf(PDFAnalysisInput(
+# Large PDFs (>80 pages or >24MB) are split and the chunks are analyzed in parallel
+result = await processor.analyze_pdf(
     url="https://example.com/1000_page_report.pdf",
     task="Summarize each major section of this report"
-))
+)
 
-# The tool handles chunking transparently
-print(f"Success: {result['success']}")
-print(f"Result: {result['result']}")  # Combined analysis from all chunks
+print(f"Success: {result.success}")
+print(f"Chunks: {result.chunks_processed}")
+print(f"Result: {result.result}")  # Combined analysis from all chunks
 ```
 
 ## Image Data Extraction
