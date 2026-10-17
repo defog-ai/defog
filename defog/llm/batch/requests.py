@@ -154,8 +154,20 @@ def _openai_line(
     body = {key: value for key, value in params.items() if value is not None}
     if item.response_format is not None:
         # The same conversion that client.responses.parse(text_format=...)
-        # uses for a live call.
-        from openai.lib._parsing._responses import type_to_text_format_param
+        # uses for a live call. It lives in a private openai module, so an
+        # openai release may move it.
+        try:
+            from openai.lib._parsing._responses import type_to_text_format_param
+        except ImportError as exc:
+            import openai
+
+            version = getattr(openai, "__version__", "unknown")
+            raise ConfigurationError(
+                "Structured output schemas for OpenAI batch requests need an "
+                "openai version that provides openai.lib._parsing._responses."
+                f"type_to_text_format_param. The installed openai version is "
+                f"{version}. Install a compatible openai version."
+            ) from exc
 
         body["text"] = {"format": type_to_text_format_param(item.response_format)}
     return {
@@ -190,7 +202,8 @@ def build_requests(
     The provider is picked from the model name (OpenAI and Anthropic models
     are supported). Raises ValueError for empty input, invalid or repeated
     ids, and batches over the provider's request-count or size limit, and
-    ConfigurationError for a model of another provider.
+    ConfigurationError for a model of another provider or for an OpenAI
+    schema when the installed openai version cannot convert it.
     """
     batch_items = [_as_item(item) for item in items]
     if not batch_items:

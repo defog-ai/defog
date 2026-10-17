@@ -1,6 +1,7 @@
 """Offline tests for building Batch request lines. No API call is made."""
 
 import json
+import sys
 
 import pytest
 from pydantic import BaseModel, Field
@@ -188,3 +189,16 @@ def test_default_limits_match_the_published_values():
     assert batch_requests.OPENAI_MAX_BYTES == 200_000_000
     assert batch_requests.ANTHROPIC_MAX_REQUESTS == 100_000
     assert batch_requests.ANTHROPIC_MAX_BYTES == 256_000_000
+
+
+def test_openai_schema_needs_a_compatible_openai_version(monkeypatch):
+    import openai
+
+    # A None entry in sys.modules makes the import raise ImportError, as if
+    # an openai release had moved the private helper.
+    monkeypatch.setitem(sys.modules, "openai.lib._parsing._responses", None)
+    with pytest.raises(ConfigurationError) as error:
+        build_requests([item(response_format=Answer)], "gpt-5-mini")
+    assert openai.__version__ in str(error.value)
+    assert "compatible openai version" in str(error.value)
+    assert isinstance(error.value.__cause__, ImportError)

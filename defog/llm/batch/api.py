@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Dict, List, Mapping, Optional, Union
@@ -20,6 +21,8 @@ from .results import (
     apply_response_format,
     price,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -106,7 +109,11 @@ async def wait(
                     f"Batch {job.batch_id} is still {status.status!r} after "
                     f"{timeout} seconds."
                 )
-            await asyncio.sleep(poll_interval)
+            # Never sleep past the timeout.
+            delay = poll_interval
+            if timeout is not None:
+                delay = min(delay, timeout - (time.monotonic() - started))
+            await asyncio.sleep(delay)
 
 
 async def collect(
@@ -117,11 +124,14 @@ async def collect(
 ) -> List[BatchResult]:
     """Download the results of an ended batch, in the order of ``job.ids``.
 
-    Every request comes back with its id and one status (see
+    Returns exactly one result per requested id, with one status (see
     ``RESULT_STATUSES``). Expired, canceled and errored requests are
     returned, not retried. A requested id with no result line gets the
-    status ``missing``. Each result with usage is priced at the Batch rates
-    in ``cost_in_cents``.
+    status ``missing``. When the provider returns more than one line for an
+    id, the first line is kept. Lines for an id that was not requested, or
+    with no id, are dropped; every dropped line is named in one warning on
+    this module's logger. Each result with usage is priced at the Batch
+    rates in ``cost_in_cents``.
 
     With ``response_format`` (one pydantic model, or a mapping from id to
     model, such as ``BatchRequests.response_formats``), each succeeded
@@ -139,12 +149,24 @@ async def collect(
 
     requested = set(job.ids)
     by_id: Dict[str, BatchResult] = {}
-    extra: List[BatchResult] = []
+    repeated: List[Optional[str]] = []
+    unknown: List[Optional[str]] = []
     for result in results:
-        if result.id in by_id or result.id not in requested:
-            extra.append(result)
+        if result.id not in requested:
+            unknown.append(result.id)
+        elif result.id in by_id:
+            repeated.append(result.id)
         else:
             by_id[result.id] = result
+    if repeated or unknown:
+        logger.warning(
+            "Batch %s: dropped %d extra result lines. Repeated ids: %s. Ids "
+            "that were not requested (None for a line with no id): %s.",
+            job.batch_id,
+            len(repeated) + len(unknown),
+            repeated,
+            unknown,
+        )
     ordered = [
         by_id.get(request_id)
         or BatchResult(
@@ -156,7 +178,6 @@ async def collect(
         )
         for request_id in job.ids
     ]
-    ordered.extend(extra)
 
     for result in ordered:
         result.cost_in_cents = price(result)

@@ -7,7 +7,8 @@ Both providers charge half the standard price and return the results
 within 24 hours, usually much sooner. Use it when the answers are not
 needed right away.
 
-The module has four async steps and one helper for prices:
+The module has four steps and one helper for prices. `build_requests` is a
+plain function; the other three steps are async:
 
 1. `build_requests(items, model)` turns your requests into the provider's
    batch format. It uses the same request settings as `chat_async`.
@@ -122,8 +123,13 @@ ids. Each result has a `status`:
 | `missing`    | The batch ended without a result line for this request.      |
 
 A result also has `text`, `usage`, `cost_in_cents`, `stop_reason`,
-`error`, `parsed` and `raw` (the provider's line). Lines with an id that
-was not requested, or a repeated id, come after the requested ids.
+`error`, `parsed` and `raw` (the provider's line).
+
+The list always has exactly one result per requested id. When the
+provider returns two lines for the same id, the first line is kept. Lines
+with an id that was not requested, or with no id, are dropped. `collect`
+logs one warning on the `defog.llm.batch.api` logger that names every
+dropped line.
 
 Nothing is retried. Send the expired, errored or missing ids again in a
 new batch if you need them.
@@ -141,6 +147,11 @@ yourself, call `parse(result, Model)`.
 
 Validation in `collect` also checks constraints such as `maxLength`
 that a provider may leave out of the schema it enforces.
+
+For OpenAI, `build_requests` converts each schema with a helper inside the
+`openai` package. If the installed `openai` version does not have that
+helper, `build_requests` raises `ConfigurationError` and names the
+installed version. Install a compatible `openai` version to fix it.
 
 ## Prices
 

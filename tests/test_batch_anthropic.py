@@ -1,6 +1,7 @@
 """Anthropic Message Batches tests with a fake client. No API call is made."""
 
 import asyncio
+import logging
 from types import SimpleNamespace
 
 import pytest
@@ -196,6 +197,32 @@ def test_canceled_and_missing():
     assert [r.status for r in results] == ["canceled", "missing"]
 
 
+def test_repeated_unknown_and_unnamed_lines_are_dropped(caplog):
+    no_id = succeeded("q9").model_dump(mode="json")
+    del no_id["custom_id"]
+    lines = [
+        succeeded("q1"),
+        succeeded("q1", text='{"city": "Osaka"}'),  # a repeated id
+        succeeded("zz"),  # an id that was not requested
+        no_id,
+    ]
+    client = FakeAnthropic(lines=lines)
+    with caplog.at_level(logging.WARNING, logger="defog.llm.batch.api"):
+        results = run(collect(job(["q1", "q2"]), client=client))
+
+    # One result per requested id; the first line for q1 is kept.
+    assert [(r.id, r.status) for r in results] == [
+        ("q1", "succeeded"),
+        ("q2", "missing"),
+    ]
+    assert results[0].text == '{"city": "Tokyo"}'
+    (record,) = caplog.records
+    message = record.getMessage()
+    assert "dropped 3 extra result lines" in message
+    assert "Repeated ids: ['q1']" in message
+    assert "['zz', None]" in message
+
+
 def test_cut_off_and_refused_answers():
     lines = [
         succeeded("q1", text='{"city": "To', stop_reason="max_tokens"),
@@ -261,6 +288,27 @@ def test_wait_raises_after_the_timeout():
     client = FakeAnthropic(statuses=["in_progress"])
     with pytest.raises(TimeoutError, match="still 'in_progress'"):
         run(wait(job(), client=client, poll_interval=0.001, timeout=0))
+
+
+def test_wait_stops_at_the_timeout_not_one_interval_after(monkeypatch):
+    from defog.llm.batch import api as batch_api
+
+    clock = [0.0]
+    slept = []
+
+    async def fake_sleep(seconds):
+        slept.append(seconds)
+        clock[0] += seconds
+
+    monkeypatch.setattr(batch_api, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+    monkeypatch.setattr(batch_api, "asyncio", SimpleNamespace(sleep=fake_sleep))
+    client = FakeAnthropic(statuses=["in_progress"])
+    with pytest.raises(TimeoutError):
+        run(wait(job(), client=client, poll_interval=60, timeout=150))
+    # The last sleep is cut short so the final poll happens at the timeout.
+    assert slept == [60, 60, 30]
+    assert clock[0] == 150
+    assert client.messages.batches.retrieve_calls == 4
 
 
 def test_wait_rejects_a_poll_interval_of_zero_or_less():

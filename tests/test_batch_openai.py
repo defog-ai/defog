@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 from types import SimpleNamespace
 
 import pytest
@@ -221,19 +222,43 @@ def test_collect_prices_at_batch_rates_and_subtracts_cached_tokens():
     assert result.cost_in_cents < standard
 
 
-def test_missing_and_unexpected_lines_are_reported():
+def test_missing_and_unexpected_lines_are_reported(caplog):
+    no_id = ok_line("q9")
+    del no_id["custom_id"]
+    lines = [
+        ok_line("q1"),
+        ok_line("q1", text='{"city": "Osaka"}'),  # a repeated id
+        ok_line("zz"),  # an id that was not requested
+        no_id,
+    ]
     client = FakeOpenAI(
-        batch=batch_object(output="file-out"),
-        contents={"file-out": [ok_line("q1"), ok_line("q1"), ok_line("zz")]},
+        batch=batch_object(output="file-out"), contents={"file-out": lines}
     )
-    results = run(collect(job(["q1", "q2"]), client=client))
+    with caplog.at_level(logging.WARNING, logger="defog.llm.batch.api"):
+        results = run(collect(job(["q1", "q2"]), client=client))
+
+    # One result per requested id; the first line for q1 is kept.
     assert [(r.id, r.status) for r in results] == [
         ("q1", "succeeded"),
         ("q2", "missing"),
-        ("q1", "succeeded"),
-        ("zz", "succeeded"),
     ]
+    assert results[0].text == '{"city": "Tokyo"}'
     assert "without a result" in results[1].error
+    (record,) = caplog.records
+    message = record.getMessage()
+    assert "dropped 3 extra result lines" in message
+    assert "Repeated ids: ['q1']" in message
+    assert "['zz', None]" in message
+
+
+def test_collect_logs_nothing_when_every_line_matches(caplog):
+    client = FakeOpenAI(
+        batch=batch_object(output="file-out"),
+        contents={"file-out": [ok_line("q1")]},
+    )
+    with caplog.at_level(logging.WARNING, logger="defog.llm.batch.api"):
+        run(collect(job(["q1"]), client=client))
+    assert caplog.records == []
 
 
 def test_error_codes_map_to_statuses():
