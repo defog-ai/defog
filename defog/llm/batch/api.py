@@ -73,18 +73,28 @@ async def poll(job: BatchJob, *, client: Any = None) -> BatchStatus:
         return await anthropic_batch.poll(active, job)
 
 
+# Providers expire a batch that has not finished after 24 hours. The default
+# wait is a little longer, so an expired batch is seen as ended, not as a timeout.
+DEFAULT_WAIT_TIMEOUT = 25 * 60 * 60.0
+
+
 async def wait(
     job: BatchJob,
     *,
     client: Any = None,
     poll_interval: float = 60.0,
-    timeout: Optional[float] = None,
+    timeout: Optional[float] = DEFAULT_WAIT_TIMEOUT,
 ) -> BatchStatus:
     """Poll until the batch has ended and return its last status.
 
-    Raises TimeoutError when ``timeout`` seconds pass first. The batch keeps
-    running at the provider; call ``wait`` or ``collect`` again later.
+    Raises TimeoutError when ``timeout`` seconds pass first (default: 25
+    hours, a little over the 24 hours after which providers expire a batch;
+    pass ``None`` to wait without a limit). The batch keeps running at the
+    provider; call ``wait`` or ``collect`` again later. Raises ValueError
+    when ``poll_interval`` is not above zero.
     """
+    if poll_interval <= 0:
+        raise ValueError("poll_interval must be greater than 0.")
     started = time.monotonic()
     async with _client(job.provider, client) as active:
         while True:

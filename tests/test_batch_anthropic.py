@@ -252,7 +252,7 @@ def test_collect_refuses_a_batch_that_has_not_ended():
 
 def test_wait_polls_until_the_batch_ends():
     client = FakeAnthropic(statuses=["in_progress", "canceling", "ended"])
-    status = run(wait(job(), client=client, poll_interval=0))
+    status = run(wait(job(), client=client, poll_interval=0.001))
     assert status.done is True
     assert client.messages.batches.retrieve_calls == 3
 
@@ -260,7 +260,23 @@ def test_wait_polls_until_the_batch_ends():
 def test_wait_raises_after_the_timeout():
     client = FakeAnthropic(statuses=["in_progress"])
     with pytest.raises(TimeoutError, match="still 'in_progress'"):
-        run(wait(job(), client=client, poll_interval=0, timeout=0))
+        run(wait(job(), client=client, poll_interval=0.001, timeout=0))
+
+
+def test_wait_rejects_a_poll_interval_of_zero_or_less():
+    client = FakeAnthropic(statuses=["ended"])
+    for bad in (0, -1):
+        with pytest.raises(ValueError, match="poll_interval"):
+            run(wait(job(), client=client, poll_interval=bad))
+    assert client.messages.batches.retrieve_calls == 0
+
+
+def test_wait_has_a_default_timeout_above_24_hours():
+    import inspect
+
+    default = inspect.signature(wait).parameters["timeout"].default
+    assert default is not None
+    assert default > 24 * 60 * 60
 
 
 def test_without_a_client_one_is_created_from_the_api_key_and_closed(monkeypatch):
