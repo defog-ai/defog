@@ -15,6 +15,7 @@ This directory contains detailed documentation for all LLM-related functionality
 - [Tool Citations](tool-citations.md) - Automatic citation addition for tool outputs
 - [Human-in-the-Loop Tool Calls](human-in-the-loop.md) - Pause an agent loop from inside a tool to ask the user, then resume with their answer
 - [Cost Tracking](cost-tracking.md) - Track and monitor LLM operation costs
+- [Batch Processing](batch-processing.md) - Send many requests through the OpenAI Batch API or Anthropic Message Batches at half price
 
 ## Specialized Tools
 

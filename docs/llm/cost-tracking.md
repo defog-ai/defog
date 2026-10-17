@@ -48,8 +48,9 @@ print(f"{cost:.5f} cents")  # 0.06375 cents
 The same tokens cost `0.12750` cents with standard pricing. Use
 `service_tier="flex"` for a manual Flex calculation. Batch takes precedence
 if both options are supplied; the discounts do not multiply. Running several
-ordinary requests concurrently does not make them Batch API requests. This
-library does not submit Batch API jobs.
+ordinary requests concurrently does not make them Batch API requests. To
+submit Batch API jobs, see [Batch Processing](batch-processing.md); it
+prices each result with `batch=True`.
 
 Flex and Batch rates come from the [official OpenAI pricing page](https://developers.openai.com/api/docs/pricing),
 checked on 2026-09-15 (GPT-6 models on 2026-09-23). Rates include input, cached input, and output, with
