@@ -159,8 +159,14 @@ class CostCalculator:
         ``input_tokens`` excludes ``cached_input_tokens``. For OpenAI,
         ``service_tier="flex"`` selects Flex prices; ``batch=True`` selects
         Batch API prices and takes precedence without stacking discounts.
-        Other tiers and providers keep their existing prices. Unlisted
-        OpenAI Flex/Batch prices return None instead of guessing a discount.
+        Unlisted OpenAI Flex/Batch prices return None instead of guessing a
+        discount.
+
+        For Anthropic (Claude) models, ``batch=True`` selects Message Batches
+        prices: every rate is half the standard rate, including cache reads,
+        cache writes and the long-prompt rates, because Anthropic's Batch
+        discount stacks with its prompt-caching prices. ``service_tier`` does
+        not change a Claude price. Other providers keep their existing prices.
 
         Token counts describe one provider request. OpenAI requests whose
         input plus cached input exceeds 272,000 tokens use the published
@@ -191,6 +197,7 @@ class CostCalculator:
         costs = MODEL_COSTS[model_name]
 
         is_openai = model_name.startswith(("gpt-", "chatgpt-", "o3", "o4"))
+        is_anthropic = model_name.startswith("claude")
         total_input = input_tokens + (cached_input_tokens or 0)
 
         if (batch or service_tier == "flex") and is_openai:
@@ -266,6 +273,12 @@ class CostCalculator:
                 (cache_creation_input_tokens - one_hour_tokens) / 1000 * write_rate
                 + one_hour_tokens / 1000 * one_hour_rate
             ) * 100
+
+        # Anthropic Message Batches cost half of every standard rate. The
+        # discount stacks with the cache read, cache write and long-prompt
+        # rates applied above, so halving the total halves each of them.
+        if batch and is_anthropic:
+            cost_in_cents *= 0.5
 
         return cost_in_cents
 

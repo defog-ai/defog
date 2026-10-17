@@ -56,15 +56,29 @@ def test_flex_uses_published_rates_even_if_standard_table_is_old():
     ) == pytest.approx(0.325)
 
 
-@pytest.mark.parametrize("model", ["claude-sonnet-4-6", "gemini-3.1-pro"])
-def test_other_provider_costs_are_unchanged(model):
-    original = CostCalculator.calculate_cost(model, 1000, 500, 1000)
+def test_other_provider_costs_are_unchanged():
+    original = CostCalculator.calculate_cost("gemini-3.1-pro", 1000, 500, 1000)
     assert (
         CostCalculator.calculate_cost(
-            model, 1000, 500, 1000, service_tier="flex", batch=True
+            "gemini-3.1-pro", 1000, 500, 1000, service_tier="flex", batch=True
         )
         == original
     )
+
+
+def test_claude_flex_is_unchanged_and_batch_is_half():
+    # Flex is an OpenAI tier; a Claude call keeps its standard price. The
+    # Anthropic Batch price is covered in test_anthropic_batch_costs.py.
+    original = CostCalculator.calculate_cost("claude-sonnet-4-6", 1000, 500, 1000)
+    assert (
+        CostCalculator.calculate_cost(
+            "claude-sonnet-4-6", 1000, 500, 1000, service_tier="flex"
+        )
+        == original
+    )
+    assert CostCalculator.calculate_cost(
+        "claude-sonnet-4-6", 1000, 500, 1000, service_tier="flex", batch=True
+    ) == pytest.approx(original / 2)
 
 
 @pytest.mark.parametrize("model", ["gpt-4o", "gpt-5.3-chat-latest", "gpt-5-unknown"])
@@ -546,10 +560,13 @@ def test_existing_positional_arguments_keep_their_meaning():
     expected = CostCalculator.calculate_cost("claude-sonnet-4-6", 1000, 500, 1000, 1000)
     assert (
         CostCalculator.calculate_cost(
-            "claude-sonnet-4-6", 1000, 500, 1000, 1000, service_tier="flex", batch=True
+            "claude-sonnet-4-6", 1000, 500, 1000, 1000, service_tier="flex"
         )
         == expected
     )
+    assert CostCalculator.calculate_cost(
+        "claude-sonnet-4-6", 1000, 500, 1000, 1000, service_tier="flex", batch=True
+    ) == pytest.approx(expected / 2)
 
 
 def test_tool_outputs_only_does_not_charge_for_an_unused_parse(sdk):
