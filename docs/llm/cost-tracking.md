@@ -124,7 +124,39 @@ CostCalculator.calculate_requests_cost(
 
 `calculate_cost` takes an optional `prompt_tokens` argument. Pass it when
 your input token count already includes cached tokens, as Gemini's does.
-Batch discounts for these providers are not applied.
+Gemini Batch discounts are not applied. For Claude Batch prices, see the
+next section.
+
+### Anthropic Message Batches costs
+
+A Claude request sent through Anthropic's Message Batches API costs half of
+the standard price. The discount applies to every rate: input, output, cache
+reads, 5-minute and 1-hour cache writes, and the long-prompt rates. Anthropic
+states that the Batch discount and the prompt-caching prices stack. Pass
+`batch=True` to price a completed Batch request:
+
+```python
+from defog.llm.cost import CostCalculator
+
+# Claude Haiku 5.5: USD 0.10 input / 0.50 output per 1M tokens on the
+# standard API, USD 0.05 / 0.25 per 1M tokens in a batch.
+CostCalculator.calculate_cost("claude-haiku-5-5", 100_000, 1_000)  # 1.05 cents
+CostCalculator.calculate_cost(
+    "claude-haiku-5-5", 100_000, 1_000, batch=True
+)  # 0.525 cents
+
+# Over 100,000 prompt tokens the long-prompt rates apply, then the discount.
+CostCalculator.calculate_cost(
+    "claude-haiku-5-5", 150_000, 1_000, batch=True
+)  # 3.875 cents (7.75 on the standard API)
+```
+
+For Anthropic, `input_tokens` is the uncached input, as the API reports it.
+Pass cache reads as `cached_input_tokens` and cache writes as
+`cache_creation_input_tokens`. `service_tier` does not change a Claude price,
+and `chat_async` never passes `batch=True`, so the cost of a normal Claude
+call is unchanged. Rates come from
+[Anthropic's batch processing guide](https://platform.claude.com/docs/en/build-with-claude/batch-processing).
 
 ### Anthropic 1-hour cache writes
 
