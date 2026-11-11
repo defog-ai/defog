@@ -53,7 +53,7 @@ submit Batch API jobs, see [Batch Processing](batch-processing.md); it
 prices each result with `batch=True`.
 
 Flex and Batch rates come from the [official OpenAI pricing page](https://developers.openai.com/api/docs/pricing),
-checked on 2026-09-15 (GPT-6 models on 2026-09-23). Rates include input, cached input, and output, with
+checked on 2026-09-15 (GPT-6 models on 2026-09-23, GPT-6.1 models on 2026-11-11). Rates include input, cached input, and output, with
 the published long-context prices where available. For Batch models with
 no separate cached-input price, all input uses the Batch input price.
 
@@ -62,7 +62,7 @@ no separate cached-input price, all input uses the Batch input price.
 One OpenAI request whose input tokens plus cached input tokens exceed
 272,000 is billed at the model's published long-context rates. The
 calculator applies those rates on the standard tier as well as on Flex
-and Batch, for the models that publish them (gpt-6-astra, gpt-6-sol, gpt-6-luna,
+and Batch, for the models that publish them (gpt-6.1-sol, gpt-6.1-terra, gpt-6-astra, gpt-6-sol, gpt-6-luna,
 gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna, gpt-5.5, gpt-5.4, gpt-5.4-pro, and their dated snapshots).
 A model with no published long-context price, such as gpt-5.5-pro, keeps
 its standard price. For gpt-5.6-luna with 300,000 uncached input tokens and
@@ -88,6 +88,31 @@ OpenAI models with no cached input discount (gpt-5.5-pro, gpt-5.4-pro),
 which earlier versions left out of the standard price. Other providers'
 prices are unchanged. These estimates do not include regional surcharges,
 provider-hosted tool fees, or separate cache-write charges.
+
+### Scheduled price changes
+
+When a provider has published a price change with a start date, the
+calculator holds both prices and uses the new one from 00:00 UTC on that
+date. The date comes from `calculation_time`, which defaults to the current
+time.
+
+| Model | Until | Input / cached input / output per 1M tokens | From | Input / cached input / output per 1M tokens |
+| ----- | ----- | ------------------------------------------- | ---- | ------------------------------------------- |
+| gemini-4-carbon, gemini-4-argon | 2026-11-30 | $2 / $0.10 / $10 | 2026-12-01 | $4 / $0.20 / $20 |
+| gemini-3.8-flash, gemini-3.6-flash | 2026-12-31 | $0.75 / $0.075 / $3.75 | 2027-01-01 | $1.50 / $0.15 / $7.50 |
+
+```python
+from datetime import datetime, timezone
+from defog.llm.cost import CostCalculator
+
+CostCalculator.calculate_cost(
+    "gemini-4-carbon", 1_000_000, 0,
+    calculation_time=datetime(2026, 12, 1, tzinfo=timezone.utc),
+)  # 400 cents
+```
+
+Google's pricing page gives the dates without a time zone, so the switch
+at 00:00 UTC can differ from the billed price for a few hours around it.
 
 ### Prompt-length prices
 

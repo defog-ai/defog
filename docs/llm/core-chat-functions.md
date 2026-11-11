@@ -128,6 +128,54 @@ rate on each of them. See [Prompt-length prices](cost-tracking.md#prompt-length-
 See Anthropic's [Haiku 5.5 overview](https://platform.claude.com/docs/en/models/haiku-5-5/overview)
 and [migration guide](https://platform.claude.com/docs/en/models/haiku-5-5/migration-guide).
 
+### Claude Fable 5.2
+
+`claude-fable-5-2` (released 2026-11-09) is handled like Fable 5.1:
+
+- Adaptive thinking is always on. Any `reasoning_effort` (`"low"`, `"medium"`,
+  `"high"`, `"xhigh"` or `"max"`) is sent in `output_config.effort`; without
+  one, the API uses its default (`high`).
+- Forced tool use is rejected, so `tool_choice` values that would map to
+  `"any"` or `"tool"` are sent as `"auto"` (with a logged warning).
+- `temperature` is not sent.
+- With the advisor server tool, a Fable 5.2 executor accepts only
+  `claude-fable-5-2` or `claude-mythos-5-2` as the advisor `model`.
+- The API returns a 400 error when a request sends back a Fable 5.2 thinking
+  block after the system prompt, the tools or an earlier message has changed.
+  Within one `chat_async` call defog sends each assistant turn back unchanged.
+  When you resume a paused conversation that holds thinking blocks, keep the
+  tools and the earlier messages the same, and do not insert a system message
+  in a place where defog has to move it into the system prompt (anywhere
+  other than directly after a user turn).
+
+It costs $8 input and $40 output per million tokens (cache reads $0.20).
+See Anthropic's [What's new in Claude Fable 5.2](https://platform.claude.com/docs/en/models/fable-5-2/whats-new-fable-5-2).
+
+### GPT-6.1 Sol and Terra
+
+`gpt-6.1-sol` and `gpt-6.1-terra` use the same request handling as the other
+`gpt-6` models (no `temperature`, `reasoning_effort` sent as
+`reasoning.effort`, default `"medium"`). Both accept `"low"`, `"medium"`,
+`"high"`, `"xhigh"` and `"max"`; `gpt-6.1-terra` also accepts `"none"`.
+Standard, Flex, Batch and long-context prices are in the cost table.
+
+### Gemini 4 and Gemini 3.5 to 3.8 Flash
+
+`gemini-4-carbon`, `gemini-4-argon`, `gemini-3.8-flash`, `gemini-3.6-flash`
+and `gemini-3.5-flash-lite` are supported. `reasoning_effort` is sent as the
+thinking level:
+
+| Model | Accepted `reasoning_effort` |
+| ----- | --------------------------- |
+| `gemini-4-carbon`, `gemini-4-argon`, `gemini-3.8-flash` | `"low"`, `"medium"`, `"high"` |
+| `gemini-3.6-flash`, `gemini-3.5-flash-lite` | `"minimal"`, `"low"`, `"medium"`, `"high"` |
+
+defog raises a `ValueError` for `"minimal"` on the first group, because the
+API returns an error for it. Google has announced that Gemini 4 prices double
+on 2026-12-01 and Gemini 3.6 and 3.8 Flash prices double on 2027-01-01. The
+cost calculator switches to the new prices on those dates; see
+[Scheduled price changes](cost-tracking.md#scheduled-price-changes).
+
 ## Custom Base URLs
 
 You can point any provider at a custom endpoint (e.g. a proxy, self-hosted model, or Azure deployment) using the `base_url` parameter:

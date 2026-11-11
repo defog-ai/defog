@@ -23,10 +23,10 @@ logger = logging.getLogger(__name__)
 def rejects_forced_tool_choice(model: str) -> bool:
     """True for Claude models that return a 400 on tool_choice "any"/"tool".
 
-    Claude Opus 5.5, Claude Sonnet 5.5 and Claude Fable 5.1 accept only "auto"
-    and "none".
+    Claude Opus 5.5, Claude Sonnet 5.5, Claude Fable 5.1 and Claude Fable 5.2
+    accept only "auto" and "none".
     """
-    return any(p in model for p in ("opus-5-5", "sonnet-5-5", "fable-5-1"))
+    return any(p in model for p in ("opus-5-5", "sonnet-5-5", "fable-5-1", "fable-5-2"))
 
 
 def adaptive_thinking_config(model: str, reasoning_effort: str):
@@ -489,7 +489,7 @@ class AnthropicProvider(BaseLLMProvider):
         if not any(p in model for p in ("opus-4-7", "opus-4-8", "fable")):
             raise ValueError(
                 "task_budget is only supported on claude-opus-4-7, "
-                "claude-opus-4-8, and claude-fable-5; "
+                "claude-opus-4-8, and the claude-fable models; "
                 f"got model={model!r}."
             )
 
@@ -671,11 +671,18 @@ class AnthropicProvider(BaseLLMProvider):
         )
         # Sonnet 5 and Haiku 5.5 support both max and xhigh. Keep the existing effort caps
         # for older models.
-        supports_max_effort = is_sonnet_5 or is_haiku_5_5 or any(
-            p in model for p in ("opus-4-6", "opus-4-7", "opus-4-8", "opus-5", "fable")
+        supports_max_effort = (
+            is_sonnet_5
+            or is_haiku_5_5
+            or any(
+                p in model
+                for p in ("opus-4-6", "opus-4-7", "opus-4-8", "opus-5", "fable")
+            )
         )
-        supports_xhigh_effort = is_sonnet_5 or is_haiku_5_5 or any(
-            p in model for p in ("opus-4-7", "opus-4-8", "opus-5", "fable")
+        supports_xhigh_effort = (
+            is_sonnet_5
+            or is_haiku_5_5
+            or any(p in model for p in ("opus-4-7", "opus-4-8", "opus-5", "fable"))
         )
         # Opus and Fable models require adaptive thinking always on. For other
         # adaptive models, only enable it when reasoning_effort is explicitly

@@ -106,7 +106,7 @@ response = await chat_async(
 )
 ```
 
-Claude Opus 5.5 and Claude Fable 5.1 return an error for forced tool use
+Claude Opus 5.5, Claude Sonnet 5.5, Claude Fable 5.1 and Claude Fable 5.2 return an error for forced tool use
 (`tool_choice="required"` or a specific tool name). On those models the
 Anthropic provider logs a warning and sends `tool_choice="auto"` instead.
 

@@ -21,6 +21,34 @@ from ..tools.handler import ToolHandler
 logger = logging.getLogger(__name__)
 
 
+def validate_thinking_level(model: str, reasoning_effort: str) -> None:
+    """Raise ValueError when a Gemini model does not accept ``reasoning_effort``.
+
+    Gemini 3 and Gemini 4 models take a thinking level. Gemini 3 Pro accepts
+    only "low" and "high". Gemini 4 Carbon, Gemini 4 Argon and Gemini 3.8
+    Flash accept "low", "medium" and "high" and return an error for "minimal".
+    """
+    if not model.startswith(("gemini-3", "gemini-4")):
+        raise ValueError(
+            f"reasoning_effort is not supported for model {model}. It is only supported for gemini-3 and gemini-4 models."
+        )
+
+    if reasoning_effort not in ["minimal", "low", "medium", "high"]:
+        raise ValueError(
+            "reasoning_effort must be one of 'minimal', 'low', 'medium', or 'high'"
+        )
+
+    if reasoning_effort not in ["low", "high"] and model.startswith("gemini-3-pro"):
+        raise ValueError(f"reasoning_effort must be 'low' or 'high' for model {model}.")
+
+    if reasoning_effort == "minimal" and model.startswith(
+        ("gemini-4", "gemini-3.8-flash")
+    ):
+        raise ValueError(
+            f"reasoning_effort must be 'low', 'medium' or 'high' for model {model}."
+        )
+
+
 class GeminiProvider(BaseLLMProvider):
     """Google Gemini provider implementation using Interactions API."""
 
@@ -317,22 +345,7 @@ class GeminiProvider(BaseLLMProvider):
         request_params["generation_config"] = generation_config_dict
 
         if reasoning_effort:
-            if not model.startswith("gemini-3"):
-                raise ValueError(
-                    f"reasoning_effort is not supported for model {model}. It is only supported for gemini-3 models."
-                )
-
-            if reasoning_effort not in ["minimal", "low", "medium", "high"]:
-                raise ValueError(
-                    "reasoning_effort must be one of 'minimal', 'low', 'medium', or 'high'"
-                )
-
-            if reasoning_effort not in ["low", "high"] and model.startswith(
-                "gemini-3-pro"
-            ):
-                raise ValueError(
-                    f"reasoning_effort must be 'low' or 'high' for model {model}."
-                )
+            validate_thinking_level(model, reasoning_effort)
 
             # Add thinking level directly to generation_config for Interactions API
             generation_config_dict["thinking_level"] = reasoning_effort
