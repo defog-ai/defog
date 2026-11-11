@@ -34,7 +34,8 @@ async def web_search_tool(
             When provided, search_results will contain a parsed instance of this model.
         reasoning_effort: Optional reasoning effort level for models that support it.
             - OpenAI (o-series, gpt-5, gpt-6): "low", "medium", "high"
-            - Gemini (gemini-3): "minimal", "low", "medium", "high" (gemini-3-pro only supports "low", "high")
+            - Gemini (gemini-3, gemini-4): "minimal", "low", "medium", "high" (gemini-3-pro only supports
+              "low", "high"; gemini-4 and gemini-3.8-flash do not support "minimal")
             - Anthropic (claude-3-7, claude-4): "low", "medium", "high"
               ("max" for Opus 4.6+ and Fable, "xhigh" for Opus 4.7+ and Fable)
 
@@ -284,18 +285,13 @@ async def web_search_tool(
             if response_format:
                 request_params["response_format"] = response_format.model_json_schema()
 
-            # Add reasoning effort for gemini-3 models
-            if reasoning_effort and model.startswith("gemini-3"):
-                if reasoning_effort not in ["minimal", "low", "medium", "high"]:
-                    raise ValueError(
-                        "reasoning_effort must be one of 'minimal', 'low', 'medium', or 'high' for Gemini"
-                    )
-                if reasoning_effort not in ["low", "high"] and model.startswith(
-                    "gemini-3-pro"
-                ):
-                    raise ValueError(
-                        f"reasoning_effort must be 'low' or 'high' for model {model}"
-                    )
+            # Add reasoning effort for gemini-3 and gemini-4 models
+            if reasoning_effort and model.startswith(("gemini-3", "gemini-4")):
+                from defog.llm.providers.gemini_provider import (
+                    validate_thinking_level,
+                )
+
+                validate_thinking_level(model, reasoning_effort)
                 request_params["generation_config"] = {
                     "thinking_level": reasoning_effort,
                 }

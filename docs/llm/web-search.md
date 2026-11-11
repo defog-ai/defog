@@ -28,7 +28,7 @@ Web search is supported on the following providers:
 |----------|--------------|-------|
 | OpenAI | `gpt-4.1-mini`, `gpt-4.1` | Uses Responses API with web_search tool |
 | Anthropic | `claude-haiku-4-5`, `claude-sonnet-4` | Uses web_search_20250305 tool |
-| Gemini | `gemini-2.5-flash`, `gemini-3-flash-preview`, `gemini-3.5-flash` | Uses google_search via Interactions API |
+| Gemini | `gemini-3.8-flash`, `gemini-4-argon`, `gemini-3-flash-preview` | Uses google_search via Interactions API |
 
 ### Structured Output
 
@@ -69,12 +69,13 @@ result = await web_search_tool(
     reasoning_effort="high"  # "low", "medium", "high"
 )
 
-# Gemini (gemini-3 models)
+# Gemini (gemini-3 and gemini-4 models)
 result = await web_search_tool(
     question="Analyze the impact of AI on healthcare",
     model="gemini-3-flash-preview",
     provider=LLMProvider.GEMINI,
     reasoning_effort="medium"  # "minimal", "low", "medium", "high"
+    # gemini-4-carbon, gemini-4-argon and gemini-3.8-flash do not accept "minimal".
 )
 
 # Anthropic (claude-3-7, claude-4, claude-5 models)
@@ -86,7 +87,7 @@ result = await web_search_tool(
     reasoning_effort="medium"  # "low", "medium", "high"
     # "max" also available on Opus 4.6+ and Fable;
     # "xhigh" on Opus 4.7+ and Fable.
-    # Claude Opus 5.5, Sonnet 5.5 and Fable 5.1 accept only tool_choice "auto"/"none", so
+    # Claude Opus 5.5, Sonnet 5.5, Fable 5.1 and Fable 5.2 accept only tool_choice "auto"/"none", so
     # the search tool is offered with "auto" on those models.
 )
 ```

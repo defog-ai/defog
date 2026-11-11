@@ -16,6 +16,8 @@ _DEEPSEEK_FLASH_COSTS = {
 # the prompt of one request (uncached input, cache reads and cache writes)
 # has more than "above_prompt_tokens" tokens, its rates replace the rates
 # above for every token of that request, output included.
+# An entry may also hold a "price_change" dict: from 00:00 UTC on its "from"
+# date, its rates replace the rates above.
 MODEL_COSTS = {
     "chatgpt-4o": {"input_cost_per1k": 0.0025, "output_cost_per1k": 0.01},
     "gpt-4o": {
@@ -63,6 +65,18 @@ MODEL_COSTS = {
         "input_cost_per1k": 0.01,
         "cached_input_cost_per1k": 0.001,
         "output_cost_per1k": 0.05,
+    },
+    # Cached input on GPT-6.1 is 5% of the input price.
+    # Source (2026-11-11): https://developers.openai.com/api/docs/pricing
+    "gpt-6.1-sol": {
+        "input_cost_per1k": 0.002,
+        "cached_input_cost_per1k": 0.0001,
+        "output_cost_per1k": 0.01,
+    },
+    "gpt-6.1-terra": {
+        "input_cost_per1k": 0.001,
+        "cached_input_cost_per1k": 0.00005,
+        "output_cost_per1k": 0.005,
     },
     "gpt-6-sol": {
         "input_cost_per1k": 0.002,
@@ -170,6 +184,15 @@ MODEL_COSTS = {
     # https://platform.claude.com/docs/en/about-claude/pricing
     # Cache reads on Fable 5.1 are 2.5% of the input price, not 10%.
     # Source (2026-09-23): https://platform.claude.com/docs/en/about-claude/pricing
+    # Released 2026-11-09. Cache reads are 2.5% of the input price.
+    # Source (2026-11-11): https://platform.claude.com/docs/en/about-claude/pricing
+    "claude-fable-5-2": {
+        "input_cost_per1k": 0.008,
+        "cached_input_cost_per1k": 0.0002,
+        "cache_creation_input_cost_per1k": 0.010,
+        "cache_creation_1h_input_cost_per1k": 0.016,
+        "output_cost_per1k": 0.040,
+    },
     "claude-fable-5-1": {
         "input_cost_per1k": 0.010,
         "cached_input_cost_per1k": 0.00025,
@@ -382,6 +405,59 @@ MODEL_COSTS = {
         "input_cost_per1k": 0.0015,
         "output_cost_per1k": 0.009,
         "cached_input_cost_per1k": 0.00015,
+    },
+    "gemini-3.5-flash-lite": {
+        "input_cost_per1k": 0.0003,
+        "output_cost_per1k": 0.0025,
+        "cached_input_cost_per1k": 0.00003,
+    },
+    # Gemini 3.6 Flash and 3.8 Flash: the published prices change on
+    # 2027-01-01. Source (2026-11-11): https://ai.google.dev/gemini-api/docs/pricing
+    "gemini-3.6-flash": {
+        "input_cost_per1k": 0.00075,
+        "output_cost_per1k": 0.00375,
+        "cached_input_cost_per1k": 0.000075,
+        "price_change": {
+            "from": "2027-01-01",
+            "input_cost_per1k": 0.0015,
+            "output_cost_per1k": 0.0075,
+            "cached_input_cost_per1k": 0.00015,
+        },
+    },
+    "gemini-3.8-flash": {
+        "input_cost_per1k": 0.00075,
+        "output_cost_per1k": 0.00375,
+        "cached_input_cost_per1k": 0.000075,
+        "price_change": {
+            "from": "2027-01-01",
+            "input_cost_per1k": 0.0015,
+            "output_cost_per1k": 0.0075,
+            "cached_input_cost_per1k": 0.00015,
+        },
+    },
+    # Gemini 4 Carbon and Argon: the published prices change on 2026-12-01.
+    # Source (2026-11-11): https://ai.google.dev/gemini-api/docs/pricing
+    "gemini-4-carbon": {
+        "input_cost_per1k": 0.002,
+        "output_cost_per1k": 0.01,
+        "cached_input_cost_per1k": 0.0001,
+        "price_change": {
+            "from": "2026-12-01",
+            "input_cost_per1k": 0.004,
+            "output_cost_per1k": 0.02,
+            "cached_input_cost_per1k": 0.0002,
+        },
+    },
+    "gemini-4-argon": {
+        "input_cost_per1k": 0.002,
+        "output_cost_per1k": 0.01,
+        "cached_input_cost_per1k": 0.0001,
+        "price_change": {
+            "from": "2026-12-01",
+            "input_cost_per1k": 0.004,
+            "output_cost_per1k": 0.02,
+            "cached_input_cost_per1k": 0.0002,
+        },
     },
     "deepseek-v4-pro": {
         # Peak: 01:00-04:00 and 06:00-10:00 UTC. All other hours use the

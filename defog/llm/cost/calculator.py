@@ -41,6 +41,24 @@ def _is_deepseek_peak_time(calculation_time: Optional[datetime] = None) -> bool:
     )
 
 
+def _apply_price_change(costs: dict, calculation_time: Optional[datetime]) -> dict:
+    """Return the rates in effect at ``calculation_time``.
+
+    An entry may hold a "price_change" dict with a "from" date (ISO format)
+    and new rates. From 00:00 UTC on that date the new rates replace the
+    entry's rates. Naive datetimes are interpreted as UTC.
+    """
+    change = costs.get("price_change")
+    if change is None:
+        return costs
+    if calculation_time is None:
+        calculation_time = datetime.now(timezone.utc)
+    elif calculation_time.tzinfo is None:
+        calculation_time = calculation_time.replace(tzinfo=timezone.utc)
+    start = datetime.fromisoformat(change["from"]).replace(tzinfo=timezone.utc)
+    return change if calculation_time >= start else costs
+
+
 def _split_size_suffix(name: str) -> tuple[str, str]:
     """Split size-tier model ids while allowing optional snapshot suffixes.
 
@@ -153,8 +171,10 @@ class CostCalculator:
         Calculate cost in cents for the given token usage.
 
         ``calculation_time`` selects the UTC peak or off-peak rate for models
-        with time-based pricing. It defaults to the current time. Naive
-        datetimes are treated as UTC.
+        with time-based pricing. It also selects the rates of a model whose
+        MODEL_COSTS entry has a ``price_change``: from 00:00 UTC on the
+        change date, the new rates apply. It defaults to the current time.
+        Naive datetimes are treated as UTC.
 
         ``input_tokens`` excludes ``cached_input_tokens``. For OpenAI,
         ``service_tier="flex"`` selects Flex prices; ``batch=True`` selects
@@ -194,7 +214,7 @@ class CostCalculator:
         if model_name is None:
             return None
 
-        costs = MODEL_COSTS[model_name]
+        costs = _apply_price_change(MODEL_COSTS[model_name], calculation_time)
 
         is_openai = model_name.startswith(("gpt-", "chatgpt-", "o3", "o4"))
         is_anthropic = model_name.startswith("claude")
