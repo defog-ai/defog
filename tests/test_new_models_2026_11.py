@@ -288,3 +288,46 @@ def test_gemini_older_rules_unchanged():
         validate_thinking_level("gemini-3-pro-preview", "medium")
     with pytest.raises(ValueError, match="must be one of"):
         validate_thinking_level("gemini-3-flash-preview", "max")
+
+
+# --- Gemini 4 Hydrogen ------------------------------------------------------
+
+
+def test_gemini_4_hydrogen_prices_per_million_tokens():
+    model = "gemini-4-hydrogen"
+    assert _dollars(model, input_tokens=MILLION, output_tokens=0) == pytest.approx(1.50)
+    assert _dollars(model, input_tokens=0, output_tokens=MILLION) == pytest.approx(7.50)
+    assert _dollars(
+        model, input_tokens=0, output_tokens=0, cached_input_tokens=MILLION
+    ) == pytest.approx(0.075)
+
+
+def test_gemini_4_hydrogen_has_no_scheduled_price_change():
+    # Carbon and Argon double on 2026-12-01. Hydrogen has no published change.
+    after = datetime(2026, 12, 2, tzinfo=timezone.utc)
+    assert _dollars(
+        "gemini-4-hydrogen",
+        input_tokens=MILLION,
+        output_tokens=0,
+        calculation_time=after,
+    ) == pytest.approx(1.50)
+
+
+@pytest.mark.parametrize("effort", ["low", "medium", "high", "xhigh"])
+def test_gemini_4_hydrogen_thinking_levels_accepted(effort):
+    validate_thinking_level("gemini-4-hydrogen", effort)
+
+
+@pytest.mark.parametrize("effort", ["minimal", "max"])
+def test_gemini_4_hydrogen_other_levels_rejected(effort):
+    with pytest.raises(ValueError, match="'low', 'medium', 'high' or 'xhigh'"):
+        validate_thinking_level("gemini-4-hydrogen", effort)
+
+
+@pytest.mark.parametrize(
+    "model",
+    ["gemini-4-carbon", "gemini-4-argon", "gemini-3.8-flash", "gemini-3-pro-preview"],
+)
+def test_gemini_xhigh_rejected_outside_hydrogen(model):
+    with pytest.raises(ValueError, match="only supported for gemini-4-hydrogen"):
+        validate_thinking_level(model, "xhigh")

@@ -27,10 +27,23 @@ def validate_thinking_level(model: str, reasoning_effort: str) -> None:
     Gemini 3 and Gemini 4 models take a thinking level. Gemini 3 Pro accepts
     only "low" and "high". Gemini 4 Carbon, Gemini 4 Argon and Gemini 3.8
     Flash accept "low", "medium" and "high" and return an error for "minimal".
+    Gemini 4 Hydrogen accepts "low", "medium", "high" and "xhigh".
     """
     if not model.startswith(("gemini-3", "gemini-4")):
         raise ValueError(
             f"reasoning_effort is not supported for model {model}. It is only supported for gemini-3 and gemini-4 models."
+        )
+
+    if model.startswith("gemini-4-hydrogen"):
+        if reasoning_effort not in ["low", "medium", "high", "xhigh"]:
+            raise ValueError(
+                f"reasoning_effort must be 'low', 'medium', 'high' or 'xhigh' for model {model}."
+            )
+        return
+
+    if reasoning_effort == "xhigh":
+        raise ValueError(
+            f"reasoning_effort 'xhigh' is only supported for gemini-4-hydrogen, not for model {model}."
         )
 
     if reasoning_effort not in ["minimal", "low", "medium", "high"]:

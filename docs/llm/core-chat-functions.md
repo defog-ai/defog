@@ -161,17 +161,21 @@ Standard, Flex, Batch and long-context prices are in the cost table.
 
 ### Gemini 4 and Gemini 3.5 to 3.8 Flash
 
-`gemini-4-carbon`, `gemini-4-argon`, `gemini-3.8-flash`, `gemini-3.6-flash`
-and `gemini-3.5-flash-lite` are supported. `reasoning_effort` is sent as the
+`gemini-4-carbon`, `gemini-4-argon`, `gemini-4-hydrogen`, `gemini-3.8-flash`,
+`gemini-3.6-flash` and `gemini-3.5-flash-lite` are supported. `reasoning_effort` is sent as the
 thinking level:
 
 | Model | Accepted `reasoning_effort` |
 | ----- | --------------------------- |
 | `gemini-4-carbon`, `gemini-4-argon`, `gemini-3.8-flash` | `"low"`, `"medium"`, `"high"` |
+| `gemini-4-hydrogen` | `"low"`, `"medium"`, `"high"`, `"xhigh"` |
 | `gemini-3.6-flash`, `gemini-3.5-flash-lite` | `"minimal"`, `"low"`, `"medium"`, `"high"` |
 
-defog raises a `ValueError` for `"minimal"` on the first group, because the
-API returns an error for it. Google has announced that Gemini 4 prices double
+defog raises a `ValueError` for `"minimal"` on the first two groups, because
+the API returns an error for it, and for `"xhigh"` on every model except
+`gemini-4-hydrogen`. `gemini-4-hydrogen` costs $1.50 input, $0.075 cached
+input and $7.50 output per million tokens, with no published price change.
+Google has announced that Gemini 4 Carbon and Argon prices double
 on 2026-12-01 and Gemini 3.6 and 3.8 Flash prices double on 2027-01-01. The
 cost calculator switches to the new prices on those dates; see
 [Scheduled price changes](cost-tracking.md#scheduled-price-changes).

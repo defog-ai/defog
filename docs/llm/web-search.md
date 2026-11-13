@@ -28,7 +28,7 @@ Web search is supported on the following providers:
 |----------|--------------|-------|
 | OpenAI | `gpt-4.1-mini`, `gpt-4.1` | Uses Responses API with web_search tool |
 | Anthropic | `claude-haiku-4-5`, `claude-sonnet-4` | Uses web_search_20250305 tool |
-| Gemini | `gemini-3.8-flash`, `gemini-4-argon`, `gemini-3-flash-preview` | Uses google_search via Interactions API |
+| Gemini | `gemini-4-hydrogen`, `gemini-4-argon`, `gemini-3-flash-preview` | Uses google_search via Interactions API |
 
 ### Structured Output
 
@@ -75,7 +75,8 @@ result = await web_search_tool(
     model="gemini-3-flash-preview",
     provider=LLMProvider.GEMINI,
     reasoning_effort="medium"  # "minimal", "low", "medium", "high"
-    # gemini-4-carbon, gemini-4-argon and gemini-3.8-flash do not accept "minimal".
+    # gemini-4 models and gemini-3.8-flash do not accept "minimal".
+    # gemini-4-hydrogen also accepts "xhigh".
 )
 
 # Anthropic (claude-3-7, claude-4, claude-5 models)
