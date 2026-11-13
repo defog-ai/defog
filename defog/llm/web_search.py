@@ -35,7 +35,8 @@ async def web_search_tool(
         reasoning_effort: Optional reasoning effort level for models that support it.
             - OpenAI (o-series, gpt-5, gpt-6): "low", "medium", "high"
             - Gemini (gemini-3, gemini-4): "minimal", "low", "medium", "high" (gemini-3-pro only supports
-              "low", "high"; gemini-4 and gemini-3.8-flash do not support "minimal")
+              "low", "high"; gemini-4 and gemini-3.8-flash do not support "minimal";
+              gemini-4-hydrogen also supports "xhigh")
             - Anthropic (claude-3-7, claude-4): "low", "medium", "high"
               ("max" for Opus 4.6+ and Fable, "xhigh" for Opus 4.7+ and Fable)
 

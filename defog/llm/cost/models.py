@@ -459,6 +459,13 @@ MODEL_COSTS = {
             "cached_input_cost_per1k": 0.0002,
         },
     },
+    # Gemini 4 Hydrogen: no price change is published for this model.
+    # Source (2026-11-13): https://ai.google.dev/gemini-api/docs/pricing
+    "gemini-4-hydrogen": {
+        "input_cost_per1k": 0.0015,
+        "output_cost_per1k": 0.0075,
+        "cached_input_cost_per1k": 0.000075,
+    },
     "deepseek-v4-pro": {
         # Peak: 01:00-04:00 and 06:00-10:00 UTC. All other hours use the
         # off-peak rates below. Effective 2026-08-16; used here immediately
