@@ -57,10 +57,11 @@ def test_flex_uses_published_rates_even_if_standard_table_is_old():
 
 
 def test_other_provider_costs_are_unchanged():
-    original = CostCalculator.calculate_cost("gemini-3.1-pro", 1000, 500, 1000)
+    # Gemini has its own tier prices; see test_gemini_tier_costs.py.
+    original = CostCalculator.calculate_cost("deepseek-v4-flash", 1000, 500, 1000)
     assert (
         CostCalculator.calculate_cost(
-            "gemini-3.1-pro", 1000, 500, 1000, service_tier="flex", batch=True
+            "deepseek-v4-flash", 1000, 500, 1000, service_tier="flex", batch=True
         )
         == original
     )
