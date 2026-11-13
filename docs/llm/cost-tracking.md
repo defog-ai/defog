@@ -150,8 +150,52 @@ CostCalculator.calculate_requests_cost(
 
 `calculate_cost` takes an optional `prompt_tokens` argument. Pass it when
 your input token count already includes cached tokens, as Gemini's does.
-Gemini Batch discounts are not applied. For Claude Batch prices, see the
-next section.
+For Gemini Batch, Flex and Priority prices and Claude Batch prices, see the
+next sections.
+
+### Gemini Batch, Flex and Priority costs
+
+`calculate_cost` holds the Batch, Flex and Priority prices from
+[Google's pricing page](https://ai.google.dev/gemini-api/docs/pricing).
+Pass `batch=True` for a Batch request, or `service_tier="flex"` or
+`service_tier="priority"`. Batch takes precedence when both are given.
+
+Prices in USD per 1M tokens (input / cached input / output), text, image
+and video input:
+
+| Model | Batch | Flex | Priority |
+| ----- | ----- | ---- | -------- |
+| gemini-4-carbon, gemini-4-argon | $1 / $0.05 / $5 | same as Batch | $3.60 / $0.18 / $18 |
+| gemini-4-hydrogen | $0.75 / $0.0375 / $3.75 | same as Batch | $2.70 / $0.135 / $13.50 |
+| gemini-3.8-flash, gemini-3.6-flash | $0.375 / $0.0375 / $1.875 | same as Batch | $1.35 / $0.135 / $6.75 |
+| gemini-3.5-flash-lite | $0.15 / $0.015 / $1.25 | $0.15 / $0.02 / $1.25 | $0.54 / $0.05 / $4.50 |
+| gemini-3.1-flash-lite | $0.125 / $0.0125 / $0.75 | same as Batch | $0.45 / $0.045 / $2.70 |
+| gemini-3.1-pro | $1 / $0.20 / $6 | same as Batch | $3.60 / $0.36 / $21.60 |
+| gemini-3.1-pro, over 200,000 prompt tokens | $2 / $0.40 / $9 | same as Batch | $7.20 / $0.72 / $32.40 |
+| gemini-3-flash | $0.25 / $0.05 / $1.50 | same as Batch | $0.90 / $0.09 / $5.40 |
+| gemini-2.5-pro | $0.625 / $0.125 / $5 | same as Batch | $2.25 / $0.225 / $18 |
+| gemini-2.5-pro, over 200,000 prompt tokens | $1.25 / $0.25 / $7.50 | same as Batch | $4.50 / $0.45 / $27 |
+| gemini-2.5-flash | $0.15 / $0.03 / $1.25 | same as Batch | $0.54 / $0.054 / $4.50 |
+
+```python
+from defog.llm.cost import CostCalculator
+
+CostCalculator.calculate_cost("gemini-4-hydrogen", 1_000_000, 0, batch=True)  # 75 cents
+CostCalculator.calculate_cost(
+    "gemini-4-hydrogen", 1_000_000, 0, service_tier="priority"
+)  # 270 cents
+```
+
+- The scheduled price changes apply on every tier: the tier prices of
+  gemini-4-carbon and gemini-4-argon double on 2026-12-01, and those of
+  gemini-3.8-flash and gemini-3.6-flash on 2027-01-01.
+- A Gemini model with no published price for the tier returns `None`
+  (gemini-3.5-flash, gemini-3-pro and gemini-2.0-flash are not on the
+  pricing page). A price is not inferred from another model or tier.
+- `chat_async` does not send a service tier to Gemini and does not pass
+  `batch=True`, so `response.cost_in_cents` of a Gemini call is the
+  standard price. Use `calculate_cost` for requests you send on another
+  tier yourself.
 
 ### Anthropic Message Batches costs
 

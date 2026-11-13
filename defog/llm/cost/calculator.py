@@ -2,6 +2,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+from .gemini_tiers import gemini_tier_entry
 from .models import MODEL_COSTS
 from .openai_tiers import (
     LONG_CONTEXT_TOKENS,
@@ -186,7 +187,14 @@ class CostCalculator:
         prices: every rate is half the standard rate, including cache reads,
         cache writes and the long-prompt rates, because Anthropic's Batch
         discount stacks with its prompt-caching prices. ``service_tier`` does
-        not change a Claude price. Other providers keep their existing prices.
+        not change a Claude price.
+
+        For Gemini models, ``batch=True`` selects Batch prices and
+        ``service_tier="flex"`` or ``service_tier="priority"`` selects Flex
+        or Priority prices. Batch takes precedence. The published
+        ``price_change`` and ``long_prompt`` prices of the tier apply. A
+        Gemini model with no published price for the tier returns None.
+        Other providers keep their existing prices.
 
         Token counts describe one provider request. OpenAI requests whose
         input plus cached input exceeds 272,000 tokens use the published
@@ -219,6 +227,16 @@ class CostCalculator:
         is_openai = model_name.startswith(("gpt-", "chatgpt-", "o3", "o4"))
         is_anthropic = model_name.startswith("claude")
         total_input = input_tokens + (cached_input_tokens or 0)
+
+        if model_name.startswith("gemini") and (
+            batch or service_tier in ("flex", "priority")
+        ):
+            tier_entry = gemini_tier_entry(
+                model, model_name, "batch" if batch else service_tier
+            )
+            if tier_entry is None:
+                return None
+            costs = _apply_price_change(tier_entry, calculation_time)
 
         if (batch or service_tier == "flex") and is_openai:
             tier_costs = OPENAI_TIER_COSTS["batch" if batch else "flex"]
